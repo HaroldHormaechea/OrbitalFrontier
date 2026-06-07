@@ -1,0 +1,122 @@
+package com.orbitalfrontier.playthrough
+
+import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.ship.MovementInput
+import com.orbitalfrontier.ship.ShipMovementParams
+import com.orbitalfrontier.sim.SimulationState
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * JVM unit tests for [PlaythroughCodec] — the stable, diffable JSON form of a [Playthrough]
+ * (UC02 AC#3/#8).
+ *
+ * Covers a lossless round-trip across the full shape (the polymorphic sealed [InputEvent] plus both
+ * DTOs — [MovementParamsDto] and [StateSnapshotDto]) and the stability/diffability properties the
+ * artifact relies on (pretty-printed, defaults encoded, self-describing polymorphic discriminator).
+ */
+class PlaythroughCodecTest {
+    /** A playthrough exercising every serialized shape: multiple events per tick, config + state DTOs. */
+    private fun richPlaythrough(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = "codec-round-trip",
+                seed = 42L,
+                dtSeconds = 1f / 60f,
+                config = ShipMovementParams(maxSpeed = 99f, inputDeadzone = 0.2f),
+                initialState =
+                    SimulationState(
+                        tick = 0,
+                        ship =
+                            com.orbitalfrontier.ship.ShipKinematics(
+                                position = Vec2(1f, 2f),
+                                velocity = Vec2(-3f, 4f),
+                                headingRadians = 0.5f,
+                                angularVelocity = -0.25f,
+                            ),
+                    ),
+            )
+        // 0..N events per tick: two distinct movement samples sharing tick 0, one at tick 1.
+        recorder.recordMovement(0, MovementInput(Vec2(0f, 1f), magnitude = 1f, released = false))
+        recorder.recordMovement(0, MovementInput(Vec2(1f, 0f), magnitude = 0.5f, released = false))
+        recorder.recordMovement(1, MovementInput(Vec2.ZERO, magnitude = 0f, released = true))
+        recorder.extendToTick(4)
+        return recorder.build()
+    }
+
+    @Test
+    fun `decode of encode round-trips the full playthrough`() {
+        val original = richPlaythrough()
+
+        val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(original))
+
+        // Whole-object equality covers the sealed InputEvent hierarchy and both DTOs at once.
+        assertEquals(original, decoded)
+    }
+
+    @Test
+    fun `round-trip preserves the polymorphic movement events including multiple per tick`() {
+        val original = richPlaythrough()
+
+        val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(original))
+
+        val events = decoded.inputEvents.filterIsInstance<MovementEvent>()
+        assertEquals(3, events.size)
+        // Both tick-0 samples survive in order (0..N events per tick).
+        assertEquals(listOf(0, 0, 1), events.map { it.tick })
+        assertEquals(MovementInput(Vec2(0f, 1f), 1f, released = false), events[0].toMovementInput())
+        assertEquals(MovementInput(Vec2(1f, 0f), 0.5f, released = false), events[1].toMovementInput())
+        assertTrue(events[2].released)
+    }
+
+    @Test
+    fun `round-trip preserves the config and initial-state DTOs`() {
+        val original = richPlaythrough()
+
+        val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(original))
+
+        assertEquals(99f, decoded.config.toParams().maxSpeed, 0f)
+        assertEquals(0.2f, decoded.config.toParams().inputDeadzone, 0f)
+        val initial = decoded.initialState!!.toSimulationState()
+        assertEquals(Vec2(1f, 2f), initial.ship.position)
+        assertEquals(Vec2(-3f, 4f), initial.ship.velocity)
+        assertEquals(0.5f, initial.ship.headingRadians, 0f)
+        assertEquals(-0.25f, initial.ship.angularVelocity, 0f)
+    }
+
+    @Test
+    fun `encoded form is pretty-printed and diffable`() {
+        val json = PlaythroughCodec.encode(richPlaythrough())
+
+        // Pretty-print ⇒ multi-line, one field per line: a noisy diff signals a behaviour change.
+        assertTrue("expected multi-line pretty output", json.lines().size > 10)
+        assertTrue("expected indented fields", json.contains("\n  \""))
+    }
+
+    @Test
+    fun `encoded form is self-describing with a type discriminator`() {
+        val json = PlaythroughCodec.encode(richPlaythrough())
+
+        // The sealed InputEvent serializes with kotlinx's "type" discriminator + the @SerialName.
+        assertTrue("expected polymorphic discriminator", json.contains("\"type\""))
+        assertTrue("expected movement SerialName", json.contains("\"movement\""))
+    }
+
+    @Test
+    fun `encodeDefaults writes default-valued fields explicitly`() {
+        // A playthrough leaving config/initialState/formatVersion at their defaults.
+        val minimal =
+            PlaythroughRecorder(name = "minimal", seed = 7L, dtSeconds = 1f / 60f)
+                .recordMovement(0, MovementInput(Vec2(0f, 1f), 1f, released = false))
+                .build()
+
+        val json = PlaythroughCodec.encode(minimal)
+
+        // encodeDefaults ⇒ even default-valued fields are present, so a later default change can't
+        // silently alter how an old artifact decodes.
+        assertTrue("formatVersion should be written", json.contains("\"formatVersion\""))
+        assertTrue("default config should be written", json.contains("\"config\""))
+        assertEquals(Playthrough.CURRENT_FORMAT_VERSION, PlaythroughCodec.decode(json).formatVersion)
+    }
+}

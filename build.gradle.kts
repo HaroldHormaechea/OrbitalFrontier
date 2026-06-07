@@ -5,12 +5,14 @@
 //   - Gradle 8.10 (see gradle/wrapper/gradle-wrapper.properties)
 //   - libGDX 1.13.1
 //   - SQLDelight 2.0.2 (persistence access layer — ADR 0003)
+//   - kotlinx.serialization plugin 2.0.21 (playthrough codec — ADR 0006; version tracks Kotlin)
 //   - ktlint Gradle plugin 12.1.1 (lint/format)
 
 plugins {
     id("com.android.application") version "8.6.1" apply false
     id("org.jetbrains.kotlin.android") version "2.0.21" apply false
     id("org.jetbrains.kotlin.jvm") version "2.0.21" apply false
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false
     id("app.cash.sqldelight") version "2.0.2" apply false
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
 }

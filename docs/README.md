@@ -14,6 +14,7 @@ the reasoning and design detail behind them.
 | [`design/`](design/) | Internal design notes: how each game system should work (ideas, mechanics, open questions). Living documents, may be incomplete. | [design/README.md](design/README.md) |
 | [`adr/`](adr/) | Architecture Decision Records: a dated, numbered log of significant technical decisions and why they were made. | [adr/README.md](adr/README.md) |
 | [`coding-guidelines.md`](coding-guidelines.md) | **Binding** coding standards (SOLID + supporting conventions). Required for all production code; enforced in review. | [coding-guidelines.md](coding-guidelines.md) |
+| [`PLAYTESTING.md`](PLAYTESTING.md) | How to record & replay deterministic playthroughs for testing (the UC02 harness, in the core test source set). Every gameplay UC's QA adds a playthrough + replay test. | [PLAYTESTING.md](PLAYTESTING.md) |
 
 ## How agents should use these
 
