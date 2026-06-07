@@ -1,0 +1,38 @@
+# Gradle
+.gradle/
+build/
+**/build/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+local.properties
+.cxx/
+
+# Signing / secrets (never commit)
+*.jks
+*.keystore
+keystore.properties
+*.p12
+play-credentials*.json
+*.env
+.env*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.hprof
+
+# OS
+.DS_Store
+Thumbs.db
+
+# libGDX packed assets (regenerated)
+assets/**/*.atlas
+assets/**/packed/

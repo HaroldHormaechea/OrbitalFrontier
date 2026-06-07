@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Display name is the working title; revisit before a store release
+     (the Orbital/Frontier name space is crowded — see PROJECT_BRIEF.md). -->
+<resources>
+    <string name="app_name">Orbital Frontier</string>
+</resources>
