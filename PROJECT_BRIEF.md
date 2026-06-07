@@ -213,6 +213,10 @@ None
 - **seed_data:** A new-game default state in code; optionally a small set of fixture mission definitions. No external seed pipeline.
 - **migrations:** SQLite save versioning via a stored `saveVersion` and **SQLDelight `.sqm`** migration files applying **sequential, version-by-version** upgrade steps (v1→v2→…→vN) on load, so a save from any prior version upgrades through each step in order. Per-version fixture saves test the full chain. See **ADR 0002 / ADR 0003** and `docs/design/save-and-persistence.md`.
 
+## Use Cases
+
+Use cases are captured individually under `use-cases/` and indexed with their status in `USE_CASES.md`.
+
 ## Scaffolding Plan
 
 Structure-only scaffold for a libGDX (Kotlin) Android game using the standard `core` + `android` multi-module layout. No dependencies are installed, no builds are run. Build files are minimal placeholders that establish the module shape; exact dependency/plugin versions should be finalized when first opened in Android Studio (pinned versions in frontmatter are current-as-of-scaffold references, **[CONFIRM]**).
