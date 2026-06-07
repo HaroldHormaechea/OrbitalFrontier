@@ -8,7 +8,7 @@ stack:
   frameworks: [libGDX]
   runtimes: [mobile]
   versions: {kotlin: "2.0.21", gradle: "8.10", libgdx: "1.13.1", android_compile_sdk: "35", android_min_sdk: "24"}
-  data_stores: ["local file/JSON save (SharedPreferences + JSON)", "SQLite (optional, for larger game state)"]
+  data_stores: ["SQLite (on-device, single DB: world + player + settings; see ADR 0002)", "SharedPreferences (minor bootstrap flags only, if needed)"]
 build:
   tool: gradle
   commands: {test: "./gradlew test", lint: "./gradlew lint", format: "./gradlew ktlintFormat"}
@@ -115,8 +115,8 @@ use_cases:
 - **languages:** Kotlin (primary). Confirmed.
 - **frameworks:** libGDX (game framework), Box2D (via libGDX, optional, for movement/collision), Android SDK. Confirmed.
 - **data_stores:**
-  - `{engine: "JSON file + SharedPreferences", purpose: "save/load game state, settings"}` — simplest fit for single-player MVP.
-  - `{engine: "SQLite (optional)", purpose: "structured game state if save data grows (missions, inventory)"}` — deferred until needed.
+  - `{engine: "SQLite", purpose: "single on-device save DB holding all world + player + settings state; single slot, autosave only; versioned with sequential migrations"}` — chosen from the start (see **ADR 0002** and `docs/design/save-and-persistence.md`). The persistence access layer must respect ADR 0001's `core` JVM-testability constraint (don't pull the Android SDK into `core`).
+  - `{engine: "SharedPreferences (optional)", purpose: "minor bootstrap flags only, if ever needed — not the save store"}`.
 - **auth_strategy:** none — fully offline single-player MVP; no accounts.
 - **external_services:** none for the MVP. (Play Console for distribution; optional Play Games Services / cloud save deferred.)
 - **ai_ml_dependency:** none. (Enemy/NPC behavior is rule-based game AI, not ML.)
@@ -205,7 +205,7 @@ None
 - **containerization:** not used (Android/Gradle native toolchain).
 - **hot_reload:** Standard Gradle incremental builds + Android Studio instant run; libGDX desktop launcher can be added later for fast iteration without an emulator (deferred — Android-only scaffold for now).
 - **seed_data:** A new-game default state in code; optionally a small set of fixture mission definitions. No external seed pipeline.
-- **migrations:** Save-file versioning handled in the serializer (a `saveVersion` field with forward-migration on load); no database migration tool for the MVP.
+- **migrations:** SQLite save versioning via a stored `saveVersion` and a **migration framework** applying **sequential, version-by-version** upgrade steps (v1→v2→…→vN) on load, so a save from any prior version upgrades through each step in order. Per-version fixture saves test the full chain. See **ADR 0002** and `docs/design/save-and-persistence.md`.
 
 ## Scaffolding Plan
 

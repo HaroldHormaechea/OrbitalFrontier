@@ -12,6 +12,7 @@ still wins on any conflict — keep them in sync.
 | # | Title | Status |
 |---|---|---|
 | [0001](0001-engine-choice.md) | Game engine / framework choice (libGDX + Kotlin) | Accepted |
+| [0002](0002-persistence-sqlite-migrations.md) | Persistence: SQLite from the start with versioned migrations | Accepted |
 
 ## Adding an ADR
 

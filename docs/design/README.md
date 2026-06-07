@@ -13,14 +13,27 @@ choose). Decisions that become binding should be promoted to an [ADR](../adr/).
 
 | System | File | Status | Loop pillar |
 |---|---|---|---|
-| Ship & Controls | [ship-and-controls.md](ship-and-controls.md) | draft | Roam |
-| World & Sector | [world-and-sector.md](world-and-sector.md) | draft | Roam |
-| Missions | [missions.md](missions.md) | draft | Earn |
-| Combat & Encounters | [combat.md](combat.md) | draft | Earn |
-| Economy & Resources | [economy-and-resources.md](economy-and-resources.md) | draft | Earn → Improve |
-| Upgrades & Progression | [upgrades-and-progression.md](upgrades-and-progression.md) | draft | Improve |
-| Save & Persistence | [save-and-persistence.md](save-and-persistence.md) | draft | (cross-cutting) |
+| Ship & Controls | [ship-and-controls.md](ship-and-controls.md) | in-progress | Roam |
+| World & Sector | [world-and-sector.md](world-and-sector.md) | in-progress | Roam |
+| Missions | [missions.md](missions.md) | in-progress | Earn |
+| Combat & Encounters | [combat.md](combat.md) | deferred (real-time decided) | Earn |
+| Economy & Resources | [economy-and-resources.md](economy-and-resources.md) | in-progress | Earn → Improve |
+| Upgrades & Progression | [upgrades-and-progression.md](upgrades-and-progression.md) | in-progress | Improve |
+| Save & Persistence | [save-and-persistence.md](save-and-persistence.md) | in-progress | (cross-cutting) |
 | Station Building | [station-building.md](station-building.md) | draft (post-MVP) | Improve, deeper |
+
+## Candidate notes (surfaced during design, not yet authored)
+
+These systems came up while writing the notes above and are currently captured *inline*
+within them. Promote each to its own note when it grows enough to warrant one:
+
+| System | Currently captured in | Notes |
+|---|---|---|
+| Crew | ship-and-controls, combat, economy | Crew operate (auto-aim) turrets; hireable; upgradeable "to a degree". |
+| Sensors / Scanning & Transponders | world-and-sector, upgrades | Beacons advertise POIs; active scan reveals hidden contacts (sensor tech). |
+| Jump / Inter-sector travel | world-and-sector | Jump points link the 3 MVP sectors; gate-vs-drive TBD (ADR candidate). |
+| Ship Radio / Comms | missions, upgrades | Receives broadcast mission offers; comms upgrade category. |
+| Factions & Reputation | missions, economy, upgrades | Station faction state drives offers/prices; reputation gating. **Post-MVP.** |
 
 ## Adding a note
 
