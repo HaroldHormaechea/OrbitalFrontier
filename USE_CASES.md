@@ -11,3 +11,17 @@ Statuses:
 | # | File | Title | Status | Updated |
 |---|------|-------|--------|---------|
 | 01 | [use-cases/01-flyable-ship-empty-sector.md](use-cases/01-flyable-ship-empty-sector.md) | Flyable ship in an empty sector | done | 2026-06-07 |
+| 02 | [use-cases/02-playthrough-record-replay-harness.md](use-cases/02-playthrough-record-replay-harness.md) | Deterministic playthrough record & replay test harness | pending | 2026-06-07 |
+| 03 | [use-cases/03-sector-world-and-jump-gates.md](use-cases/03-sector-world-and-jump-gates.md) | Sector world & fixed jump gates | pending | 2026-06-07 |
+| 04 | [use-cases/04-full-game-state-save-load.md](use-cases/04-full-game-state-save-load.md) | Full game-state save & load | pending | 2026-06-07 |
+| 05 | [use-cases/05-stations-and-docking.md](use-cases/05-stations-and-docking.md) | Stations & docking | pending | 2026-06-07 |
+| 06 | [use-cases/06-asteroid-mining-resources-cargo.md](use-cases/06-asteroid-mining-resources-cargo.md) | Asteroid mining, resources & cargo | pending | 2026-06-07 |
+| 07 | [use-cases/07-fuel-and-power-energy.md](use-cases/07-fuel-and-power-energy.md) | Fuel & power/energy | pending | 2026-06-07 |
+| 08 | [use-cases/08-credits-and-trading.md](use-cases/08-credits-and-trading.md) | Credits & inter-station trading | pending | 2026-06-07 |
+| 09 | [use-cases/09-outfitting-upgrades-junkyards-ships.md](use-cases/09-outfitting-upgrades-junkyards-ships.md) | Ship outfitting, upgrades, junkyards & multiple ships | pending | 2026-06-07 |
+| 10 | [use-cases/10-scanning-and-transponders.md](use-cases/10-scanning-and-transponders.md) | Active scanning & hidden contacts | pending | 2026-06-07 |
+| 11 | [use-cases/11-crew.md](use-cases/11-crew.md) | Crew | pending | 2026-06-07 |
+| 12 | [use-cases/12-missions-mining-courier.md](use-cases/12-missions-mining-courier.md) | Missions — mining & courier | pending | 2026-06-07 |
+| 13 | [use-cases/13-real-time-combat.md](use-cases/13-real-time-combat.md) | Real-time combat | pending | 2026-06-07 |
+| 14 | [use-cases/14-factions-and-reputation.md](use-cases/14-factions-and-reputation.md) | Factions & reputation (post-MVP) | pending | 2026-06-07 |
+| 15 | [use-cases/15-station-building.md](use-cases/15-station-building.md) | Station building (post-MVP stretch) | pending | 2026-06-07 |
