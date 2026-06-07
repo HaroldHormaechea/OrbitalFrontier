@@ -8,10 +8,10 @@ name: android-release
 # because that repo also ships a server component on its own `server-v*` track.)
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
-#   RELEASE_KEYSTORE_FILE      — base64-encoded keystore.jks
-#   RELEASE_KEYSTORE_PASSWORD  — keystore password
-#   RELEASE_KEY_ALIAS          — signing-key alias
-#   RELEASE_KEY_PASSWORD       — signing-key password
+#   RELEASE_ANDROID_SIGNATURE_KEYSTORE_FILE      — base64-encoded keystore.jks
+#   RELEASE_ANDROID_SIGNATURE_KEYSTORE_PASSWORD  — keystore password
+#   RELEASE_ANDROID_SIGNATURE_KEY_ALIAS          — signing-key alias
+#   RELEASE_ANDROID_SIGNATURE_KEY_PASSWORD       — signing-key password
 #
 # The keystore is decoded onto tmpfs (/dev/shm, RAM-backed) so it never touches
 # the runner's persistent disk, and is wiped on job tear-down.
@@ -57,10 +57,10 @@ jobs:
 
       - name: Decode keystore to tmpfs
         env:
-          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_FILE }}
+          KEYSTORE_B64: ${{ secrets.RELEASE_ANDROID_SIGNATURE_KEYSTORE_FILE }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::RELEASE_KEYSTORE_FILE secret is empty"
+            echo "::error::RELEASE_ANDROID_SIGNATURE_KEYSTORE_FILE secret is empty"
             exit 1
           fi
           mkdir -p /dev/shm/of-release
@@ -74,9 +74,9 @@ jobs:
           # android/build.gradle.kts reads these env vars directly for the
           # release signingConfig.
           KEYSTORE_FILE: ${{ env.KEYSTORE_FILE_PATH }}
-          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_ANDROID_SIGNATURE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_ANDROID_SIGNATURE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_ANDROID_SIGNATURE_KEY_PASSWORD }}
         run: |
           ./gradlew \
               -PorbitalfrontierVersionName=${{ steps.ver.outputs.version }} \

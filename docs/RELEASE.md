@@ -34,10 +34,10 @@ Set these under **Settings → Secrets and variables → Actions**:
 
 | Secret | Contents |
 |---|---|
-| `RELEASE_KEYSTORE_FILE` | base64 of your `keystore.jks` (`base64 -w0 keystore.jks`) |
-| `RELEASE_KEYSTORE_PASSWORD` | keystore password |
-| `RELEASE_KEY_ALIAS` | signing-key alias |
-| `RELEASE_KEY_PASSWORD` | signing-key password |
+| `RELEASE_ANDROID_SIGNATURE_KEYSTORE_FILE` | base64 of your `keystore.jks` (`base64 -w0 keystore.jks`) |
+| `RELEASE_ANDROID_SIGNATURE_KEYSTORE_PASSWORD` | keystore password |
+| `RELEASE_ANDROID_SIGNATURE_KEY_ALIAS` | signing-key alias |
+| `RELEASE_ANDROID_SIGNATURE_KEY_PASSWORD` | signing-key password |
 
 Generate a keystore once with:
 

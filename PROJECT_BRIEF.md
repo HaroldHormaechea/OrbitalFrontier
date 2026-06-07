@@ -201,7 +201,7 @@ None
 - **iac:** none — app distribution, not provisioned infrastructure.
 - **ci_cd:** GitHub Actions (implemented). `.github/workflows/android-ci.yml` runs on every PR/push to main: `:core:test` + ktlint + Android lint + debug APK/AAB build + a native-libs-packaged regression guard. `.github/workflows/android-release.yml` runs on a `v*` tag: builds a signed release APK + AAB and publishes a GitHub Release (auto-generated changelog; curated notes added post-publish by the `generate-release` skill). Release signing/version come from CI secrets + tag (see `docs/RELEASE.md`).
 - **environments:** dev (local), internal-testing (Play internal testing track), production (Play production track).
-- **secrets:** Release signing keystore + Play upload credentials kept out of git. The signing keystore is provided to the release workflow as GitHub Actions secrets (`RELEASE_KEYSTORE_FILE` base64, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`); decoded onto tmpfs at build time, never committed. See `docs/RELEASE.md`.
+- **secrets:** Release signing keystore + Play upload credentials kept out of git. The signing keystore is provided to the release workflow as GitHub Actions secrets (`RELEASE_ANDROID_SIGNATURE_KEYSTORE_FILE` base64, `RELEASE_ANDROID_SIGNATURE_KEYSTORE_PASSWORD`, `RELEASE_ANDROID_SIGNATURE_KEY_ALIAS`, `RELEASE_ANDROID_SIGNATURE_KEY_PASSWORD`); decoded onto tmpfs at build time, never committed. See `docs/RELEASE.md`.
 - **observability:** Google Play Console vitals (crashes/ANRs) once published; logcat locally.
 - **dr:** none required (no server state); player progress is local. Future cloud save (Play Games Services) would add device-loss recovery — deferred.
 
