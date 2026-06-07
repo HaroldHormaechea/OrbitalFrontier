@@ -68,8 +68,8 @@ the player can always limp to a station/asteroid to refuel.
 **Fuel consumption model.** Burn rate = the sum of:
 1. **Base ship requirement** — a constant idle draw determined by the **ship type**.
 2. **Installed-module energy usage** — each installed upgrade/module has an energy cost;
-   more/heavier modules → higher passive draw. _(This implies a light **power/energy**
-   concept — see Open questions; flagged as a candidate design note.)_
+   more/heavier modules → higher passive draw. Energy demand is modeled by the dedicated
+   **[power-and-energy.md](power-and-energy.md)** system (a confirmed feature).
 3. **Active engine / RCS usage** — extra consumption **when triggered** (thrusting,
    braking, or maneuvering via RCS). Coasting on momentum costs little/nothing; burning
    thrust costs fuel.
@@ -116,9 +116,9 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - Resource **values/yields** and overall economic **balancing**.
 - **Upgrade cost model:** credits only, or credits + resources?
 - ~~Fuel model~~ — **RESOLVED: fuel = Hydrogen (mined or bought); burn = base ship draw +
-  installed-module energy + active engine/RCS use.** Remaining: actual rate values, and
-  whether a **power/energy** subsystem (reactor output, energy budget cap) is modeled
-  explicitly or folded into the fuel-draw number (→ candidate **Power/Energy** note).
+  installed-module energy + active engine/RCS use.** Energy demand is owned by the
+  dedicated **[power-and-energy.md](power-and-energy.md)** system. Remaining: actual rate
+  values (balancing).
 - **Cargo:** base capacity and upgrade steps.
 - **Upgrade slot categories:** the full list and per-category slot counts (with
   [upgrades-and-progression.md](upgrades-and-progression.md)).

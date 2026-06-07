@@ -20,6 +20,7 @@ choose). Decisions that become binding should be promoted to an [ADR](../adr/).
 | Economy & Resources | [economy-and-resources.md](economy-and-resources.md) | in-progress | Earn → Improve |
 | Upgrades & Progression | [upgrades-and-progression.md](upgrades-and-progression.md) | in-progress | Improve |
 | Save & Persistence | [save-and-persistence.md](save-and-persistence.md) | in-progress | (cross-cutting) |
+| Power & Energy | [power-and-energy.md](power-and-energy.md) | in-progress | (cross-cutting) |
 | Station Building | [station-building.md](station-building.md) | draft (post-MVP) | Improve, deeper |
 
 ## Candidate notes (surfaced during design, not yet authored)
@@ -34,7 +35,6 @@ within them. Promote each to its own note when it grows enough to warrant one:
 | Jump / Inter-sector travel | world-and-sector | **Fixed jump gates** (ADR 0004); fixed graph across 3 MVP sectors, no MVP fuel cost. |
 | Ship Radio / Comms | missions, upgrades | Receives broadcast mission offers; comms upgrade category. |
 | Factions & Reputation | missions, economy, upgrades | Station faction state drives offers/prices; reputation gating. **Post-MVP.** |
-| Power / Energy | economy (fuel), upgrades | Modules have energy usage feeding fuel burn; may grow into a reactor-output / energy-budget subsystem. |
 
 ## Adding a note
 
