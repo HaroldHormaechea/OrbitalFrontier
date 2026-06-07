@@ -15,6 +15,7 @@ still wins on any conflict — keep them in sync.
 | [0002](0002-persistence-sqlite-migrations.md) | Persistence: SQLite from the start with versioned migrations | Accepted |
 | [0003](0003-persistence-access-layer-sqldelight.md) | Persistence access layer: SQLDelight | Accepted |
 | [0004](0004-inter-sector-travel-fixed-gates.md) | Inter-sector travel: fixed jump gates | Accepted |
+| [0005](0005-movement-integration.md) | Movement integration: pure velocity model + Box2D as integrator | Accepted |
 
 ## Adding an ADR
 
