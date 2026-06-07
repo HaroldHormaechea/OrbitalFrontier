@@ -7,11 +7,17 @@ import com.orbitalfrontier.app.OrbitalFrontierGame
 
 /**
  * Android entry point. Builds the platform implementations of the injected ports
- * ([AndroidLogger], [AndroidSqlDriverFactory]) and hands them to the platform-agnostic
- * [OrbitalFrontierGame] (ADR 0001 / 0003). The `applicationContext` is used for the SQLite
- * driver so it is not tied to the Activity lifecycle.
+ * ([AndroidLogger], [AndroidSqlDriverFactory], [AndroidSaveExecutor]) and hands them to the
+ * platform-agnostic [OrbitalFrontierGame] (ADR 0001 / 0003). The `applicationContext` is used for
+ * the SQLite driver so it is not tied to the Activity lifecycle.
+ *
+ * The single-writer [AndroidSaveExecutor] is owned here: it is disposed in [onDestroy] after
+ * `super.onDestroy()` has driven libGDX's teardown (so the game's final, drained autosave has
+ * already run) — only then is the writer thread shut down.
  */
 class AndroidLauncher : AndroidApplication() {
+    private lateinit var saveExecutor: AndroidSaveExecutor
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -24,7 +30,13 @@ class AndroidLauncher : AndroidApplication() {
 
         val logger = AndroidLogger()
         val sqlDriverFactory = AndroidSqlDriverFactory(applicationContext)
+        saveExecutor = AndroidSaveExecutor(logger)
 
-        initialize(OrbitalFrontierGame(logger, sqlDriverFactory), configuration)
+        initialize(OrbitalFrontierGame(logger, sqlDriverFactory, saveExecutor), configuration)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        saveExecutor.dispose()
     }
 }
