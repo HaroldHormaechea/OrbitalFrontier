@@ -31,7 +31,7 @@ within them. Promote each to its own note when it grows enough to warrant one:
 |---|---|---|
 | Crew | ship-and-controls, combat, economy | Crew operate (auto-aim) turrets; hireable; upgradeable "to a degree". |
 | Sensors / Scanning & Transponders | world-and-sector, upgrades | Beacons advertise POIs; active scan reveals hidden contacts (sensor tech). |
-| Jump / Inter-sector travel | world-and-sector | Jump points link the 3 MVP sectors; gate-vs-drive TBD (ADR candidate). |
+| Jump / Inter-sector travel | world-and-sector | **Fixed jump gates** (ADR 0004); fixed graph across 3 MVP sectors, no MVP fuel cost. |
 | Ship Radio / Comms | missions, upgrades | Receives broadcast mission offers; comms upgrade category. |
 | Factions & Reputation | missions, economy, upgrades | Station faction state drives offers/prices; reputation gating. **Post-MVP.** |
 

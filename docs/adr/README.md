@@ -13,6 +13,8 @@ still wins on any conflict — keep them in sync.
 |---|---|---|
 | [0001](0001-engine-choice.md) | Game engine / framework choice (libGDX + Kotlin) | Accepted |
 | [0002](0002-persistence-sqlite-migrations.md) | Persistence: SQLite from the start with versioned migrations | Accepted |
+| [0003](0003-persistence-access-layer-sqldelight.md) | Persistence access layer: SQLDelight | Accepted |
+| [0004](0004-inter-sector-travel-fixed-gates.md) | Inter-sector travel: fixed jump gates | Accepted |
 
 ## Adding an ADR
 

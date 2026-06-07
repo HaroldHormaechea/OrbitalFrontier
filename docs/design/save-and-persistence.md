@@ -2,7 +2,7 @@
 
 - **Status:** in-progress (storage & save model decided; access-layer & migration detail open)
 - **Last updated:** 2026-06-07
-- **Related:** PROJECT_BRIEF.md → in_scope #5, data_stores, Development → migrations; ADR 0001 (core stays JVM-testable), **ADR 0002 (persistence)**; every stateful system note (this is cross-cutting)
+- **Related:** PROJECT_BRIEF.md → in_scope #5, data_stores, Development → migrations; ADR 0001 (core stays JVM-testable), **ADR 0002 (SQLite + migrations)**, **ADR 0003 (SQLDelight access layer)**; every stateful system note (this is cross-cutting)
 
 ## Summary
 
@@ -38,8 +38,14 @@ player jumping from e.g. v1 to v4 has each upgrade step applied in order.
 
 **Versioning & migrations.** Persist a **save/schema version**. Migrations are
 **sequential and version-by-version** (v1→v2→v3→…→vN); loading an older save applies each
-step in order up to the current version. This requires a small **migration framework**
-(an ordered list of upgrade steps keyed by version).
+step in order up to the current version. Implemented with **SQLDelight's `.sqm` migration
+files** (one per version step) — see **ADR 0003**.
+
+**Access layer — SQLDelight (ADR 0003).** Schema and queries are authored as `.sq` files
+(typesafe generated Kotlin) in `core`; the `SqlDriver` is **injected by the platform** —
+`AndroidSqliteDriver` on device, `JdbcSqliteDriver`/in-memory in JVM tests — so `core`
+never depends on the Android SDK (honoring ADR 0001). This resolves the JVM-testability
+tension noted below.
 
 ## Player-facing behavior
 
@@ -61,12 +67,9 @@ without stalling the frame.
 
 ## Open questions
 
-- **Access layer vs. JVM-testability (key):** ADR 0001 says `core` must avoid Android-SDK
-  deps so logic is JVM-testable, but Android's `android.database.sqlite` *is* an SDK API.
-  Options: (a) a persistence **interface in `core`** with an Android SQLite impl in the
-  `android` module; (b) a **multiplatform SQLite** lib (e.g. SQLDelight) usable from
-  `core` + tests; (c) JDBC-SQLite for JVM tests, Android SQLite on device. → resolve in
-  **ADR 0002**.
+- ~~Access layer vs. JVM-testability~~ — **RESOLVED: SQLDelight (ADR 0003)** — driver
+  injected per platform; `core` depends only on SQLDelight's runtime, tests use the JDBC/
+  in-memory driver.
 - **Periodic autosave interval** during flight.
 - **Corruption/too-old handling:** backup-before-migrate? behavior on an unsupported/
   unreadable save?
@@ -79,6 +82,8 @@ without stalling the frame.
 - **Single save slot, autosave only.**
 - Save **event-driven + periodic-in-flight + on pause/exit**.
 - **Store save version; sequential version-by-version migrations** (v1→…→vN).
+- **Access layer = SQLDelight** (ADR 0003): `.sq` schema/queries in `core`, driver injected
+  per platform, `.sqm` versioned migrations.
 
 ## References
 

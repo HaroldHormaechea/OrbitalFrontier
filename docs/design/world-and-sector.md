@@ -27,9 +27,11 @@ with all meaningful content (stations, asteroid fields, jump points) gathered ne
 middle. Flying outward yields empty space rather than hitting a hard wall. MVP sectors
 are small — ~30s to traverse the content area.
 
-**Inter-sector travel — jump points.** Sectors are linked by **jump points / jump
-areas** (gate vs. jump-drive mechanic _TBD_). The 3-sector MVP exists to validate this
-loop end-to-end.
+**Inter-sector travel — fixed jump gates (ADR 0004).** Sectors are linked by **fixed jump
+gates**: each sector has gates at fixed locations, each linking to a gate in an adjacent
+sector (a **fixed graph** across the 3 MVP sectors). Flying into a gate transports the ship
+to its linked gate in the destination sector. **No fuel cost for the MVP** (soft-fuel
+affects in-sector max speed only). The 3-sector MVP exists to validate this loop end-to-end.
 
 **Layout — procedural, with hand-authored test maps.** Content placement is generated
 **procedurally**, but the project will start with **hand-made test maps** for
@@ -37,7 +39,8 @@ deterministic development/testing. Generation should be **seed-based** so a sect
 reproducible and cheaply persistable (store the seed + deltas rather than every object).
 
 **Points of interest (MVP set):**
-- **Jump points** — sector-to-sector connections (_details TBD_).
+- **Jump gates** — fixed sector-to-sector connections (fly in → arrive at linked gate; see
+  ADR 0004).
 - **Asteroid fields** — mining nodes (→ [economy-and-resources.md](economy-and-resources.md)).
 - **Stations** — docking, trade, missions, services. Some are **junkyards** (a station
   variant where used upgrades are sold/removed and ships refitted — see
@@ -85,8 +88,8 @@ Persist aggressively (the design goal is minimal regeneration):
 
 ## Open questions
 
-- **Jump mechanic:** fixed gates vs. a jump drive? Any cost (fuel/time/charge)? What does
-  a jump point look/behave like?
+- ~~Jump mechanic~~ — **RESOLVED: fixed jump gates, no MVP fuel cost (ADR 0004).** Remaining
+  detail: gate visuals and the jump transition (loading/animation).
 - **Procedural generation:** how is content density and placement determined? Seed source
   and what parameters vary per sector?
 - **Scanning:** scan range/time, what qualifies as "hidden," and scanner upgrade tiers.
@@ -97,6 +100,7 @@ Persist aggressively (the design goal is minimal regeneration):
 
 - Sector = **unbounded, content-clustered-at-center** (Egosoft X-series style).
 - **MVP = 3 small sectors** (~30s to cross), to build and test **jumps**.
+- **Inter-sector travel = fixed jump gates** (fixed graph; no MVP fuel cost) — **ADR 0004**.
 - **Procedural** layout, with **hand-authored test maps** early.
 - POI MVP set = **jump points, asteroid fields, stations**.
 - **Transponders/beacons** advertise POIs; **active scanning** reveals hidden ones.
