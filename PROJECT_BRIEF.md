@@ -136,6 +136,31 @@ use_cases:
 - **trust_boundaries:** Single-user, on-device, offline app. The only external input is local touch input; the only persisted data is the local save file (no sensitive/PII data, no network egress). Nothing leaves the device in the MVP.
 - **multi_tenancy:** not applicable (single-player, single-device).
 
+## Documentation & References
+
+The target project keeps reference documentation under [`docs/`](docs/) that agents
+and contributors should consult when implementing features. The brief remains the
+single source of truth for structured/contractual fields; these docs hold the
+reasoning and design detail behind them.
+
+- **Design notes — [`docs/design/`](docs/design/)** (index: `docs/design/README.md`):
+  internal notes on how each game system should work (ship & controls, world & sector,
+  missions, combat, economy & resources, upgrades & progression, save & persistence,
+  and the post-MVP station-building stretch). These are **advisory intent**, not a
+  contract — when a design note conflicts with this brief, the brief wins and the
+  agent surfaces the conflict rather than choosing silently. A note marked
+  `draft (not yet specified)` means the design is still open: propose or ask, do not
+  invent silently. Template: `docs/design/_TEMPLATE.md`.
+- **Architecture Decision Records — [`docs/adr/`](docs/adr/)** (index: `docs/adr/README.md`):
+  the dated log of significant technical decisions (starting with ADR 0001, the
+  libGDX engine choice). An `Accepted` ADR is **binding** unless superseded by a later
+  ADR; decisions change by adding a new ADR, never by rewriting an old one. Template:
+  `docs/adr/_TEMPLATE.md`.
+
+Agents (analyst, challenger, developer, qa) should read the relevant design note and
+any in-force ADRs before implementing a system, and should propose updates (a new ADR,
+or filling in a draft design note) rather than leaving design decisions implicit in code.
+
 ## Quality & Standards
 
 - **style_guide:** Kotlin official style guide (Android Kotlin conventions).
