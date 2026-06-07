@@ -57,9 +57,11 @@ simplifying control while preserving a sense of mass.
 
 **Physics:** libGDX **Box2D** for movement integration and collision.
 
-**Fuel coupling.** `max_speed` is **modulated by fuel** — low fuel lowers the effective
-top speed (a soft constraint; the player is never stranded). Fuel model lives in
-[economy-and-resources.md](economy-and-resources.md).
+**Fuel coupling.** Fuel is the **Hydrogen** resource. `max_speed` is **modulated by fuel**
+— low fuel lowers the effective top speed (a soft constraint; the player is never
+stranded). **Engine/RCS thrust consumes fuel when triggered** (coasting on momentum is
+cheap; burning thrust costs fuel), on top of a base ship draw and installed-module energy
+use. Full fuel model lives in [economy-and-resources.md](economy-and-resources.md).
 
 **Multiple ships.** The player can own several ships and **switch the active one while
 docked**; each ship has its own movement params, loadout, cargo, and fuel. See

@@ -28,7 +28,8 @@ balancing):
 
 | Resource | Rough role |
 |---|---|
-| Water Ice | fuel / life-support feedstock |
+| **Hydrogen** | **ship fuel/propellant** (minable or buyable) |
+| Water Ice | life-support / refinable feedstock (→ hydrogen) |
 | Iron Ore | basic structure / hull |
 | Copper | wiring / electronics |
 | Silicon | electronics / computing |
@@ -36,7 +37,7 @@ balancing):
 | Nickel | alloys |
 | Titanium | advanced hull / armor |
 | Rare Earth Elements | advanced tech / sensors |
-| Helium-3 | reactor / fuel |
+| Helium-3 | advanced reactor / high-tech |
 | Platinum | high-value catalyst / electronics |
 
 Resources act as **trade goods** (sold for credits) and may also be **inputs to tech/
@@ -59,10 +60,23 @@ MVP** but **dynamic later** (driven by sector/faction state — see
 - **Buying new ships to pilot** — the player can **own multiple ships and switch between
   them while docked** _(NEW feature)_.
 
-**Fuel (NEW, soft constraint).** Ships consume fuel. **Low fuel reduces max speed** but
-there are **no "stranded/lost in space" fail states** — the player can always limp to a
-station to refuel. _(TODO: consumption model — per distance / time / jump; is fuel one of
-the resources (water ice / He-3) or a station-bought commodity?)_
+**Fuel — hydrogen (soft constraint).** Fuel is the **Hydrogen** resource: it can be
+**mined or bought**, so a player can self-supply or refuel at stations. Ships consume it;
+**low fuel reduces max speed**, but there are **no "stranded/lost in space" fail states** —
+the player can always limp to a station/asteroid to refuel.
+
+**Fuel consumption model.** Burn rate = the sum of:
+1. **Base ship requirement** — a constant idle draw determined by the **ship type**.
+2. **Installed-module energy usage** — each installed upgrade/module has an energy cost;
+   more/heavier modules → higher passive draw. _(This implies a light **power/energy**
+   concept — see Open questions; flagged as a candidate design note.)_
+3. **Active engine / RCS usage** — extra consumption **when triggered** (thrusting,
+   braking, or maneuvering via RCS). Coasting on momentum costs little/nothing; burning
+   thrust costs fuel.
+
+So a heavily-fitted ship sitting still still sips fuel (1 + 2), and hard maneuvering spikes
+it (3). Fuel is stored per ship; capacity is set by **fuel-tank** upgrades (see
+[upgrades-and-progression.md](upgrades-and-progression.md)).
 
 **Cargo & upgrade slots.** Ships have **limited cargo capacity** (a stat, upgradeable),
 and a **limited set of upgrades by type/slot category** (e.g. weapons, communications,
@@ -101,7 +115,10 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 
 - Resource **values/yields** and overall economic **balancing**.
 - **Upgrade cost model:** credits only, or credits + resources?
-- **Fuel model:** consumption rate basis; fuel as a mined resource vs. bought commodity.
+- ~~Fuel model~~ — **RESOLVED: fuel = Hydrogen (mined or bought); burn = base ship draw +
+  installed-module energy + active engine/RCS use.** Remaining: actual rate values, and
+  whether a **power/energy** subsystem (reactor output, energy budget cap) is modeled
+  explicitly or folded into the fuel-draw number (→ candidate **Power/Energy** note).
 - **Cargo:** base capacity and upgrade steps.
 - **Upgrade slot categories:** the full list and per-category slot counts (with
   [upgrades-and-progression.md](upgrades-and-progression.md)).
@@ -116,7 +133,9 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Inter-station trading in MVP**; **fixed prices for MVP, dynamic later**.
 - Sinks: **upgrades, repairs, refueling, crew, cargo, buying ships**.
 - **Own & switch multiple ships** (while docked).
-- **Fuel is a soft constraint** (low fuel → lower max speed; **never stranded**).
+- **Fuel = Hydrogen** (minable or buyable); **soft constraint** (low fuel → lower max
+  speed; **never stranded**). Burn = **base ship draw + installed-module energy + active
+  engine/RCS use**.
 - **Limited cargo**; **upgrades limited by type/slot category**.
 
 ## References
