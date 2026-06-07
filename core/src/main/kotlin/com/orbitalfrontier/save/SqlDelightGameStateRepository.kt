@@ -3,6 +3,7 @@ package com.orbitalfrontier.save
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
 
@@ -36,6 +37,8 @@ class SqlDelightGameStateRepository(
                         headingRadians = row.heading.toFloat(),
                         angularVelocity = row.ang_vel.toFloat(),
                     ),
+                // Null column (a v2 save migrated to v3, or a save written while in flight) -> not docked.
+                dockedStation = row.docked_station_id?.let { PoiId(it) },
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -61,6 +64,7 @@ class SqlDelightGameStateRepository(
                 queries.upsertGameState(
                     current_sector = state.currentSector.value,
                     active_ship_id = ACTIVE_SHIP_ID,
+                    docked_station_id = state.dockedStation?.value,
                 )
             }
             logger.info(
