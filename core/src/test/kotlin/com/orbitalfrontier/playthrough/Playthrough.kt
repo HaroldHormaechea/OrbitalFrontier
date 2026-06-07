@@ -4,6 +4,8 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.SectorId
 import kotlinx.serialization.Serializable
 
 /**
@@ -112,6 +114,11 @@ data class StateSnapshotDto(
     val velY: Float,
     val headingRadians: Float,
     val angularVelocity: Float,
+    /**
+     * The sector slug ([SectorId.value]) the ship is in (UC03 AC#5). Defaulted to the MVP start
+     * sector so older artifacts (recorded before the field existed) still decode unchanged.
+     */
+    val currentSector: String = MvpSectorMap.START_SECTOR.value,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -124,6 +131,7 @@ data class StateSnapshotDto(
                     headingRadians = headingRadians,
                     angularVelocity = angularVelocity,
                 ),
+            currentSector = SectorId(currentSector),
         )
 
     companion object {
@@ -137,6 +145,7 @@ data class StateSnapshotDto(
                 velY = state.ship.velocity.y,
                 headingRadians = state.ship.headingRadians,
                 angularVelocity = state.ship.angularVelocity,
+                currentSector = state.currentSector.value,
             )
     }
 }

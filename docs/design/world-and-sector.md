@@ -27,6 +27,18 @@ with all meaningful content (stations, asteroid fields, jump points) gathered ne
 middle. Flying outward yields empty space rather than hitting a hard wall. MVP sectors
 are small — ~30s to traverse the content area.
 
+**Soft content extent (authored constant, implemented UC03).** "Unbounded" is realized as
+a **soft content radius**, not a hard wall: each MVP sector has a `contentExtent` of
+**~1800 world-units (~3600 wu across)**, which at the ship's max speed (120 wu/s,
+`ShipMovementParams.maxSpeed`) is the **~30s-to-cross** figure above. The value is an
+**authored tunable** carried on each `Sector` (source of truth: `MvpSectorMap`,
+`CONTENT_EXTENT_WORLD_UNITS`), used to scale the minimap and to place content/gates near the
+centre — the ship may still fly arbitrarily far past it into empty space. It is a balancing
+knob, **not a contract**, so it is tuned here / in the map data, **not via a new ADR**.
+Gates orbit the centre at ~1300 wu with a per-gate trigger radius (~80 wu); on a jump the
+ship arrives offset toward the destination centre by `triggerRadius + margin` (~40 wu) so it
+lands just outside the destination gate's trigger circle and cannot immediately bounce back.
+
 **Inter-sector travel — fixed jump gates (ADR 0004).** Sectors are linked by **fixed jump
 gates**: each sector has gates at fixed locations, each linking to a gate in an adjacent
 sector (a **fixed graph** across the 3 MVP sectors). Flying into a gate transports the ship
@@ -93,7 +105,9 @@ Persist aggressively (the design goal is minimal regeneration):
 - **Procedural generation:** how is content density and placement determined? Seed source
   and what parameters vary per sector?
 - **Scanning:** scan range/time, what qualifies as "hidden," and scanner upgrade tiers.
-- **Unboundedness:** truly infinite plane vs. a very large soft boundary?
+- ~~Unboundedness~~ — **RESOLVED (UC03): a soft content extent, not a hard wall.** Each MVP
+  sector carries an authored `contentExtent` (~1800 wu radius); the ship may fly past it into
+  empty space. A tunable, not an ADR-level decision (see "Soft content extent" above).
 - **Station services scope** for MVP (trade + missions + repair — which are in?).
 
 ## Decided

@@ -22,7 +22,8 @@
     "velX": 0.0,
     "velY": 0.0,
     "headingRadians": 0.0,
-    "angularVelocity": 0.0
+    "angularVelocity": 0.0,
+    "currentSector": "alpha"
   },
   "inputEvents": [
     {

@@ -8,7 +8,9 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HudRenderer
+import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
 import com.orbitalfrontier.save.SettingsRepository
@@ -22,18 +24,27 @@ import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
+import com.orbitalfrontier.world.GateTraversal
+import com.orbitalfrontier.world.MvpSectorMap
 
 /**
- * The single gameplay screen for use-case 01: an empty sector with one flyable ship.
+ * The single gameplay screen — a flyable ship in the current sector with inter-sector jump gates
+ * (use-cases 01 + 03).
  *
  * Per frame it runs the ADR 0005 contract — read body kinematics, compute the next velocity with
- * the pure [ShipMovementModel], write it to [ShipPhysics], step Box2D — then follows the ship with
- * the world camera and draws the parallax starfield, ship and HUD. A Scene2D [Stage] hosts the
- * movement joystick, the inert action cluster and the handedness toggle; an [InputMultiplexer]
- * makes the joystick and cluster register simultaneously (multi-touch, AC#7 pitfall).
+ * the pure [ShipMovementModel], write it to [ShipPhysics], step Box2D — then runs UC03's gate
+ * traversal: it calls the **same** pure [GateTraversal.resolve] the replay harness uses, and on a
+ * jump switches [currentSector] and teleports the ship to the arrival point via the only sanctioned
+ * transform-set path ([ShipPhysics.resetTo], ADR 0005 — velocity/heading preserved so live motion
+ * matches replay momentum), logging one discrete INFO line. The world camera then follows the ship
+ * and the screen draws the parallax starfield, the current sector's gates, the ship, the HUD and a
+ * minimap. A Scene2D [Stage] hosts the movement joystick, the inert action cluster and the
+ * handedness toggle; an [InputMultiplexer] makes the joystick and cluster register simultaneously
+ * (multi-touch, AC#7 pitfall).
  *
- * GL-backed resources are created in the constructor (libGDX has a live context by the time the
- * game's `create()` builds this screen) and released in [dispose].
+ * The sector graph is the fixed authored [MvpSectorMap] (ADR 0004); GL-backed resources are created
+ * in the constructor (libGDX has a live context by the time the game's `create()` builds this
+ * screen) and released in [dispose].
  */
 class PlayScreen(
     private val logger: Logger,
@@ -48,6 +59,12 @@ class PlayScreen(
     private val starfield = StarfieldRenderer()
     private val shipRenderer = ShipRenderer()
     private val hudRenderer = HudRenderer()
+    private val gateRenderer = GateRenderer()
+    private val minimap = MinimapRenderer()
+
+    // Fixed authored sector graph (ADR 0004); the current sector is the only mutable world state here.
+    private val sectorWorld = MvpSectorMap.build()
+    private var currentSector = MvpSectorMap.START_SECTOR
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -90,9 +107,28 @@ class PlayScreen(
         val next = model.update(state, joystick.currentInput(), params, dt)
         physics.applyKinematics(next)
         physics.step(dt)
-        val ship = physics.readKinematics()
+        val stepped = physics.readKinematics()
 
-        // Camera follows the ship so it stays centred on the unbounded map (AC#1).
+        // UC03: same pure GateTraversal the replay harness runs. On a jump, switch sector and place
+        // the ship at the arrival point via ADR 0005's only sanctioned transform-set path
+        // (resetTo preserves velocity/heading, so live momentum matches replay). Discrete INFO log.
+        val traversal = GateTraversal.resolve(sectorWorld, currentSector, stepped.position)
+        val ship =
+            if (traversal != null) {
+                currentSector = traversal.destinationSector
+                val arrived = stepped.copy(position = traversal.arrivalPosition)
+                physics.resetTo(arrived)
+                logger.info(
+                    WORLD_TAG,
+                    "Jumped to sector ${currentSector.value} at " +
+                        "(${arrived.position.x}, ${arrived.position.y})",
+                )
+                arrived
+            } else {
+                stepped
+            }
+
+        // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7).
         worldCamera.position.set(ship.position.x, ship.position.y, 0f)
         worldCamera.update()
 
@@ -101,10 +137,13 @@ class PlayScreen(
 
         val viewportWidth = Gdx.graphics.width.toFloat()
         val viewportHeight = Gdx.graphics.height.toFloat()
+        val sector = sectorWorld.sector(currentSector)
         // Parallax keyed off the camera's world position conveys motion (AC#11).
         starfield.render(ship.position.x, ship.position.y, viewportWidth, viewportHeight)
+        gateRenderer.render(worldCamera, sector.gates)
         shipRenderer.render(worldCamera, ship)
         hudRenderer.render(ship.speed, ship.headingRadians, viewportWidth, viewportHeight)
+        minimap.render(sector.gates, ship.position, sector.contentExtent, viewportWidth, viewportHeight)
 
         stage.act(dt)
         stage.draw()
@@ -160,11 +199,16 @@ class PlayScreen(
         starfield.dispose()
         shipRenderer.dispose()
         hudRenderer.dispose()
+        gateRenderer.dispose()
+        minimap.dispose()
         physics.dispose()
     }
 
     private companion object {
         const val TAG = "Screen"
+
+        // Discrete world events (sector jumps) log under the "World" tag (coding-guidelines § logging).
+        const val WORLD_TAG = "World"
         const val MIN_DT = 1e-4f
         const val MAX_DT = 1f / 30f
         const val MARGIN = 24f
