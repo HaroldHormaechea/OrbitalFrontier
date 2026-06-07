@@ -1,0 +1,108 @@
+name: android-ci
+
+# Every PR and every push to main runs: core JVM unit tests + ktlint + Android
+# lint + a debug APK and AAB build. We skip instrumented tests
+# (connectedAndroidTest) — GitHub Actions runners ship no Android emulator, and
+# the device-only acceptance criteria (rendering, Box2D-on-device, 60 FPS) are
+# verified manually via the android-emulator-setup skill instead.
+
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'android/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/android-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'core/**'
+      - 'android/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        # Installs cmdline-tools, accepts licenses, and downloads the platform +
+        # build-tools the project targets (compileSdk/targetSdk 35).
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: latest
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Core unit tests + ktlint
+        # All game logic lives in :core and is JVM-unit-tested (movement model,
+        # settings persistence). :core:check also runs SQLDelight verifyMigrations.
+        run: |
+          ./gradlew \
+              :core:test \
+              :core:ktlintCheck \
+              --no-daemon
+
+      - name: Android lint + ktlint + assemble debug + bundle debug
+        # lint → android/build/reports/lint-results-debug.xml
+        # assembleDebug / bundleDebug confirm the APK + AAB packaging path
+        # (including the libGDX/Box2D native-lib extraction).
+        run: |
+          ./gradlew \
+              :android:lint \
+              :android:ktlintCheck \
+              :android:assembleDebug \
+              :android:bundleDebug \
+              --no-daemon
+
+      - name: Verify native libs packaged in the debug APK
+        # The libGDX + Box2D .so files ship in plain jars that AGP won't
+        # auto-extract; a dedicated copyAndroidNatives task unpacks them into
+        # jniLibs. Without it the app crashes at launch with UnsatisfiedLinkError.
+        # This is a negative regression guard: both libs must be present.
+        run: |
+          set -eu
+          apk="$(ls android/build/outputs/apk/debug/*.apk | head -1)"
+          if [ -z "$apk" ] || [ ! -f "$apk" ]; then
+            echo "::error::Debug APK not found under android/build/outputs/apk/debug/"
+            exit 1
+          fi
+          for lib in libgdx.so libgdx-box2d.so; do
+            if ! unzip -l "$apk" | grep -q "lib/.*/$lib"; then
+              echo "::error::$lib missing from $apk — native extraction regressed"
+              exit 1
+            fi
+          done
+          echo "Native libs present in $apk: libgdx.so + libgdx-box2d.so"
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report
+          path: android/build/reports/lint-results-debug.xml
+          if-no-files-found: warn
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: android/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn

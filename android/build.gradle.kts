@@ -10,6 +10,17 @@ plugins {
 val gdxVersion = "1.13.1"
 val sqlDelightVersion = "2.0.2"
 
+// Release version is overridable from CI (the android-release workflow derives it from the
+// git tag); falls back to the committed defaults for local/debug builds.
+val versionNameProp = (project.findProperty("orbitalfrontierVersionName") as String?) ?: "0.1.0"
+val versionCodeProp = (project.findProperty("orbitalfrontierVersionCode") as String?)?.toIntOrNull() ?: 1
+
+// Release signing is driven entirely by environment variables supplied by CI secrets
+// (see .github/workflows/android-release.yml). When they are absent (local dev, debug,
+// CI debug builds) the release type stays unsigned rather than failing the build.
+val keystoreFile: String? = System.getenv("KEYSTORE_FILE")
+val hasReleaseSigning = !keystoreFile.isNullOrBlank()
+
 // libGDX ships its JNI .so files inside *plain* jars (classifier natives-<abi>). AGP only
 // auto-extracts .so from AARs, not jars, so we pull them through a dedicated `natives`
 // configuration and unpack them into a generated jniLibs dir (see copyAndroidNatives below).
@@ -23,8 +34,19 @@ android {
         applicationId = "com.orbitalfrontier"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = versionCodeProp
+        versionName = versionNameProp
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(keystoreFile!!)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     compileOptions {
@@ -35,6 +57,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Only attach the signing config when CI supplied a keystore; otherwise the
+            // release variant builds unsigned (useful for local inspection).
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
