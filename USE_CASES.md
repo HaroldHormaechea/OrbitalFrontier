@@ -10,4 +10,4 @@ Statuses:
 
 | # | File | Title | Status | Updated |
 |---|------|-------|--------|---------|
-| 01 | [use-cases/01-flyable-ship-empty-sector.md](use-cases/01-flyable-ship-empty-sector.md) | Flyable ship in an empty sector | pending | 2026-06-07 |
+| 01 | [use-cases/01-flyable-ship-empty-sector.md](use-cases/01-flyable-ship-empty-sector.md) | Flyable ship in an empty sector | done | 2026-06-07 |

@@ -13,7 +13,7 @@ build:
   tool: gradle
   commands: {test: "./gradlew test", lint: "./gradlew lint", format: "./gradlew ktlintFormat"}
 paths:
-  production: ["core/src/main/**", "android/src/main/**"]
+  production: ["core/src/main/**", "android/src/main/**", "*.gradle.kts", "core/build.gradle.kts", "android/build.gradle.kts", "gradle.properties", "gradle/**", "gradlew", "gradlew.bat"]
   test: ["core/src/test/**", "android/src/test/**", "android/src/androidTest/**"]
   api_boundary: []
 test:

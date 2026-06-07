@@ -1,0 +1,10 @@
+# Bash command prefixes the dev-team needs for Orbital Frontier.
+# Merged into the develop-skill permission grant (Step 3a). Developer owns this file;
+# QA may append. Keep prefixes minimal and specific.
+allowed:
+  # Gradle wrapper — build, compile, unit tests, lint/format.
+  - "./gradlew"
+  # Gradle distribution binary (used to bootstrap the wrapper when gradle isn't installed).
+  - "gradle"
+  # Android SDK manager (install platforms/build-tools on demand).
+  - "sdkmanager"

@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Orbital Frontier — Android manifest (scaffold).
-     The launcher activity is a placeholder; once AndroidLauncher extends
-     AndroidApplication, point android:name at it and confirm the namespace
-     in android/build.gradle.kts. -->
+<!-- Orbital Frontier — Android manifest.
+     The module namespace is com.orbitalfrontier; the launcher lives in the
+     com.orbitalfrontier.android package, so android:name is fully qualified. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
@@ -10,9 +9,8 @@
         android:allowBackup="true"
         android:supportsRtl="true">
 
-        <!-- TODO: set android:name=".AndroidLauncher" once it extends AndroidApplication. -->
         <activity
-            android:name=".AndroidLauncher"
+            android:name="com.orbitalfrontier.android.AndroidLauncher"
             android:exported="true"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize">

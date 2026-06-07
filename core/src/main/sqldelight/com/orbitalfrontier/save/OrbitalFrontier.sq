@@ -1,0 +1,38 @@
+-- Orbital Frontier save schema, version 1 (ADR 0002 / ADR 0003).
+--
+-- This is the first slice of the single on-device save DB. It currently holds only the
+-- save-format version and the control-layout (handedness) setting; world/player tables are
+-- added by later use cases. Both tables are single-row (CHECK (id = 0)) — there is exactly
+-- one save slot, autosave-only.
+--
+-- Future schema changes are made by bumping the database version and adding sequential
+-- `.sqm` migration files (v1->v2->...); never by editing this baseline destructively.
+
+CREATE TABLE meta (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    save_version INTEGER NOT NULL
+);
+
+CREATE TABLE settings (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    handedness TEXT NOT NULL
+);
+
+-- Read the stored save-format version (null before the meta row is seeded).
+selectSaveVersion:
+SELECT save_version FROM meta WHERE id = 0;
+
+-- Seed the meta row once; idempotent (no-op if the row already exists).
+initMeta:
+INSERT OR IGNORE INTO meta(id, save_version) VALUES (0, ?);
+
+-- Read the persisted handedness (null on first run / before any save).
+selectSettings:
+SELECT handedness FROM settings WHERE id = 0;
+
+-- Insert-or-update the single settings row's handedness.
+-- INSERT OR REPLACE (not UPSERT) so it works on minSdk-24 devices, whose bundled SQLite
+-- predates the ON CONFLICT DO UPDATE syntax. Safe here: the table is single-row with no
+-- foreign keys, so the delete-then-insert REPLACE performs has no side effects.
+upsertHandedness:
+INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);

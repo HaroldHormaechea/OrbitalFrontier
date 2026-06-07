@@ -1,15 +1,30 @@
 package com.orbitalfrontier.android
 
+import android.os.Bundle
+import com.badlogic.gdx.backends.android.AndroidApplication
+import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
+import com.orbitalfrontier.app.OrbitalFrontierGame
+
 /**
- * Android launcher for Orbital Frontier.
- *
- * In the libGDX layout this will extend `AndroidApplication` and, in onCreate,
- * call `initialize(OrbitalFrontierGame(), AndroidApplicationConfiguration())`
- * to hand control to the platform-agnostic core game.
- *
- * Scaffold stub only — no Android/libGDX dependency wired up yet. Replace the
- * body once the Android backend is on the classpath (see android/build.gradle.kts).
+ * Android entry point. Builds the platform implementations of the injected ports
+ * ([AndroidLogger], [AndroidSqlDriverFactory]) and hands them to the platform-agnostic
+ * [OrbitalFrontierGame] (ADR 0001 / 0003). The `applicationContext` is used for the SQLite
+ * driver so it is not tied to the Activity lifecycle.
  */
-class AndroidLauncher {
-    // TODO: extend AndroidApplication and initialize(OrbitalFrontierGame(), config)
+class AndroidLauncher : AndroidApplication() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val configuration =
+            AndroidApplicationConfiguration().apply {
+                useImmersiveMode = true
+                useAccelerometer = false
+                useCompass = false
+            }
+
+        val logger = AndroidLogger()
+        val sqlDriverFactory = AndroidSqlDriverFactory(applicationContext)
+
+        initialize(OrbitalFrontierGame(logger, sqlDriverFactory), configuration)
+    }
 }
