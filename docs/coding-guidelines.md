@@ -61,6 +61,81 @@ High-level game logic depends on **abstractions**, not concretions; concrete det
   own sake. Introduce an abstraction when there's a real second implementation or a
   testability/seam need — not speculatively.
 
+## Logging conventions (required)
+
+- **One injected `Logger` abstraction in `core`** (DIP): game logic logs through an
+  interface; the `android` module backs it with `Gdx.app.log` / Android `Log`, and tests
+  use a no-op or captured logger. Keeps `core` Android-free (ADR 0001).
+- **Levels:**
+  - `ERROR` — failures needing attention (always logged, with the throwable).
+  - `WARN` — handled-but-unexpected / recoverable (e.g. autosave retried, missing optional
+    asset).
+  - `INFO` — significant lifecycle events: save written, sector jump, dock, mission
+    accepted/completed.
+  - `DEBUG` — verbose dev detail; **disabled in release builds**.
+- **Per-system tags/categories** — consistent string tags (`Save`, `Missions`, `Economy`,
+  `World`, …).
+- **Message style:** "what happened + key context" (ids/values), one line.
+- **Performance:** no `INFO`+ logging inside per-frame/update loops; gate verbose logs
+  behind `DEBUG` to protect the 60 FPS budget (avoid string-building/GC churn).
+
+## Package / module structure (required)
+
+- Keep the two modules: **`core`** (all game logic, JVM-testable) + **`android`**
+  (launcher/platform). No platform types in `core` (ADR 0001).
+- **Package by feature/system, not by layer**, under `com.orbitalfrontier`:
+
+```
+com.orbitalfrontier
+├─ app        // bootstrap, ApplicationListener wiring
+├─ common     // shared value types / utils
+├─ platform   // injected ports: Logger, Clock, Rng, persistence interfaces
+├─ ship       // movement, controls model
+├─ world      // sectors, gates, POIs
+├─ mission
+├─ economy    // credits, resources, trade, fuel
+├─ power      // power/energy
+├─ upgrade    // ships, slots, fitting
+├─ crew
+├─ save       // SQLDelight schema/queries, repositories, migrations
+├─ screen     // libGDX Screens (menu, play)
+└─ render     // world/entity/HUD rendering
+```
+
+- **Simulation separated from rendering** (SRP): systems compute state; `render`/`screen`
+  read it.
+- Prefer **`internal`** visibility inside `core`; expose only what other systems need.
+
+## Naming specifics (required)
+
+- Kotlin official casing (PascalCase types, camelCase members, UPPER_SNAKE consts).
+- **No `I` prefix on interfaces** — name by role/capability (`SaveStore`, `Logger`,
+  `Damageable`); implementations name the impl (`SqlDelightSaveStore`, `AndroidLogger`,
+  `JdbcSaveStore`).
+- Booleans `is/has/can…`; functions are verbs, values are nouns.
+- **Meaningful suffixes only** when they signal a pattern (`Repository`, `Screen`,
+  `System`, `Factory`) — no type-noise suffixes otherwise.
+- Allowed abbreviations (used consistently): `id, ui, hud, poi, rcs, db`.
+- **Test names:** idiomatic Kotlin backtick sentences —
+  `` fun `refuel adds hydrogen up to tank capacity`() ``.
+- One top-level public type per file, named after it (small related types may share a file).
+
+## Concurrency rules (required)
+
+- **libGDX is single-threaded on the render thread** — keep game simulation on the render
+  loop. No threads for gameplay logic.
+- **Off-thread only for real I/O** (SQLite writes, asset loading). Then:
+  - Marshal results back via **`Gdx.app.postRunnable {}`** before touching game state / GL.
+  - **Never** touch GL or game state from a background thread.
+- **Single-writer persistence:** a serialized save executor/queue so autosave and
+  event-driven saves can't overlap or interleave (complements the transactional-save rule →
+  no corruption).
+- **Never block the render thread on I/O** (would drop frames vs. the 60 FPS budget).
+- If coroutines are used: a structured-concurrency scope tied to the screen/app lifecycle,
+  cancelled on `dispose`; confine game-state mutation to the main thread.
+- Favor **immutable/confined state** to avoid shared-mutable races (reinforces the
+  immutability convention).
+
 ## Enforcement
 
 - **Reviewed every change** by the dev-team (challenger raises SOLID/architecture
@@ -100,6 +175,6 @@ High-level game logic depends on **abstractions**, not concretions; concrete det
 
 ## Open / to extend
 
-This document currently codifies **SOLID**, the supporting conventions, and
-**error handling**. Additional standards (logging conventions detail, package/module
-structure, naming specifics, concurrency rules) can be appended here as they are decided.
+This document currently codifies **SOLID**, the supporting conventions, **error handling**,
+**logging**, **package/module structure**, **naming**, and **concurrency**. Additional
+standards can be appended here as they are decided.
