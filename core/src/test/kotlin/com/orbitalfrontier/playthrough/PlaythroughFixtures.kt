@@ -4,6 +4,7 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MvpSectorMap
 
 /**
@@ -21,6 +22,9 @@ object PlaythroughFixtures {
     /** UC03 jump-gate playthrough name: thrust the ship through a gate and across sectors. */
     const val UC03_JUMP: String = "uc03-jump"
 
+    /** UC05 docking playthrough name: thrust into Alpha Station's dock range and dock. */
+    const val UC05_DOCK: String = "uc05-dock"
+
     /** Fixed timestep used by the fixtures (60 Hz) — a *fixed* step, not a live frame delta. */
     const val DT_SECONDS: Float = 1f / 60f
 
@@ -33,6 +37,7 @@ object PlaythroughFixtures {
         linkedMapOf(
             UC01_THRUST_NORTH to ::uc01ThrustNorth,
             UC03_JUMP to ::uc03Jump,
+            UC05_DOCK to ::uc05Dock,
         )
 
     /**
@@ -92,6 +97,44 @@ object PlaythroughFixtures {
         for (tick in 0 until 30) {
             recorder.recordMovement(tick, east)
         }
+        return recorder.build()
+    }
+
+    /**
+     * UC05 dock scenario (AC#6): the ship starts in [MvpSectorMap.START_SECTOR] (Alpha) just south
+     * of Alpha Station (at `(0, 600)`, dock radius 100) already cruising north at max speed, and
+     * thrusts straight north into the station's dock circle. After ~15 ticks it is comfortably inside
+     * the dock range, at which point an explicit [DockAction.DOCK] docks the ship; the remaining
+     * "held" ticks carry no input, so — being docked — the ship is **frozen** (no drift, no bounce),
+     * proving the dock state both engages and freezes movement. The geometry is read from the
+     * production [MvpSectorMap], so the fixture tracks the real map.
+     */
+    fun uc05Dock(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC05_DOCK,
+                seed = 5L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        ship =
+                            ShipKinematics(
+                                position = Vec2(0f, 480f),
+                                velocity = Vec2(0f, 120f),
+                                headingRadians = (Math.PI / 2).toFloat(),
+                            ),
+                        // currentSector defaults to MvpSectorMap.START_SECTOR (alpha).
+                    ),
+            )
+        val north = MovementInput(targetDirection = Vec2(0f, 1f), magnitude = 1f, released = false)
+        // Thrust north into Alpha Station's (0,600) r100 dock circle.
+        for (tick in 0 until 15) {
+            recorder.recordMovement(tick, north)
+        }
+        // In range now: issue the explicit dock action (proximity + action, never auto-dock).
+        recorder.recordDockAction(15, DockAction.DOCK)
+        // Hold: ticks 16..20 carry no input, so the docked ship stays frozen (no movement/bounce).
+        recorder.extendToTick(20)
         return recorder.build()
     }
 }

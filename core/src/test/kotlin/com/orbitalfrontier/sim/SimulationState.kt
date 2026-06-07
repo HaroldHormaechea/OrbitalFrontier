@@ -2,6 +2,7 @@ package com.orbitalfrontier.sim
 
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 
 /**
@@ -10,16 +11,22 @@ import com.orbitalfrontier.world.SectorId
  *
  * UC02 simulated ship movement only (the [tick] index and the ship's [ShipKinematics]); UC03 adds
  * [currentSector] — which sector the ship occupies (UC03 AC#5), advanced by [Simulation] when the
- * ship flies through a jump gate. It is **defaulted** to [MvpSectorMap.START_SECTOR] so older
- * recorded playthroughs (whose serialized snapshots predate the field) still construct. This is the
- * documented **extension point**: as later use cases add simulated systems (economy, missions, world
- * entities), add their immutable state here as new `val`s with sensible defaults so older recorded
- * playthroughs still construct. Keep every field a plain domain type (no serialization annotations) —
- * the on-disk shape lives in a separate DTO ([com.orbitalfrontier.playthrough.StateSnapshotDto]) so
- * persistence concerns never leak into the sim's value types.
+ * ship flies through a jump gate; UC05 adds [dockedStation] — the station the ship is docked at, or
+ * null when in flight (UC05 AC#4/#6). Each new field is **defaulted** (here `null`) so older recorded
+ * playthroughs (whose serialized snapshots predate the field) still construct. This is the documented
+ * **extension point**: as later use cases add simulated systems (economy, missions, world entities),
+ * add their immutable state here as new `val`s with sensible defaults so older recorded playthroughs
+ * still construct. Keep every field a plain domain type (no serialization annotations) — the on-disk
+ * shape lives in a separate DTO ([com.orbitalfrontier.playthrough.StateSnapshotDto]) so persistence
+ * concerns never leak into the sim's value types.
+ *
+ * [dockedStation] mirrors the production [com.orbitalfrontier.world.WorldState.dockedStation] so a
+ * replayed snapshot maps straight onto the saved world state (UC05 AC#4). While it is non-null the
+ * [Simulation] freezes the ship (no movement, no gate traversal) — see [Simulation.step].
  */
 data class SimulationState(
     val tick: Int = 0,
     val ship: ShipKinematics = ShipKinematics(),
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
+    val dockedStation: PoiId? = null,
 )

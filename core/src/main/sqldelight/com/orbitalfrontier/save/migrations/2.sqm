@@ -1,0 +1,11 @@
+-- Migration v2 -> v3 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v2 (UC04) introduced the single-slot save header (`game_state`) + ship kinematics. v3 (UC05) adds
+-- the player's dock state to the header: `game_state.docked_station_id` — the PoiId of the station
+-- the ship is docked at, or NULL when in flight. This migration is purely additive: the new column
+-- is NULLABLE with no backfill, so an existing v2 save upgrades with the ship treated as in flight
+-- (docked_station_id = NULL) and all prior game_state/ship/settings data untouched (UC05 AC#4).
+
+ALTER TABLE game_state ADD COLUMN docked_station_id TEXT;
+
+UPDATE meta SET save_version = 3 WHERE id = 0;

@@ -5,7 +5,12 @@ import com.badlogic.gdx.InputMultiplexer
 import com.badlogic.gdx.ScreenAdapter
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
@@ -25,36 +30,50 @@ import com.orbitalfrontier.settings.ScreenSide
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
+import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
-import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.PoiId
+import com.orbitalfrontier.world.SectorWorld
+import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.WorldState
 
 /**
  * The single gameplay screen — a flyable ship in the current sector with inter-sector jump gates
- * (use-cases 01 + 03).
+ * and dockable stations (use-cases 01 + 03 + 05).
  *
  * Per frame it runs the ADR 0005 contract — read body kinematics, compute the next velocity with
  * the pure [ShipMovementModel], write it to [ShipPhysics], step Box2D — then runs UC03's gate
  * traversal: it calls the **same** pure [GateTraversal.resolve] the replay harness uses, and on a
  * jump switches [currentSector] and teleports the ship to the arrival point via the only sanctioned
  * transform-set path ([ShipPhysics.resetTo], ADR 0005 — velocity/heading preserved so live motion
- * matches replay momentum), logging one discrete INFO line. The world camera then follows the ship
- * and the screen draws the parallax starfield, the current sector's gates, the ship, the HUD and a
- * minimap. A Scene2D [Stage] hosts the movement joystick, the inert action cluster and the
- * handedness toggle; an [InputMultiplexer] makes the joystick and cluster register simultaneously
- * (multi-touch, AC#7 pitfall).
+ * matches replay momentum), logging one discrete INFO line. It then runs UC05's docking check via
+ * the pure [Docking]: each frame it asks [Docking.availableStation] whether a station is in range to
+ * drive the context DOCK button + "IN RANGE" prompt; docking is **proximity + explicit action**
+ * (never automatic, UC05 pitfall), so only a DOCK tap commits the dock — it sets [dockedStation] via
+ * [Docking.resolve], autosaves the event, and hands off to the station hub through [onDocked].
  *
- * The sector graph is the fixed authored [MvpSectorMap] (ADR 0004); GL-backed resources are created
- * in the constructor (libGDX has a live context by the time the game's `create()` builds this
- * screen) and released in [dispose].
+ * The world camera then follows the ship and the screen draws the parallax starfield, the current
+ * sector's gates, the ship, the HUD and a minimap (now of all transponder POIs — gates and
+ * stations). A Scene2D [Stage] hosts the movement joystick, the inert action cluster, the handedness
+ * toggle and the dock context control; an [InputMultiplexer] makes the joystick and cluster register
+ * simultaneously (multi-touch, AC#7 pitfall). The dock control is just another Scene2D actor, so
+ * flight controls/multitouch are untouched while undocked.
+ *
+ * The sector graph is the fixed authored map injected as [sectorWorld] (ADR 0004), shared with the
+ * game so dock-state resolution agrees across screens; GL-backed resources are created in the
+ * constructor (libGDX has a live context by the time the game's `create()` builds this screen) and
+ * released in [dispose].
  */
 class PlayScreen(
     private val logger: Logger,
     settingsRepository: SettingsRepository,
     saveExecutor: SaveExecutor,
     private val autosave: AutosaveController,
+    private val sectorWorld: SectorWorld,
     initialHandedness: Handedness,
     initialWorldState: WorldState,
+    private val onDocked: (Station) -> Unit,
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = ShipMovementModel()
@@ -70,9 +89,11 @@ class PlayScreen(
     private val gateRenderer = GateRenderer()
     private val minimap = MinimapRenderer()
 
-    // Fixed authored sector graph (ADR 0004); the current sector is the only mutable world state here.
-    private val sectorWorld = MvpSectorMap.build()
+    // The current sector + dock state are the only mutable world state held here (the sector graph
+    // itself is fixed authored data, injected as [sectorWorld]). [dockedStation] is null while flying;
+    // when the ship docks it holds the station id and the game shows the station hub instead.
     private var currentSector = initialWorldState.currentSector
+    private var dockedStation: PoiId? = initialWorldState.dockedStation
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -80,6 +101,14 @@ class PlayScreen(
     private val actionCluster = ActionCluster(skin)
     private val settingsOverlay: SettingsOverlay
     private val inputMultiplexer = InputMultiplexer(stage)
+
+    // Context dock control (UC05): an "IN RANGE: <name>" prompt above a DOCK button, shown only while
+    // a station is dockable. A one-shot [dockRequested] flag set by the button's tap is consumed on
+    // the next frame, so the dock commits inside the deterministic per-frame flow (after the step).
+    private val dockPrompt = Label("", skin.labelStyle)
+    private val dockButton = TextButton("DOCK", skin.settingsButtonStyle)
+    private val dockPanel = Table()
+    private var dockRequested = false
 
     private var handedness = initialHandedness
 
@@ -95,10 +124,30 @@ class PlayScreen(
                 layoutControls()
             }
 
+        dockButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    // Edge-triggered intent; the dock commits on the next frame's render (post-step).
+                    dockRequested = true
+                }
+            },
+        )
+        dockPanel.add(dockPrompt).padBottom(DOCK_PROMPT_GAP).row()
+        dockPanel.add(dockButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
+        dockPanel.pack()
+        // Hidden until a station is in range; an invisible Scene2D actor receives no touches, so it
+        // cannot be tapped (and does not affect flight controls) while undocked and out of range.
+        dockPanel.isVisible = false
+
         actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
         stage.addActor(settingsOverlay.actor)
+        stage.addActor(dockPanel)
     }
 
     override fun show() {
@@ -139,6 +188,24 @@ class PlayScreen(
                 stepped
             }
 
+        // UC05 docking: same pure [Docking] the (future) replay harness would use. Each frame, find the
+        // in-range station (if any) to drive the context prompt/button; commit a dock only on an
+        // explicit DOCK tap (proximity + action, never automatic — UC05 pitfall). While the play
+        // screen is active the ship is always undocked (a dock hands off to the hub), so a successful
+        // resolve yields the station id and we switch screens.
+        val available = Docking.availableStation(sectorWorld, currentSector, ship.position)
+        updateDockPanel(available)
+        if (dockRequested) {
+            dockRequested = false
+            if (available != null) {
+                dockedStation = Docking.resolve(sectorWorld, currentSector, dockedStation, ship.position, DockAction.DOCK)
+                logger.info(WORLD_TAG, "Docked at station ${available.id.value} (${available.displayName})")
+                // Docking is a key world event — event-driven autosave persists the dock state now.
+                autosave.onEvent("dock")
+                onDocked(available)
+            }
+        }
+
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
@@ -158,7 +225,8 @@ class PlayScreen(
         gateRenderer.render(worldCamera, sector.gates)
         shipRenderer.render(worldCamera, ship)
         hudRenderer.render(ship.speed, ship.headingRadians, viewportWidth, viewportHeight)
-        minimap.render(sector.gates, ship.position, sector.contentExtent, viewportWidth, viewportHeight)
+        // The minimap renders every transponder POI (gates + stations), keyed by contact kind.
+        minimap.render(sector.pois, ship.position, sector.contentExtent, viewportWidth, viewportHeight)
 
         stage.act(dt)
         stage.draw()
@@ -193,6 +261,36 @@ class PlayScreen(
             screenWidth - MARGIN - SETTINGS_WIDTH,
             screenHeight - MARGIN - SETTINGS_HEIGHT,
         )
+
+        positionDockPanel()
+    }
+
+    /** Centre the dock context panel near the top of the screen. */
+    private fun positionDockPanel() {
+        dockPanel.pack()
+        dockPanel.setPosition(
+            (stage.viewport.worldWidth - dockPanel.width) / 2f,
+            stage.viewport.worldHeight - MARGIN - dockPanel.height,
+        )
+    }
+
+    /**
+     * Show or hide the context dock control for the frame's in-range station (UC05): visible with an
+     * "IN RANGE: <name>" prompt when [available] is non-null, hidden otherwise. Re-centres after a
+     * text change so the panel stays centred as its width varies. No allocation on the common
+     * (out-of-range) path — keeps the 60 FPS budget (coding-guidelines § performance).
+     */
+    private fun updateDockPanel(available: Station?) {
+        if (available == null) {
+            if (dockPanel.isVisible) dockPanel.isVisible = false
+            return
+        }
+        dockPanel.isVisible = true
+        val prompt = "IN RANGE: ${available.displayName}"
+        if (!dockPrompt.textEquals(prompt)) {
+            dockPrompt.setText(prompt)
+            positionDockPanel()
+        }
     }
 
     private fun sideX(
@@ -202,11 +300,25 @@ class PlayScreen(
     ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
 
     /**
-     * The live world snapshot (current sector + ship kinematics read back from the Box2D body) used
-     * by the [AutosaveController] (UC04). Called on the render thread, where touching the body is
-     * safe; the returned [WorldState] is immutable and handed to the save executor thread.
+     * The live world snapshot (current sector, ship kinematics read back from the Box2D body, and
+     * dock state) used by the [AutosaveController] (UC04/UC05 AC#4). Called on the render thread,
+     * where touching the body is safe; the returned [WorldState] is immutable and handed to the save
+     * executor thread.
      */
-    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics())
+    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation)
+
+    /**
+     * Return to flight from the station hub (UC05 AC#2/#4). Runs the same pure [Docking.resolve] with
+     * [DockAction.UNDOCK] the dock path uses (docked → null), then autosaves so the cleared dock state
+     * is durable. Called on the render thread by the game when the hub's UNDOCK button is tapped,
+     * before the play screen is shown again — so the snapshot the autosave reads is already undocked.
+     */
+    fun undock() {
+        dockedStation =
+            Docking.resolve(sectorWorld, currentSector, dockedStation, physics.readKinematics().position, DockAction.UNDOCK)
+        logger.info(WORLD_TAG, "Undocked in sector ${currentSector.value}")
+        autosave.onEvent("undock")
+    }
 
     /**
      * Android pause/exit lifecycle (forwarded by [com.badlogic.gdx.Game]). Enqueue a final autosave
@@ -244,6 +356,9 @@ class PlayScreen(
         const val JOYSTICK_SIZE = 220f
         const val SETTINGS_WIDTH = 200f
         const val SETTINGS_HEIGHT = 56f
+        const val DOCK_WIDTH = 200f
+        const val DOCK_HEIGHT = 56f
+        const val DOCK_PROMPT_GAP = 8f
         const val BG_R = 0.02f
         const val BG_G = 0.02f
         const val BG_B = 0.05f

@@ -1,0 +1,156 @@
+{
+  "formatVersion": 1,
+  "name": "uc05-dock",
+  "seed": 5,
+  "dtSeconds": 0.016666668,
+  "tickCount": 21,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 480.0,
+    "velX": 0.0,
+    "velY": 120.0,
+    "headingRadians": 1.5707964,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": null
+  },
+  "inputEvents": [
+    {
+      "type": "movement",
+      "tick": 0,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 12,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 13,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 14,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 15,
+      "action": "DOCK"
+    }
+  ]
+}

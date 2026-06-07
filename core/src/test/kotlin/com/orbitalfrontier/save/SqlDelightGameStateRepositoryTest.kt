@@ -10,6 +10,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
 import org.junit.After
@@ -89,6 +90,42 @@ class SqlDelightGameStateRepositoryTest {
 
         // Exact value equality — sector + every ship kinematic field, no tolerance (AC#7).
         assertEquals(state, reloaded)
+    }
+
+    // --- UC05 AC#4: dock state is part of game state and round-trips ---
+
+    @Test
+    fun `a docked world state round-trips with its station id`() {
+        val docked = sampleState().copy(dockedStation = PoiId("alpha-station"))
+        newRepository().saveGameState(docked)
+
+        val reloaded = newRepository().loadGameState()
+
+        // Exact equality includes the docked station id (the new v3 docked_station_id column).
+        assertEquals(docked, reloaded)
+        assertEquals(PoiId("alpha-station"), reloaded?.dockedStation)
+    }
+
+    @Test
+    fun `an in-flight world state round-trips as not docked (null dock column)`() {
+        val inFlight = sampleState() // dockedStation defaults to null (in flight)
+        assertNull("precondition: the sample state is in flight", inFlight.dockedStation)
+        newRepository().saveGameState(inFlight)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals(inFlight, reloaded)
+        assertNull("an in-flight save must reload as not docked", reloaded?.dockedStation)
+    }
+
+    @Test
+    fun `undocking overwrites a previously docked save back to in flight`() {
+        val repo = newRepository()
+        repo.saveGameState(sampleState().copy(dockedStation = PoiId("beta-station")))
+        // A later in-flight save (the player undocked) clears the dock column on reload.
+        repo.saveGameState(sampleState())
+
+        assertNull("the latest in-flight save wins", newRepository().loadGameState()?.dockedStation)
     }
 
     @Test

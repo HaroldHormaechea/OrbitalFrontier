@@ -5,6 +5,8 @@ import com.orbitalfrontier.platform.TimeSource
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
+import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
@@ -52,37 +54,53 @@ class Simulation(
     fun elapsedSecondsAt(tick: Int): Float = timeSource.secondsAt(tick)
 
     /**
-     * Advance [state] by one fixed tick of [dt] seconds under [input], returning the next snapshot
-     * with its tick incremented. [dt] must be > 0 and, for a coherent replay, identical to the
-     * playthrough's recorded `dtSeconds`.
+     * Advance [state] by one fixed tick of [dt] seconds under [input] and the player's per-tick
+     * [dockAction], returning the next snapshot with its tick incremented. [dt] must be > 0 and, for
+     * a coherent replay, identical to the playthrough's recorded `dtSeconds`.
      *
-     * After integrating movement, the new ship position is checked against [GateTraversal.resolve]
-     * in the ship's current sector. If it lands inside a gate's trigger circle the snapshot's
-     * [SimulationState.currentSector] becomes the destination and the ship is relocated to the
-     * gate's arrival point — velocity and heading are preserved, so momentum carries through the
-     * jump exactly as the on-device `PlayScreen` does (UC03 AC#3). Otherwise the sector is unchanged.
+     * **Docked ⇒ frozen (UC05 AC#2/#6).** While [SimulationState.dockedStation] is non-null the ship
+     * is parked at the station: this method **explicitly short-circuits both movement and gate
+     * traversal** (the ship neither drifts nor re-triggers a jump) and only advances the tick. The
+     * single exception is an explicit [DockAction.UNDOCK], which falls through to the flight path and
+     * returns the ship to flight. A [DockAction.DOCK] while already docked is a no-op (it holds).
+     *
+     * **In flight.** Movement integrates first; the new ship position is checked against
+     * [GateTraversal.resolve] in the ship's current sector — a hit relocates the ship to the linked
+     * gate's arrival point in the destination sector, preserving velocity and heading (momentum
+     * through the gate, UC03 AC#3). [Docking.resolve] then resolves [dockAction] against the
+     * resulting sector/position: a [DockAction.DOCK] with a station in range docks the ship (so the
+     * *next* tick it is frozen). The default [DockAction.NONE] leaves the dock state unchanged, so
+     * the pre-UC05 fixtures (which pass no action) step identically.
      */
     fun step(
         state: SimulationState,
         input: MovementInput,
         dt: Float,
+        dockAction: DockAction = DockAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
+
+        // Docked and not explicitly undocking ⇒ frozen: short-circuit movement AND gate traversal.
+        // Only the tick advances; position, velocity, heading, sector and dock state are untouched,
+        // so a held-while-docked stretch is bit-for-bit stable (UC05 AC#6 "no bounce").
+        if (state.dockedStation != null && dockAction != DockAction.UNDOCK) {
+            return state.copy(tick = state.tick + 1)
+        }
+
         val movedShip = movementModel.update(state.ship, input, params, dt)
         val traversal = GateTraversal.resolve(world, state.currentSector, movedShip.position)
-        return if (traversal == null) {
-            SimulationState(
-                tick = state.tick + 1,
-                ship = movedShip,
-                currentSector = state.currentSector,
-            )
-        } else {
-            // Keep velocity & heading; only the position and sector change (momentum through the gate).
-            SimulationState(
-                tick = state.tick + 1,
-                ship = movedShip.copy(position = traversal.arrivalPosition),
-                currentSector = traversal.destinationSector,
-            )
-        }
+        val nextSector = traversal?.destinationSector ?: state.currentSector
+        // Keep velocity & heading; only the position and sector change on a jump (momentum carries).
+        val nextShip = if (traversal == null) movedShip else movedShip.copy(position = traversal.arrivalPosition)
+        // Resolve the dock action against the post-movement sector/position. DOCK with a station in
+        // range docks; UNDOCK clears the dock; NONE leaves it unchanged (the common pre-UC05 path).
+        val nextDocked = Docking.resolve(world, nextSector, state.dockedStation, nextShip.position, dockAction)
+
+        return SimulationState(
+            tick = state.tick + 1,
+            ship = nextShip,
+            currentSector = nextSector,
+            dockedStation = nextDocked,
+        )
     }
 }

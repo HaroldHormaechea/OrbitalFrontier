@@ -34,6 +34,9 @@ object MvpSectorMap {
     /** Per-gate trigger radius (world-units); authored here, not hard-coded in traversal. [TUNE] */
     private const val GATE_TRIGGER_RADIUS: Float = 80f
 
+    /** Docking-range radius (world-units) of each authored station. [TUNE] */
+    private const val STATION_DOCKING_RADIUS: Float = 100f
+
     private val ALPHA = SectorId("alpha")
     private val BETA = SectorId("beta")
     private val GAMMA = SectorId("gamma")
@@ -53,6 +56,7 @@ object MvpSectorMap {
                         listOf(
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
+                            station("alpha-station", "Alpha Station", Vec2(0f, 600f)),
                         ),
                 ),
                 Sector(
@@ -63,6 +67,7 @@ object MvpSectorMap {
                         listOf(
                             gate("beta-to-alpha", angleDegrees = 180f, dest = ALPHA, destGate = "alpha-to-beta"),
                             gate("beta-to-gamma", angleDegrees = 60f, dest = GAMMA, destGate = "gamma-to-beta"),
+                            station("beta-station", "Beta Station", Vec2(300f, -300f)),
                         ),
                 ),
                 Sector(
@@ -89,5 +94,17 @@ object MvpSectorMap {
             position = Vec2.fromAngle(Math.toRadians(angleDegrees.toDouble()).toFloat(), GATE_ORBIT_RADIUS),
             triggerRadius = GATE_TRIGGER_RADIUS,
             link = GateLink(destinationSector = dest, destinationGate = PoiId(destGate)),
+        )
+
+    private fun station(
+        id: String,
+        displayName: String,
+        position: Vec2,
+    ): Station =
+        Station(
+            id = PoiId(id),
+            position = position,
+            displayName = displayName,
+            dockingRadius = STATION_DOCKING_RADIUS,
         )
 }

@@ -2,6 +2,7 @@ package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.MovementInput
+import com.orbitalfrontier.world.DockAction
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -58,3 +59,21 @@ data class MovementEvent(
             )
     }
 }
+
+/**
+ * A dock/undock control sample for one tick (UC05 AC#6) — the discrete [DockAction] the play screen
+ * feeds in when the context button is tapped. Carried alongside [MovementEvent] in the same tick-
+ * stamped script, so a recorded session can thrust *and* dock; [com.orbitalfrontier.playthrough.ReplayRunner]
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step] each tick.
+ *
+ * [DockAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"DOCK"` / `"UNDOCK"` / `"NONE"`.
+ * A tick with no [DockActionEvent] defaults to [DockAction.NONE] in the runner, so older artifacts
+ * (which carry none) replay unchanged.
+ */
+@Serializable
+@SerialName("dock")
+data class DockActionEvent(
+    override val tick: Int,
+    val action: DockAction,
+) : InputEvent()

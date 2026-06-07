@@ -7,17 +7,24 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Vec2
-import com.orbitalfrontier.world.JumpGate
+import com.orbitalfrontier.world.ContactKind
+import com.orbitalfrontier.world.Poi
+import com.orbitalfrontier.world.Transponder
 
 /**
- * A small screen-space HUD minimap of the current sector's known POIs (the jump gates) plus the
- * ship's marker (UC03 AC#6).
+ * A small screen-space HUD minimap of the current sector's transponder-broadcasting POIs (jump
+ * gates and stations) plus the ship's marker (UC03 AC#6; UC05 AC#1).
  *
  * Drawn in screen space (like [StarfieldRenderer]/[HudRenderer]) as a square panel in the
  * bottom-right corner. World positions (sector centre = origin) are scaled into the panel by the
  * sector's `contentExtent`, so the content area fills the minimap regardless of sector size; markers
  * outside the extent are clamped to the panel edge so the ship is always visible (the sector is
  * unbounded, AC#2). Reads state only — no simulation here (coding-guidelines § simulation vs render).
+ *
+ * The minimap renders against the [Transponder] capability, not concrete POI types (the Open/Closed
+ * seam, coding-guidelines § O): it filters the sector's POIs to those that broadcast and draws each
+ * by its [ContactKind] — a station as a filled square, a gate as the existing dot. A future
+ * broadcasting POI kind shows up by extending this marker switch, with no change to the world model.
  */
 class MinimapRenderer(
     private val sizePx: Float = DEFAULT_SIZE,
@@ -27,7 +34,7 @@ class MinimapRenderer(
     private val projection = Matrix4()
 
     fun render(
-        gates: List<JumpGate>,
+        pois: List<Poi>,
         shipPosition: Vec2,
         contentExtent: Float,
         viewportWidth: Float,
@@ -53,12 +60,23 @@ class MinimapRenderer(
         shapeRenderer.rect(originX, originY, sizePx, sizePx)
         shapeRenderer.end()
 
-        // Gate markers + ship marker.
+        // Transponder markers (one per broadcasting POI, styled by contact kind) + ship marker.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        shapeRenderer.color = GATE_COLOR
-        for (gate in gates) {
-            val (x, y) = clampToPanel(centerX, centerY, half, gate.position, scale)
-            shapeRenderer.circle(x, y, GATE_MARKER_RADIUS)
+        for (poi in pois) {
+            if (poi !is Transponder) continue
+            val (x, y) = clampToPanel(centerX, centerY, half, poi.position, scale)
+            when (poi.contactKind) {
+                ContactKind.GATE -> {
+                    shapeRenderer.color = GATE_COLOR
+                    shapeRenderer.circle(x, y, GATE_MARKER_RADIUS)
+                }
+                ContactKind.STATION -> {
+                    shapeRenderer.color = STATION_COLOR
+                    // Filled square centred on the marker position, distinct from the gate dot.
+                    val r = STATION_MARKER_RADIUS
+                    shapeRenderer.rect(x - r, y - r, r * 2f, r * 2f)
+                }
+            }
         }
         shapeRenderer.color = SHIP_COLOR
         val (sx, sy) = clampToPanel(centerX, centerY, half, shipPosition, scale)
@@ -96,10 +114,12 @@ class MinimapRenderer(
         const val DEFAULT_MARGIN = 24f
         const val PADDING = 12f
         const val GATE_MARKER_RADIUS = 4f
+        const val STATION_MARKER_RADIUS = 4f
         const val SHIP_MARKER_RADIUS = 3f
         val PANEL_COLOR = Color(0.05f, 0.07f, 0.12f, 0.55f)
         val BORDER_COLOR = Color(0.4f, 0.5f, 0.65f, 0.9f)
         val GATE_COLOR = Color(0.4f, 0.85f, 1f, 1f)
+        val STATION_COLOR = Color(0.5f, 1f, 0.6f, 1f)
         val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
     }
 }
