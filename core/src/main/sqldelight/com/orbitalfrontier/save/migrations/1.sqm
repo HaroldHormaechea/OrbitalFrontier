@@ -1,0 +1,26 @@
+-- Migration v1 -> v2 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v1 (UC01) had only `meta` + `settings`. v2 (UC04) introduces the first slice of game state:
+-- the single-slot save header (`game_state`) and the player's ship kinematics (`ship`). This
+-- migration is purely additive — existing `meta`/`settings` rows are untouched, so a v1 save's
+-- handedness survives the upgrade. We seed NO game_state/ship row: a migrated v1 DB therefore has
+-- no save header, so loadGameState() returns null and the app starts a New Game (UC04 AC#5) while
+-- preserving the player's settings.
+
+CREATE TABLE game_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    current_sector TEXT NOT NULL,
+    active_ship_id INTEGER NOT NULL
+);
+
+CREATE TABLE ship (
+    id INTEGER NOT NULL PRIMARY KEY,
+    pos_x REAL NOT NULL,
+    pos_y REAL NOT NULL,
+    vel_x REAL NOT NULL,
+    vel_y REAL NOT NULL,
+    heading REAL NOT NULL,
+    ang_vel REAL NOT NULL
+);
+
+UPDATE meta SET save_version = 2 WHERE id = 0;
