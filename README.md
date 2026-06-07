@@ -12,27 +12,26 @@ Orbital Frontier is a single-player mobile game (working title). The planned MVP
 - Roam a sector with points of interest and encounters.
 - Save and restore progress across app restarts.
 
-This repository is currently a structural scaffold. Game logic, rendering, and missions are stubs — see Known limitations.
+The first vertical slice is implemented (use-case 01): you can **fly a single ship around an empty sector** on Android. The left virtual joystick rotates the hull toward a target direction and thrusts (push opposite to reverse); momentum carries and decays to a stop on release; a parallax starfield and a follow-camera convey motion; a HUD shows speed and heading; an inert right-side action cluster is shown; and a handedness setting swaps the control sides and persists across restarts (SQLite via SQLDelight). Missions, upgrades, and the rest of the loop are not built yet — see Known limitations.
 
 ## Requirements
 
 - Android Studio with the Android SDK (compileSdk 35, minSdk 24).
-- JDK 17+ and Gradle (the project targets Gradle 8.10; use the wrapper once generated).
-- Kotlin 2.0.x.
-- Game framework: libGDX 1.13.x (added when the build files are completed in the IDE).
-
-Exact plugin and dependency versions are placeholders in the `*.gradle.kts` files and should be confirmed when the project is first opened in Android Studio.
+- JDK 17+ (the Gradle wrapper pins Gradle 8.10).
+- Kotlin 2.0.21, Android Gradle Plugin 8.6.1.
+- libGDX 1.13.1 (with Box2D) and SQLDelight 2.0.2 — wired in the build.
 
 ## Quick start
 
-This is an early scaffold: the Gradle build files are placeholders and the wrapper is not yet generated, so there is no runnable `./gradlew` command against a fresh clone yet. To get to a buildable state:
+The build is wired and the Gradle wrapper is committed, so a fresh clone builds with the
+standard commands (point the SDK location at your Android SDK via `ANDROID_HOME` or
+`local.properties`):
 
-1. Clone the repository.
-2. Open the folder in Android Studio and let it sync; complete the placeholder `build.gradle.kts` files (plugins, libGDX dependencies) following the inline comments and `PROJECT_BRIEF.md`.
-3. Generate the Gradle wrapper, then the intended commands are:
-   - Tests: `./gradlew test`
-   - Lint: `./gradlew lint`
-   - Format: `./gradlew ktlintFormat`
+- Build the debug APK: `./gradlew :android:assembleDebug`
+  (output: `android/build/outputs/apk/debug/`)
+- Unit tests: `./gradlew test`
+- Lint: `./gradlew lint`
+- Format: `./gradlew ktlintFormat`
 
 ## Project layout
 
@@ -50,10 +49,10 @@ This is an early scaffold: the Gradle build files are placeholders and the wrapp
 
 ## Known limitations
 
-- Scaffold only: no playable game yet. `OrbitalFrontierGame` and `AndroidLauncher` are stubs with no engine wired up.
-- Build files are placeholders; no Gradle wrapper, so the project does not build or run as-cloned.
-- No tests yet.
-- Engine choice (libGDX) is recommended but pending owner confirmation — see `docs/adr/0001-engine-choice.md`.
+- Only the first slice exists: a flyable ship in an empty sector. No missions, economy, upgrades, combat, fuel, other entities, or jump gates yet.
+- The ship and on-screen controls use programmatic placeholder graphics (no art assets yet); the action cluster is a non-functional placeholder.
+- Movement parameters are placeholder `[TUNE]` defaults, to be tuned on-device.
+- Engine choice (libGDX) is confirmed — see `docs/adr/0001-engine-choice.md`. The Box2D/movement split is recorded in `docs/adr/0005-movement-integration.md`.
 - Non-goals for the MVP: no multiplayer, no monetization, no iOS/desktop/web ports, and no space-station building (a deferred stretch feature).
 - The working title "Orbital Frontier" may change before a store release; the name space is crowded.
 
