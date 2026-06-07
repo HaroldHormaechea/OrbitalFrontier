@@ -1,17 +1,18 @@
-// Root build file — placeholder.
-// Shared plugin/version configuration is finalized when the project is first
-// opened in Android Studio. Versions referenced here mirror PROJECT_BRIEF.md
-// frontmatter (stack.versions) and should be confirmed before building.
-//
-// Suggested toolchain (CONFIRM in IDE):
-//   - Kotlin 2.0.x
-//   - Android Gradle Plugin (AGP) compatible with compileSdk 35
-//   - Gradle 8.10
-//   - libGDX 1.13.x
-//   - ktlint Gradle plugin for lint/format
+// Root build file — declares plugin versions for the modules, applied per-module.
+// Versions mirror PROJECT_BRIEF.md frontmatter (stack.versions).
+//   - Kotlin 2.0.21
+//   - Android Gradle Plugin 8.6.1 (compileSdk 35)
+//   - Gradle 8.10 (see gradle/wrapper/gradle-wrapper.properties)
+//   - libGDX 1.13.1
+//   - SQLDelight 2.0.2 (persistence access layer — ADR 0003)
+//   - ktlint Gradle plugin 12.1.1 (lint/format)
 
 plugins {
-    // Apply per-module in core/build.gradle.kts and android/build.gradle.kts.
+    id("com.android.application") version "8.6.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+    id("org.jetbrains.kotlin.jvm") version "2.0.21" apply false
+    id("app.cash.sqldelight") version "2.0.2" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
 }
 
 allprojects {
