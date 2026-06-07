@@ -11,7 +11,7 @@ Statuses:
 | # | File | Title | Status | Updated |
 |---|------|-------|--------|---------|
 | 01 | [use-cases/01-flyable-ship-empty-sector.md](use-cases/01-flyable-ship-empty-sector.md) | Flyable ship in an empty sector | done | 2026-06-07 |
-| 02 | [use-cases/02-playthrough-record-replay-harness.md](use-cases/02-playthrough-record-replay-harness.md) | Deterministic playthrough record & replay test harness | pending | 2026-06-07 |
+| 02 | [use-cases/02-playthrough-record-replay-harness.md](use-cases/02-playthrough-record-replay-harness.md) | Deterministic playthrough record & replay test harness | in-progress | 2026-06-07 |
 | 03 | [use-cases/03-sector-world-and-jump-gates.md](use-cases/03-sector-world-and-jump-gates.md) | Sector world & fixed jump gates | pending | 2026-06-07 |
 | 04 | [use-cases/04-full-game-state-save-load.md](use-cases/04-full-game-state-save-load.md) | Full game-state save & load | pending | 2026-06-07 |
 | 05 | [use-cases/05-stations-and-docking.md](use-cases/05-stations-and-docking.md) | Stations & docking | pending | 2026-06-07 |
