@@ -50,6 +50,13 @@ kotlin {
     }
 }
 
+ktlint {
+    // Skip generated sources (BuildConfig, R, etc.).
+    filter {
+        exclude { element -> element.file.path.contains("generated") }
+    }
+}
+
 dependencies {
     implementation(project(":core"))
 

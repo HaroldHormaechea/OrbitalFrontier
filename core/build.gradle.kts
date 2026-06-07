@@ -28,9 +28,18 @@ sqldelight {
         create("OrbitalFrontier") {
             packageName.set("com.orbitalfrontier.save")
             // ADR 0002: sequential, version-by-version migrations with a stored schema
-            // version. verifyMigrations checks the .sqm chain against the schema baseline.
+            // version. verifyMigrations checks the .sqm chain against the schema baseline
+            // (the committed databases/<version>.db file produced by the generate-schema task).
+            schemaOutputDirectory.set(file("src/main/sqldelight/databases"))
             verifyMigrations.set(true)
         }
+    }
+}
+
+ktlint {
+    // SQLDelight adds its generated sources to the Kotlin source set; don't lint generated code.
+    filter {
+        exclude { element -> element.file.path.contains("generated") }
     }
 }
 
