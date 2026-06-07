@@ -5,28 +5,46 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Static guard for the replay path's purity (UC02 AC#5; ADR 0005/0006).
+ * Static guard for the replay path's purity (UC02 AC#5; UC03 AC#8; ADR 0005/0006).
  *
  * Replay must run headlessly on the JVM with **no native Box2D** and no on-device physics binding.
  * [ReplayRunner] and [com.orbitalfrontier.sim.Simulation] therefore must never import
  * `com.badlogic.gdx.physics.box2d.*`, any other libGDX type, or `ShipPhysics` (the on-device
- * integrator). A runtime check can't catch an *unused* import and reflection can't see imports, so
- * this scans the actual source `import` lines — comments (which legitimately *mention* these names
- * in the contract docs) are ignored.
+ * integrator). UC03 folds the **production world model** (the `world` package under
+ * `core/src/main`) into the replay path — the pure [com.orbitalfrontier.world.GateTraversal] runs
+ * inside [Simulation] — so the
+ * world sources must stay engine-free too (UC03 AC#8 purity; challenger rec #1). A runtime check
+ * can't catch an *unused* import and reflection can't see imports, so this scans the actual source
+ * `import` lines — comments (which legitimately *mention* these names in the contract docs) are ignored.
  */
 class NoBox2DGuardTest {
     @Test
     fun `ReplayRunner imports no Box2D, libGDX, or ShipPhysics types`() {
-        assertNoForbiddenImports("playthrough/ReplayRunner.kt")
+        assertNoForbiddenImports(readTestSource("playthrough/ReplayRunner.kt"), "playthrough/ReplayRunner.kt")
     }
 
     @Test
     fun `Simulation imports no Box2D, libGDX, or ShipPhysics types`() {
-        assertNoForbiddenImports("sim/Simulation.kt")
+        assertNoForbiddenImports(readTestSource("sim/Simulation.kt"), "sim/Simulation.kt")
     }
 
-    private fun assertNoForbiddenImports(relativeToPackageRoot: String) {
-        val source = readTestSource(relativeToPackageRoot)
+    @Test
+    fun `world model sources import no Box2D, libGDX, or ShipPhysics types`() {
+        val worldDir = locateMainPackageDir("world")
+        val sources =
+            worldDir.listFiles { file -> file.isFile && file.name.endsWith(".kt") }
+                ?.sortedBy { it.name }
+                .orEmpty()
+        assertTrue("expected world model sources to scan under ${worldDir.absolutePath}", sources.isNotEmpty())
+        for (file in sources) {
+            assertNoForbiddenImports(file.readText(), "world/${file.name}")
+        }
+    }
+
+    private fun assertNoForbiddenImports(
+        source: String,
+        label: String,
+    ) {
         val imports =
             source.lineSequence()
                 .map { it.trim() }
@@ -38,19 +56,26 @@ class NoBox2DGuardTest {
                 line.contains("com.badlogic.gdx") || line.contains("box2d") || line.contains("ShipPhysics")
             }
         assertTrue(
-            "replay-path source $relativeToPackageRoot must not import Box2D/libGDX/ShipPhysics, found: $offenders",
+            "replay-path source $label must not import Box2D/libGDX/ShipPhysics, found: $offenders",
             offenders.isEmpty(),
         )
     }
 
-    private fun readTestSource(relativeToPackageRoot: String): String {
-        val relative = "src/test/kotlin/com/orbitalfrontier/$relativeToPackageRoot"
+    private fun readTestSource(relativeToPackageRoot: String): String =
+        locateSourceFile("src/test/kotlin/com/orbitalfrontier/$relativeToPackageRoot").readText()
+
+    private fun locateSourceFile(relative: String): File {
         // Gradle runs the Test task with the module dir as its working dir; tolerate a couple of
         // alternate roots so the guard also resolves when invoked from the repository root.
         val candidates = listOf(File(relative), File("core", relative), File("../core", relative))
-        val file =
-            candidates.firstOrNull { it.isFile }
-                ?: throw AssertionError("could not locate source; tried: ${candidates.map { it.absolutePath }}")
-        return file.readText()
+        return candidates.firstOrNull { it.isFile }
+            ?: throw AssertionError("could not locate source; tried: ${candidates.map { it.absolutePath }}")
+    }
+
+    private fun locateMainPackageDir(relativePackage: String): File {
+        val relative = "src/main/kotlin/com/orbitalfrontier/$relativePackage"
+        val candidates = listOf(File(relative), File("core", relative), File("../core", relative))
+        return candidates.firstOrNull { it.isDirectory }
+            ?: throw AssertionError("could not locate package dir; tried: ${candidates.map { it.absolutePath }}")
     }
 }

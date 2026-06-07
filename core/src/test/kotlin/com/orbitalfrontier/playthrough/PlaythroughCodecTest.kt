@@ -2,8 +2,10 @@ package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.MovementInput
+import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.world.SectorId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -101,6 +103,26 @@ class PlaythroughCodecTest {
         // The sealed InputEvent serializes with kotlinx's "type" discriminator + the @SerialName.
         assertTrue("expected polymorphic discriminator", json.contains("\"type\""))
         assertTrue("expected movement SerialName", json.contains("\"movement\""))
+    }
+
+    @Test
+    fun `state snapshot DTO round-trips the current sector (UC03 AC#5 persistence)`() {
+        val state =
+            SimulationState(
+                tick = 5,
+                ship = ShipKinematics(position = Vec2(7f, 8f)),
+                currentSector = SectorId("gamma"),
+            )
+
+        // DTO lock-step both ways: from() captures it, toSimulationState() restores it.
+        assertEquals(state, StateSnapshotDto.from(state).toSimulationState())
+
+        // ...and it survives the JSON codec embedded in a playthrough's initial state.
+        val playthrough =
+            PlaythroughRecorder(name = "sector-round-trip", seed = 1L, dtSeconds = 1f / 60f, initialState = state)
+                .build()
+        val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(playthrough))
+        assertEquals(SectorId("gamma"), decoded.initialState!!.toSimulationState().currentSector)
     }
 
     @Test
