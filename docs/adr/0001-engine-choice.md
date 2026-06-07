@@ -1,6 +1,6 @@
 # ADR 0001 — Game engine / framework choice
 
-- **Status:** Proposed (pending confirmation by the project owner)
+- **Status:** Accepted (confirmed by the project owner 2026-06-07)
 - **Date:** 2026-06-07
 
 ## Context

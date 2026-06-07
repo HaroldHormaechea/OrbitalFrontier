@@ -86,7 +86,7 @@ use_cases:
 
 - **commercial_intent:** no (for the MVP). **[CONFIRM]** Framed as a hobby/community release. A monetization layer can be added later via `/revise-brief` if the project grows.
 - **model:** none (free, no ads, no IAP in the MVP).
-- **license:** **[CONFIRM]** Project code license to be decided. Recommended default: a permissive OSS license (MIT or Apache-2.0) if you intend to open the source, or "all rights reserved / proprietary" if you prefer to keep the game's code closed while distributing the APK for free. No license file is written until you confirm.
+- **license:** **All Rights Reserved (proprietary).** A `LICENSE` file at the repo root declares copyright © 2026 Harold Hormaechea with all rights reserved. The source is published publicly for visibility/reference only — it is **not** open-source; no use, copying, modification, or distribution is permitted without express written permission.
 - **target_market:** Casual/mid-core Android gamers interested in space/sci-fi top-down RPGs; global Play Store audience.
 - **tiers:** none.
 - **constraints:**
@@ -96,7 +96,7 @@ use_cases:
 
 ## Technologies
 
-> **Engine choice made in "advise" mode.** You asked the scaffolder to advise rather than assume. Below is the tradeoff table considered; the scaffold is built on the recommended default (**libGDX + Kotlin**), but this is **[CONFIRM]** — switch via `/revise-brief` (re-running `define-technologies`) if you prefer another option. Changing the engine is a significant re-scaffold, so confirm before building features.
+> **Engine choice — CONFIRMED: libGDX + Kotlin.** The scaffolder advised in "advise" mode and the owner confirmed **libGDX + Kotlin** (2026-06-07). The tradeoff table below is retained for the record. Changing the engine later would be a significant re-scaffold; it is now a settled decision (see ADR 0001, status Accepted).
 
 ### Engine/framework options considered (2D top-down, Android, missions + upgrades)
 
@@ -112,8 +112,8 @@ use_cases:
 
 - **constraints:** Must run on Android phones. Engine choice was open ("advise"). No hard forbidden tools stated.
 - **runtimes:** mobile (Android). Cross-platform (desktop/iOS) deliberately left open for later via libGDX's backends.
-- **languages:** Kotlin (primary). **[CONFIRM]**
-- **frameworks:** libGDX (game framework), Box2D (via libGDX, optional, for movement/collision), Android SDK. **[CONFIRM]**
+- **languages:** Kotlin (primary). Confirmed.
+- **frameworks:** libGDX (game framework), Box2D (via libGDX, optional, for movement/collision), Android SDK. Confirmed.
 - **data_stores:**
   - `{engine: "JSON file + SharedPreferences", purpose: "save/load game state, settings"}` — simplest fit for single-player MVP.
   - `{engine: "SQLite (optional)", purpose: "structured game state if save data grows (missions, inventory)"}` — deferred until needed.

@@ -59,4 +59,6 @@ This is an early scaffold: the Gradle build files are placeholders and the wrapp
 
 ## License
 
-Not yet licensed.
+Copyright © 2026 Harold Hormaechea. **All Rights Reserved.** This repository is
+public for visibility only and is not open-source — no use, copying, modification,
+or distribution is permitted without express written permission. See [LICENSE](LICENSE).
