@@ -70,8 +70,36 @@ High-level game logic depends on **abstractions**, not concretions; concrete det
 - Formatting/linting (ktlint, Android Lint) runs in CI per the brief; these guidelines
   cover what linters can't (design/architecture).
 
+## Error handling (required)
+
+- **Log every error.** All caught exceptions and error conditions MUST be **logged with
+  context** — no silent catches, no empty `catch` blocks, no swallowing. Use the project
+  logging (libGDX/Android logcat per the brief's observability), at an appropriate level,
+  with enough context to diagnose.
+- **Prefer unchecked exceptions.** Kotlin has no checked exceptions by design — lean into
+  that; don't reintroduce checked-exception ceremony. Use **unchecked exceptions for
+  exceptional/unexpected conditions and invariant violations** (fail fast on programmer
+  errors). For *expected, recoverable* outcomes (validation, "not found", insufficient
+  funds/fuel), prefer **explicit return types** (`Result` / a `sealed` result) over using
+  exceptions as control flow.
+- **Catch at the right boundary.** Don't catch what you can't handle — let it propagate to
+  a layer that can log and decide (e.g. a system/game-loop boundary). Catch narrowly,
+  **log**, and **degrade gracefully** where possible (mirrors the in-game "never stranded"
+  philosophy: avoid hard fail states the player can't recover from).
+- **Transactional, corruption-safe saves.** All save writes MUST be **atomic /
+  transactional** (a SQLite transaction via SQLDelight — see
+  [ADR 0002](adr/0002-persistence-sqlite-migrations.md) /
+  [ADR 0003](adr/0003-persistence-access-layer-sqldelight.md) and
+  [save-and-persistence.md](design/save-and-persistence.md)) so that a failure **rolls
+  back** and **never leaves a partially-written or corrupt save**. A failed autosave must
+  leave the **last good save intact** and be **logged**; never overwrite a good save with a
+  half-written one. Use write-then-swap / backup-before-migrate for schema migrations.
+- **Don't crash on recoverable errors.** Surface user-facing failures gracefully rather
+  than crashing the app; genuine crashes are captured by Play Console vitals (brief
+  observability).
+
 ## Open / to extend
 
-This document currently codifies **SOLID** + the supporting conventions above. Additional
-standards (error-handling strategy, logging conventions, package/module structure, naming
-specifics, concurrency rules) can be appended here as they are decided.
+This document currently codifies **SOLID**, the supporting conventions, and
+**error handling**. Additional standards (logging conventions detail, package/module
+structure, naming specifics, concurrency rules) can be appended here as they are decided.

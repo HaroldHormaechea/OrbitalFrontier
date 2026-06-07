@@ -71,8 +71,10 @@ without stalling the frame.
   injected per platform; `core` depends only on SQLDelight's runtime, tests use the JDBC/
   in-memory driver.
 - **Periodic autosave interval** during flight.
-- **Corruption/too-old handling:** backup-before-migrate? behavior on an unsupported/
-  unreadable save?
+- **Corruption handling:** writes MUST be **atomic/transactional** so a failed save rolls
+  back and never corrupts the last good save (now a **binding rule** — see
+  `docs/coding-guidelines.md` → Error handling). Remaining: backup-before-migrate for schema
+  upgrades, and behavior on an unsupported/unreadable save.
 - **Migration testing:** keep a fixture DB per version to test the full upgrade chain.
 
 ## Decided
@@ -84,6 +86,8 @@ without stalling the frame.
 - **Store save version; sequential version-by-version migrations** (v1→…→vN).
 - **Access layer = SQLDelight** (ADR 0003): `.sq` schema/queries in `core`, driver injected
   per platform, `.sqm` versioned migrations.
+- **Saves are atomic/transactional** — a failed write rolls back, never corrupts the last
+  good save (binding rule, `docs/coding-guidelines.md` → Error handling).
 
 ## References
 
