@@ -29,7 +29,7 @@ vcs:
   enabled: true
   already_initialized: false
   default_branch: main
-  remote: null
+  remote: git@github.com:HaroldHormaechea/OrbitalFrontier.git
 use_cases:
   index: USE_CASES.md
   folder: use-cases/
