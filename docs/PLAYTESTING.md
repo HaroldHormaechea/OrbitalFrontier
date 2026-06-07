@@ -69,12 +69,21 @@ every feature:
 ```kotlin
 class Uc01MovementReplayTest {
     @Test
-    fun `thrusting north moves the ship north`() {
-        val playthrough = PlaythroughResources.load("uc01-thrust-north")
-        val result = ReplayRunner().run(playthrough)
-        // Assert with tolerance — float math is deterministic but not exact.
-        assertEquals(0f, result.finalState.ship.position.x, 1e-3f)
-        assertTrue(result.finalState.ship.position.y > 0f)
+    fun `thrusting north turns the ship to face north and moves it north`() {
+        val result = ReplayRunner().run(PlaythroughResources.load("uc01-thrust-north"))
+        val ship = result.finalState.ship
+
+        // The ship starts facing EAST (heading 0) and accrues +x velocity while it rotates
+        // toward the +y stick target — so final position.x is NOT ~0. Assert what actually holds:
+        // heading settles ≈ north, and northward motion/displacement dominates. Use tolerance
+        // (float math is deterministic but not exact) via SnapshotAssertions.
+        SnapshotAssertions.assertWithin(
+            "heading should settle facing north", (PI / 2).toFloat(), ship.headingRadians, 0.05f,
+        )
+        assertTrue("moved north (y>0): $ship", ship.position.y > 0f)
+        assertTrue("velocity points north (vy>0): $ship", ship.velocity.y > 0f)
+        assertTrue("northward motion dominates: $ship", ship.velocity.y > abs(ship.velocity.x))
+        assertTrue("northward displacement dominates: $ship", ship.position.y > abs(ship.position.x))
     }
 
     @Test
@@ -82,10 +91,15 @@ class Uc01MovementReplayTest {
         val playthrough = PlaythroughResources.load("uc01-thrust-north")
         val a = ReplayRunner().run(playthrough)
         val b = ReplayRunner().run(playthrough)
-        assertEquals(a.finalState, b.finalState)            // identical snapshots
+        // Same seed + inputs + dt ⇒ bit-identical snapshots (no tolerance).
+        SnapshotAssertions.assertStatesExactlyEqual(a.finalState, b.finalState)
     }
 }
 ```
+
+> The exact-literal end-state form — `SnapshotAssertions.assertStateWithin(expected, actual)` —
+> is also available when you have a known-good expected snapshot to pin; the directional assertions
+> above are the robust default for a scripted-input feature replay.
 
 Pass `capturePerTickStates = true` to `run(...)` when you need to assert on intermediate ticks
 (`result.perTickStates[k]` is the state after `k` steps; index 0 is the initial state).

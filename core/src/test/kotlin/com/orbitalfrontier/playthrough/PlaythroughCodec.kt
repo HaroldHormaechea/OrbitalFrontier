@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -17,6 +18,9 @@ import kotlinx.serialization.json.Json
  * Round-trips losslessly: `decode(encode(p)) == p`.
  */
 object PlaythroughCodec {
+    // prettyPrintIndent is a kotlinx ExperimentalSerializationApi knob; we opt in deliberately to
+    // pin the artifact's two-space indent (stable/diffable form, UC02 AC#8).
+    @OptIn(ExperimentalSerializationApi::class)
     private val json: Json =
         Json {
             prettyPrint = true
