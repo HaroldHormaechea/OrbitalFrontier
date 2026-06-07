@@ -22,6 +22,10 @@ data class GateLink(
  * destination sector (see [GateTraversal]). [triggerRadius] is authored **per gate** in the map data
  * (not a global constant) so individual gates can be tuned independently.
  *
+ * A gate also broadcasts a [ContactKind.GATE] transponder, so it shows on the minimap alongside
+ * stations (UC05): the renderer draws every [Transponder] POI keyed by [contactKind] rather than only
+ * gates, so adding stations to the map needed no change to the gate type beyond this capability.
+ *
  * Pure data — no engine types — so it is part of the JVM-testable world model (ADR 0001).
  */
 data class JumpGate(
@@ -30,7 +34,9 @@ data class JumpGate(
     /** Radius (world-units) of the trigger circle around [position] that initiates a jump. */
     val triggerRadius: Float,
     val link: GateLink,
-) : Poi {
+) : Poi, Transponder {
+    override val contactKind: ContactKind get() = ContactKind.GATE
+
     init {
         require(triggerRadius > 0f) { "JumpGate $id triggerRadius must be positive: $triggerRadius" }
     }

@@ -27,6 +27,12 @@ data class Sector(
     /** The jump gates in this sector (a view over [pois]); empty if the sector has none. */
     val gates: List<JumpGate> get() = pois.filterIsInstance<JumpGate>()
 
+    /** The stations in this sector (a view over [pois], authored order); empty if it has none. */
+    val stations: List<Station> get() = pois.filterIsInstance<Station>()
+
     /** The gate with [gateId] in this sector, or null if there is none. */
     fun gate(gateId: PoiId): JumpGate? = gates.firstOrNull { it.id == gateId }
+
+    /** The station with [stationId] in this sector, or null if there is none. */
+    fun station(stationId: PoiId): Station? = stations.firstOrNull { it.id == stationId }
 }

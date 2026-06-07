@@ -14,7 +14,7 @@ Statuses:
 | 02 | [use-cases/02-playthrough-record-replay-harness.md](use-cases/02-playthrough-record-replay-harness.md) | Deterministic playthrough record & replay test harness | done | 2026-06-07 |
 | 03 | [use-cases/03-sector-world-and-jump-gates.md](use-cases/03-sector-world-and-jump-gates.md) | Sector world & fixed jump gates | done | 2026-06-07 |
 | 04 | [use-cases/04-full-game-state-save-load.md](use-cases/04-full-game-state-save-load.md) | Full game-state save & load | done | 2026-06-07 |
-| 05 | [use-cases/05-stations-and-docking.md](use-cases/05-stations-and-docking.md) | Stations & docking | pending | 2026-06-07 |
+| 05 | [use-cases/05-stations-and-docking.md](use-cases/05-stations-and-docking.md) | Stations & docking | in-progress | 2026-06-07 |
 | 06 | [use-cases/06-asteroid-mining-resources-cargo.md](use-cases/06-asteroid-mining-resources-cargo.md) | Asteroid mining, resources & cargo | pending | 2026-06-07 |
 | 07 | [use-cases/07-fuel-and-power-energy.md](use-cases/07-fuel-and-power-energy.md) | Fuel & power/energy | pending | 2026-06-07 |
 | 08 | [use-cases/08-credits-and-trading.md](use-cases/08-credits-and-trading.md) | Credits & inter-station trading | pending | 2026-06-07 |
