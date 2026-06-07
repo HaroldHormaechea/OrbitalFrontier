@@ -64,4 +64,10 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnit()
+    // Gradle does NOT forward command-line `-D` system properties to the forked test JVM, so the
+    // playtest harness (which selects a playthrough via `-Dplaythrough.name=…`) would otherwise see
+    // null and silently skip via JUnit Assume. Forward the harness's known props explicitly.
+    listOf("playthrough.name", "fixture.regen").forEach { key ->
+        System.getProperty(key)?.let { systemProperty(key, it) }
+    }
 }
