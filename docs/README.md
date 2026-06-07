@@ -9,10 +9,11 @@ the reasoning and design detail behind them.
 
 ## Layout
 
-| Folder | Purpose | Start here |
+| Folder / file | Purpose | Start here |
 |---|---|---|
 | [`design/`](design/) | Internal design notes: how each game system should work (ideas, mechanics, open questions). Living documents, may be incomplete. | [design/README.md](design/README.md) |
 | [`adr/`](adr/) | Architecture Decision Records: a dated, numbered log of significant technical decisions and why they were made. | [adr/README.md](adr/README.md) |
+| [`coding-guidelines.md`](coding-guidelines.md) | **Binding** coding standards (SOLID + supporting conventions). Required for all production code; enforced in review. | [coding-guidelines.md](coding-guidelines.md) |
 
 ## How agents should use these
 
@@ -23,6 +24,9 @@ the reasoning and design detail behind them.
 - **ADRs** record decisions that are in force. Treat an `Accepted` ADR as binding
   unless a later ADR supersedes it. Propose a new ADR (don't edit an old one's
   decision) when a decision changes.
+- **Coding guidelines** (`coding-guidelines.md`) are **binding standards** — all
+  production code must follow them (SOLID + supporting conventions). Violations are
+  review-blocking. The brief still wins on any direct conflict.
 
 ## How to add a doc
 

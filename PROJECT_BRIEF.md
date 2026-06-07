@@ -164,6 +164,12 @@ or filling in a draft design note) rather than leaving design decisions implicit
 ## Quality & Standards
 
 - **style_guide:** Kotlin official style guide (Android Kotlin conventions).
+- **coding_principles (binding):** All production code MUST follow **SOLID** principles
+  (Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation,
+  Dependency Inversion). This is a required standard — see **`docs/coding-guidelines.md`**
+  for the concrete, project-specific articulation (e.g. DIP underpins the SQLDelight driver
+  injection in ADR 0003 and `core`'s JVM-testability in ADR 0001). The dev-team
+  (challenger/qa) enforces adherence in review on every change.
 - **linters_formatters:**
   - Kotlin: **ktlint** (lint + format) via Gradle (`ktlintCheck` / `ktlintFormat`). **[CONFIRM]** detekt can be added for deeper static analysis.
   - Android: Android Lint (`./gradlew lint`).
