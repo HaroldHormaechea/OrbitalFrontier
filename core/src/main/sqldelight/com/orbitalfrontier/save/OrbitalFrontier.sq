@@ -1,12 +1,17 @@
--- Orbital Frontier save schema, version 1 (ADR 0002 / ADR 0003).
+-- Orbital Frontier save schema, version 2 (ADR 0002 / ADR 0003).
 --
--- This is the first slice of the single on-device save DB. It currently holds only the
--- save-format version and the control-layout (handedness) setting; world/player tables are
--- added by later use cases. Both tables are single-row (CHECK (id = 0)) — there is exactly
--- one save slot, autosave-only.
+-- This .sq file is ALWAYS the latest schema (currently v2). Earlier versions are upgraded to it
+-- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2). Never edit this
+-- baseline destructively to make a schema change — bump the version and add a migration instead.
 --
--- Future schema changes are made by bumping the database version and adding sequential
--- `.sqm` migration files (v1->v2->...); never by editing this baseline destructively.
+-- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
+-- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
+-- player's ship kinematics (`ship`). All save-header singletons live in `game_state`; the `ship`
+-- table is keyed by id so UC09 can grow to multiple owned ships additively (the active ship is the
+-- one `game_state.active_ship_id` points at). Box2D internals are never persisted — only the pure
+-- kinematics the model re-seeds the body from on load (UC04 pitfall).
+--
+-- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
 CREATE TABLE meta (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
@@ -16,6 +21,27 @@ CREATE TABLE meta (
 CREATE TABLE settings (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     handedness TEXT NOT NULL
+);
+
+-- Single-row save "header": which sector the player is in and which owned ship is active. Future
+-- save-wide singletons (credits, current mission, …) land here additively as later UCs arrive.
+CREATE TABLE game_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    current_sector TEXT NOT NULL,
+    active_ship_id INTEGER NOT NULL
+);
+
+-- Owned-ship kinematics. One row today (the active ship); UC09 adds more rows (and, later, a
+-- ship_slot child table) without touching this baseline. Stored as REAL (SQLite has no Float);
+-- the repository owns the single Float<->Double conversion so a round-trip is exact (UC04 AC#8).
+CREATE TABLE ship (
+    id INTEGER NOT NULL PRIMARY KEY,
+    pos_x REAL NOT NULL,
+    pos_y REAL NOT NULL,
+    vel_x REAL NOT NULL,
+    vel_y REAL NOT NULL,
+    heading REAL NOT NULL,
+    ang_vel REAL NOT NULL
 );
 
 -- Read the stored save-format version (null before the meta row is seeded).
@@ -36,3 +62,24 @@ SELECT handedness FROM settings WHERE id = 0;
 -- foreign keys, so the delete-then-insert REPLACE performs has no side effects.
 upsertHandedness:
 INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
+
+-- Read the full save header joined to its active ship's kinematics. Returns no rows when there is
+-- no save yet (-> New Game). One row otherwise (game_state is single-slot).
+selectGameState:
+SELECT game_state.current_sector, ship.pos_x, ship.pos_y, ship.vel_x, ship.vel_y, ship.heading, ship.ang_vel
+FROM game_state
+JOIN ship ON ship.id = game_state.active_ship_id
+WHERE game_state.id = 0;
+
+-- True once a save header exists (Continue available); false on a fresh / migrated-empty DB.
+hasGameState:
+SELECT EXISTS(SELECT 1 FROM game_state WHERE id = 0);
+
+-- Insert-or-update the single-slot save header. INSERT OR REPLACE for the same minSdk-24 rationale
+-- as upsertHandedness; single-row, no foreign keys, so REPLACE is side-effect-free.
+upsertGameState:
+INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id) VALUES (0, ?, ?);
+
+-- Insert-or-update one ship row's kinematics by id (active ship id today; more rows under UC09).
+upsertShip:
+INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel) VALUES (?, ?, ?, ?, ?, ?, ?);

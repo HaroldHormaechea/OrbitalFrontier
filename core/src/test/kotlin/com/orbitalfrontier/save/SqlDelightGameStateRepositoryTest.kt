@@ -1,0 +1,226 @@
+package com.orbitalfrontier.save
+
+import app.cash.sqldelight.Query
+import app.cash.sqldelight.Transacter
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.world.SectorId
+import com.orbitalfrontier.world.WorldState
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Persistence round-trip + error-path tests for [SqlDelightGameStateRepository], exercised against
+ * an in-memory [JdbcSqliteDriver] (ADR 0003 — the same `core` code that runs on the Android driver
+ * on device). Covers UC04 AC#1 (first-run "no save"), AC#3 (transactional, corruption-safe writes),
+ * AC#6/#7 (full-state save → reload round-trip with EXACT equality, JVM-testable serialization).
+ *
+ * "App restart" is simulated by constructing a fresh repository over the *same* live driver (the
+ * in-memory DB persists for the lifetime of the connection), so a reload genuinely goes back
+ * through SQL rather than reading an in-process field.
+ *
+ * EXACT equality (no tolerance) is the contract here: the repository owns the single Float↔Double
+ * conversion at the persistence boundary, and `Float -> Double -> Float` returns the original Float
+ * bit-for-bit, so a save → reload of a [WorldState] is value-equal to the original (AC#7).
+ */
+class SqlDelightGameStateRepositoryTest {
+    private lateinit var driver: JdbcSqliteDriver
+    private lateinit var database: OrbitalFrontier
+    private lateinit var logger: CapturingLogger
+
+    @Before
+    fun setUp() {
+        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        OrbitalFrontier.Schema.create(driver)
+        database = OrbitalFrontier(driver)
+        logger = CapturingLogger()
+    }
+
+    @After
+    fun tearDown() {
+        runCatching { driver.close() }
+    }
+
+    private fun newRepository() = SqlDelightGameStateRepository(database, logger)
+
+    /** A non-trivial world state with awkward Float values, to make an exact round-trip meaningful. */
+    private fun sampleState(): WorldState =
+        WorldState(
+            currentSector = SectorId("beta"),
+            ship =
+                ShipKinematics(
+                    position = Vec2(123.456f, -987.654f),
+                    velocity = Vec2(0.125f, -64.0f),
+                    headingRadians = 1.5707963f,
+                    angularVelocity = -0.3333333f,
+                ),
+        )
+
+    // --- AC#1: first run has no save ---
+
+    @Test
+    fun `a fresh database reports no save`() {
+        val repo = newRepository()
+
+        assertNull("loadGameState must be null before anything is saved", repo.loadGameState())
+        assertFalse("hasSave must be false before anything is saved", repo.hasSave())
+    }
+
+    // --- AC#6/#7: full-state save -> reload round-trip with EXACT equality ---
+
+    @Test
+    fun `saved world state round-trips exactly through a reload`() {
+        val state = sampleState()
+        newRepository().saveGameState(state)
+
+        // Fresh repository over the same DB == app restart; the reload goes back through SQL.
+        val reloaded = newRepository().loadGameState()
+
+        // Exact value equality — sector + every ship kinematic field, no tolerance (AC#7).
+        assertEquals(state, reloaded)
+    }
+
+    @Test
+    fun `hasSave becomes true once a state is saved`() {
+        val repo = newRepository()
+        repo.saveGameState(sampleState())
+
+        assertTrue(repo.hasSave())
+    }
+
+    @Test
+    fun `the latest saved world state wins`() {
+        val repo = newRepository()
+        repo.saveGameState(sampleState())
+
+        val later =
+            WorldState(
+                currentSector = SectorId("gamma"),
+                ship = ShipKinematics(position = Vec2(7f, 8f), velocity = Vec2(-1f, 2f), headingRadians = 0.5f),
+            )
+        repo.saveGameState(later)
+
+        assertEquals(later, newRepository().loadGameState())
+    }
+
+    // --- AC#3: transactional, corruption-safe write (graceful degradation) ---
+
+    @Test
+    fun `a failed write is caught and logged, does not throw, and leaves the prior good save intact`() {
+        // 1) Persist a good save through the real driver.
+        val good = sampleState()
+        val goodRepo = newRepository()
+        goodRepo.saveGameState(good)
+        assertEquals("precondition: the good save is readable", good, goodRepo.loadGameState())
+
+        // 2) A repository whose writes fail mid-transaction (the upsert throws), sharing the same
+        //    underlying connection so we can verify the prior save survived the rollback.
+        val failingDatabase = OrbitalFrontier(WriteFailingDriver(driver))
+        val failingRepo = SqlDelightGameStateRepository(failingDatabase, logger)
+
+        val doomed =
+            WorldState(
+                currentSector = SectorId("gamma"),
+                ship = ShipKinematics(position = Vec2(999f, 999f)),
+            )
+        // Autosave-style: the failure is caught and logged, never propagated.
+        failingRepo.saveGameState(doomed)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+        // 3) The transaction rolled back: the previous good save is untouched (no corruption).
+        assertEquals("the prior good save must remain intact", good, goodRepo.loadGameState())
+    }
+
+    @Test
+    fun `hasSave degrades to false instead of throwing when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail
+
+        assertFalse("an unreadable DB is treated as no save", repo.hasSave())
+        assertTrue("the failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    /** Logger that records WARN/ERROR messages so error-path tests can assert on them. */
+    private class CapturingLogger : Logger {
+        val warnings = mutableListOf<String>()
+        val errors = mutableListOf<String>()
+
+        override fun debug(
+            tag: String,
+            message: String,
+        ) = Unit
+
+        override fun info(
+            tag: String,
+            message: String,
+        ) = Unit
+
+        override fun warn(
+            tag: String,
+            message: String,
+            throwable: Throwable?,
+        ) {
+            warnings += message
+        }
+
+        override fun error(
+            tag: String,
+            message: String,
+            throwable: Throwable?,
+        ) {
+            errors += message
+        }
+    }
+
+    /**
+     * [SqlDriver] decorator that delegates reads and transaction control to [delegate] but makes
+     * every write ([execute]) throw. Used to induce a mid-transaction failure on the real
+     * connection so the repository's catch-log-rollback path (AC#3) is exercised against actual
+     * SQLite rather than a hand-rolled fake.
+     */
+    private class WriteFailingDriver(private val delegate: SqlDriver) : SqlDriver {
+        override fun <R> executeQuery(
+            identifier: Int?,
+            sql: String,
+            mapper: (SqlCursor) -> QueryResult<R>,
+            parameters: Int,
+            binders: (SqlPreparedStatement.() -> Unit)?,
+        ): QueryResult<R> = delegate.executeQuery(identifier, sql, mapper, parameters, binders)
+
+        override fun execute(
+            identifier: Int?,
+            sql: String,
+            parameters: Int,
+            binders: (SqlPreparedStatement.() -> Unit)?,
+        ): QueryResult<Long> = throw RuntimeException("induced write failure")
+
+        override fun newTransaction(): QueryResult<Transacter.Transaction> = delegate.newTransaction()
+
+        override fun currentTransaction(): Transacter.Transaction? = delegate.currentTransaction()
+
+        override fun addListener(
+            vararg queryKeys: String,
+            listener: Query.Listener,
+        ) = delegate.addListener(queryKeys = queryKeys, listener = listener)
+
+        override fun removeListener(
+            vararg queryKeys: String,
+            listener: Query.Listener,
+        ) = delegate.removeListener(queryKeys = queryKeys, listener = listener)
+
+        override fun notifyListeners(vararg queryKeys: String) = delegate.notifyListeners(queryKeys = queryKeys)
+
+        override fun close() = delegate.close()
+    }
+}

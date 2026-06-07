@@ -8,11 +8,13 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
+import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
 import com.orbitalfrontier.screen.controls.MovementJoystick
@@ -20,12 +22,12 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
-import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
 import com.orbitalfrontier.world.GateTraversal
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.WorldState
 
 /**
  * The single gameplay screen — a flyable ship in the current sector with inter-sector jump gates
@@ -49,12 +51,18 @@ import com.orbitalfrontier.world.MvpSectorMap
 class PlayScreen(
     private val logger: Logger,
     settingsRepository: SettingsRepository,
+    saveExecutor: SaveExecutor,
+    private val autosave: AutosaveController,
     initialHandedness: Handedness,
+    initialWorldState: WorldState,
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = ShipMovementModel()
     private val params = ShipMovementParams()
-    private val physics = ShipPhysics(spawn = ShipKinematics())
+
+    // Re-seed the Box2D body from the persisted (or default) kinematics — never persist Box2D
+    // internals; the kinematics are the save's source of truth on load (UC04 AC#6 / pitfall).
+    private val physics = ShipPhysics(spawn = initialWorldState.ship)
 
     private val starfield = StarfieldRenderer()
     private val shipRenderer = ShipRenderer()
@@ -64,7 +72,7 @@ class PlayScreen(
 
     // Fixed authored sector graph (ADR 0004); the current sector is the only mutable world state here.
     private val sectorWorld = MvpSectorMap.build()
-    private var currentSector = MvpSectorMap.START_SECTOR
+    private var currentSector = initialWorldState.currentSector
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -79,8 +87,8 @@ class PlayScreen(
         settingsOverlay =
             SettingsOverlay(
                 skin = skin,
-                logger = logger,
                 repository = settingsRepository,
+                saveExecutor = saveExecutor,
                 initial = initialHandedness,
             ) { newHandedness ->
                 handedness = newHandedness
@@ -123,10 +131,17 @@ class PlayScreen(
                     "Jumped to sector ${currentSector.value} at " +
                         "(${arrived.position.x}, ${arrived.position.y})",
                 )
+                // Event-driven autosave: a jump is a key world event (UC04 AC#2). The snapshot the
+                // controller reads now reflects the post-jump sector + re-seeded kinematics.
+                autosave.onEvent("jump")
                 arrived
             } else {
                 stepped
             }
+
+        // Periodic autosave: accumulate this frame; the controller enqueues a save only every
+        // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
+        autosave.update(dt)
 
         // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7).
         worldCamera.position.set(ship.position.x, ship.position.y, 0f)
@@ -186,6 +201,21 @@ class PlayScreen(
         widgetWidth: Float,
     ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
 
+    /**
+     * The live world snapshot (current sector + ship kinematics read back from the Box2D body) used
+     * by the [AutosaveController] (UC04). Called on the render thread, where touching the body is
+     * safe; the returned [WorldState] is immutable and handed to the save executor thread.
+     */
+    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics())
+
+    /**
+     * Android pause/exit lifecycle (forwarded by [com.badlogic.gdx.Game]). Enqueue a final autosave
+     * and block until it is durably written before the app is backgrounded (UC04 AC#2).
+     */
+    override fun pause() {
+        autosave.onPauseOrExit()
+    }
+
     override fun hide() {
         if (Gdx.input.inputProcessor === inputMultiplexer) {
             Gdx.input.inputProcessor = null
@@ -195,7 +225,6 @@ class PlayScreen(
     override fun dispose() {
         stage.dispose()
         skin.dispose()
-        settingsOverlay.dispose()
         starfield.dispose()
         shipRenderer.dispose()
         hudRenderer.dispose()

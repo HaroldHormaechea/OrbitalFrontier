@@ -20,10 +20,10 @@ class SqlDelightSettingsRepository(
     override fun ensureInitialized() {
         try {
             queries.transaction {
-                queries.initMeta(SAVE_VERSION)
+                queries.initMeta(SaveVersion.CURRENT)
             }
         } catch (e: Exception) {
-            logger.error(TAG, "Failed to initialize save metadata (save_version=$SAVE_VERSION)", e)
+            logger.error(TAG, "Failed to initialize save metadata (save_version=${SaveVersion.CURRENT})", e)
         }
     }
 
@@ -64,8 +64,5 @@ class SqlDelightSettingsRepository(
 
     private companion object {
         const val TAG = "Save"
-
-        /** Current save-format/schema version (mirrors the SQLDelight schema version). */
-        const val SAVE_VERSION = 1L
     }
 }
