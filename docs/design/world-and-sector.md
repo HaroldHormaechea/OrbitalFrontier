@@ -68,6 +68,36 @@ reproducible and cheaply persistable (store the seed + deltas rather than every 
   technology** (a progression upgrade). Couples to the sensor/scanner upgrade and a ship
   action control.
 
+**Stations & docking (implemented UC05).** Stations are a POI type (`world.Station`) that
+broadcasts a `Transponder` (`contactKind = STATION`), so they appear automatically on the minimap
+alongside gates — the minimap renders every transponder POI, keyed by contact kind (station = filled
+square, gate = dot), an Open/Closed seam so future broadcasting POIs need no minimap rewrite. Each
+station carries an authored **`dockingRadius`** (~100 wu) circle; the MVP map authors one station in
+Alpha and one in Beta (Gamma has none), placed clear of the gate triggers and inside the content
+extent.
+
+- **Dock trigger — proximity + explicit action (never automatic).** Flying within a station's
+  `dockingRadius` makes it *dockable*: the HUD shows an "IN RANGE: <name>" prompt and a context
+  **DOCK** button. Docking only happens when the player taps DOCK — proximity alone never docks
+  (the chosen disambiguation; auto-dock was rejected). The dock/undock decision is pure and
+  JVM-testable (`world.Docking`: `availableStation(...)` for the in-range check, `resolve(...)` for
+  the state transition), the docking analogue of `GateTraversal`.
+- **Dock state is game state and persists.** `WorldState.dockedStation: PoiId?` (null = in flight)
+  is part of the save header (`game_state.docked_station_id`, schema v3; sequential migration
+  `2.sqm`, ADR 0002/0003). Saving while docked and reloading resumes **docked at the same station**.
+  On load a docked state whose station no longer resolves (stale id / map change) **degrades
+  gracefully to flight** with a WARN — never a crash or a stranded player.
+- **Movement freezes while docked.** Docking hands control to a dedicated **station-hub screen**
+  (`screen.StationHubScreen`); the flight screen (`PlayScreen`) is not rendered or updated while
+  docked, so the ship's movement/simulation is frozen — there is no flying inside a station. The hub
+  shows the station name and **inert** service stubs (TRADE / OUTFIT / MISSIONS — labels with no
+  behaviour yet; wired by economy UC08, upgrades UC09, missions UC12) plus one active **UNDOCK**
+  control that returns to flight (resolving dock state back to null, then autosaving). Because the
+  dock control is just another HUD actor and undocking restores the same flight screen, **flight
+  controls and multitouch are untouched while undocked** (the hub is a separate screen, so it cannot
+  interfere with the joystick/action cluster). The game owns both screens and disposes each
+  explicitly (libGDX `setScreen` only hides the previous screen) to avoid leaking GL resources.
+
 **Encounters:**
 - **Natural/ambient** — encounters that simply exist in the living world (traffic,
   patrols, pirates roaming), in the spirit of Starsector / X4.
@@ -108,7 +138,11 @@ Persist aggressively (the design goal is minimal regeneration):
 - ~~Unboundedness~~ — **RESOLVED (UC03): a soft content extent, not a hard wall.** Each MVP
   sector carries an authored `contentExtent` (~1800 wu radius); the ship may fly past it into
   empty space. A tunable, not an ADR-level decision (see "Soft content extent" above).
-- **Station services scope** for MVP (trade + missions + repair — which are in?).
+- ~~Docking trigger~~ — **RESOLVED (UC05): proximity + explicit DOCK action**, never auto-dock
+  (see "Stations & docking" above). A tunable (`dockingRadius`), not an ADR-level decision.
+- **Station services scope** for MVP (trade + missions + repair — which are in?). UC05 lands the
+  hub **shell** with inert TRADE/OUTFIT/MISSIONS stubs; *which* services and their behaviour are
+  still open and owned by the later service UCs (economy UC08, upgrades UC09, missions UC12).
 
 ## Decided
 
@@ -118,6 +152,8 @@ Persist aggressively (the design goal is minimal regeneration):
 - **Procedural** layout, with **hand-authored test maps** early.
 - POI MVP set = **jump points, asteroid fields, stations**.
 - **Transponders/beacons** advertise POIs; **active scanning** reveals hidden ones.
+- **Docking = proximity + explicit action** (UC05); dock state persists; movement freezes while
+  docked; station hub holds inert service stubs for later UCs.
 - Encounters are **natural + spawned**.
 - **Persist** POIs, asteroid statuses, station offers; regenerate as little as possible.
 
