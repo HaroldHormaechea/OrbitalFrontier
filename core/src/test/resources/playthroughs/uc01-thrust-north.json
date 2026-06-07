@@ -1,0 +1,509 @@
+{
+  "formatVersion": 1,
+  "name": "uc01-thrust-north",
+  "seed": 1,
+  "dtSeconds": 0.016666668,
+  "tickCount": 90,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 0.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": 0.0,
+    "angularVelocity": 0.0
+  },
+  "inputEvents": [
+    {
+      "type": "movement",
+      "tick": 0,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 12,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 13,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 14,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 15,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 16,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 17,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 18,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 19,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 20,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 21,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 22,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 23,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 24,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 25,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 26,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 27,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 28,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 29,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 30,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 31,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 32,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 33,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 34,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 35,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 36,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 37,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 38,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 39,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 40,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 41,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 42,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 43,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 44,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 45,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 46,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 47,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 48,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 49,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 50,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 51,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 52,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 53,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 54,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 55,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 56,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 57,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 58,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 59,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    }
+  ]
+}
