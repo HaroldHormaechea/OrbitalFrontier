@@ -3,6 +3,7 @@ package com.orbitalfrontier.playthrough
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.world.DockAction
 
 /**
  * Accumulates a playthrough recording — the seed, fixed timestep, pinned config, optional initial
@@ -55,6 +56,12 @@ class PlaythroughRecorder(
         tick: Int,
         input: MovementInput,
     ): PlaythroughRecorder = record(MovementEvent.from(tick, input))
+
+    /** Convenience: record a [DockActionEvent] for [action] at [tick] (UC05). */
+    fun recordDockAction(
+        tick: Int,
+        action: DockAction,
+    ): PlaythroughRecorder = record(DockActionEvent(tick = tick, action = action))
 
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {

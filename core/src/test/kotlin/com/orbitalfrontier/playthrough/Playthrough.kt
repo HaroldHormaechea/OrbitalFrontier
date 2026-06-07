@@ -5,6 +5,7 @@ import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import kotlinx.serialization.Serializable
 
@@ -119,6 +120,11 @@ data class StateSnapshotDto(
      * sector so older artifacts (recorded before the field existed) still decode unchanged.
      */
     val currentSector: String = MvpSectorMap.START_SECTOR.value,
+    /**
+     * The [PoiId] slug of the station the ship is docked at (UC05 AC#4/#6), or null when in flight.
+     * Defaulted to null so older artifacts (recorded before the field existed) decode as "in flight".
+     */
+    val dockedStation: String? = null,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -132,6 +138,7 @@ data class StateSnapshotDto(
                     angularVelocity = angularVelocity,
                 ),
             currentSector = SectorId(currentSector),
+            dockedStation = dockedStation?.let(::PoiId),
         )
 
     companion object {
@@ -146,6 +153,7 @@ data class StateSnapshotDto(
                 headingRadians = state.ship.headingRadians,
                 angularVelocity = state.ship.angularVelocity,
                 currentSector = state.currentSector.value,
+                dockedStation = state.dockedStation?.value,
             )
     }
 }

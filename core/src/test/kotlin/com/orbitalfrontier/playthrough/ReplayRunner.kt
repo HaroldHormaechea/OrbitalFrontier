@@ -5,6 +5,7 @@ import com.orbitalfrontier.platform.TickTimeSource
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.world.DockAction
 
 /**
  * Executes a [Playthrough] headlessly on the JVM and returns the resulting state (UC02 AC#5/#6).
@@ -63,8 +64,10 @@ class ReplayRunner {
             }
 
         for (tick in 0 until playthrough.tickCount) {
-            val input = movementInputFor(eventsByTick[tick].orEmpty())
-            state = simulation.step(state, input, playthrough.dtSeconds)
+            val tickEvents = eventsByTick[tick].orEmpty()
+            val input = movementInputFor(tickEvents)
+            val dockAction = dockActionFor(tickEvents)
+            state = simulation.step(state, input, playthrough.dtSeconds, dockAction)
             perTick?.add(state)
         }
 
@@ -82,4 +85,12 @@ class ReplayRunner {
      */
     private fun movementInputFor(events: List<InputEvent>): MovementInput =
         events.filterIsInstance<MovementEvent>().lastOrNull()?.toMovementInput() ?: MovementInput.NONE
+
+    /**
+     * Reduce a tick's events to the [DockAction] the sim steps with (UC05). When several dock
+     * samples share a tick the latest wins; a tick with no [DockActionEvent] steps with
+     * [DockAction.NONE], so movement-only artifacts (UC01/UC03) replay exactly as before.
+     */
+    private fun dockActionFor(events: List<InputEvent>): DockAction =
+        events.filterIsInstance<DockActionEvent>().lastOrNull()?.action ?: DockAction.NONE
 }

@@ -23,7 +23,8 @@
     "velY": 0.0,
     "headingRadians": 0.0,
     "angularVelocity": 0.0,
-    "currentSector": "alpha"
+    "currentSector": "alpha",
+    "dockedStation": null
   },
   "inputEvents": [
     {
