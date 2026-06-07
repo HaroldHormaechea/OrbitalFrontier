@@ -13,8 +13,9 @@ plugins {
 val gdxVersion = "1.13.1"
 val sqlDelightVersion = "2.0.2"
 
-// kotlinx.serialization powers the Playthrough JSON codec (ADR 0006). It ships in `core`
-// main (not just test) because the recorder runs in live game sessions, not only in tests.
+// kotlinx.serialization powers the Playthrough JSON codec (ADR 0006). The playthrough
+// record/replay harness is test infrastructure and lives in the test source set, so the
+// dependency is test-only. The serialization plugin (applied above) processes the test sources.
 val kotlinxSerializationVersion = "1.7.3"
 
 kotlin {
@@ -52,9 +53,10 @@ dependencies {
     implementation("com.badlogicgames.gdx:gdx:$gdxVersion")
     implementation("com.badlogicgames.gdx:gdx-box2d:$gdxVersion")
     implementation("app.cash.sqldelight:runtime:$sqlDelightVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinxSerializationVersion")
 
     testImplementation("junit:junit:4.13.2")
+    // Test-only: powers the Playthrough JSON codec used by the record/replay harness (ADR 0006).
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinxSerializationVersion")
     // JVM-side SQLDelight driver for persistence round-trip tests (ADR 0003).
     testImplementation("app.cash.sqldelight:sqlite-driver:$sqlDelightVersion")
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
