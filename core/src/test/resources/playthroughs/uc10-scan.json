@@ -1,0 +1,73 @@
+{
+  "formatVersion": 1,
+  "name": "uc10-scan",
+  "seed": 10,
+  "dtSeconds": 0.016666668,
+  "tickCount": 3,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.5,
+    "thrustDraw": 1.5
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 0.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": 0.0,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": null,
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 0,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 0.0,
+        "posY": 0.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": 0.0,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {}
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": []
+  },
+  "inputEvents": [
+    {
+      "type": "scan",
+      "tick": 0,
+      "action": "SCAN"
+    }
+  ]
+}
