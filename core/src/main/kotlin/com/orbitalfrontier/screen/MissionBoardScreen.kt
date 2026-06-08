@@ -16,6 +16,7 @@ import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 
 /**
@@ -55,7 +56,7 @@ class MissionBoardScreen(
     private val reputationSupplier: () -> Reputation = { Reputation.EMPTY },
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // The whole content table is rebuilt on each refresh: accepting/turning in changes which rows
     // exist (an offer leaves the available list; a turn-in flips an active mission terminal), so an

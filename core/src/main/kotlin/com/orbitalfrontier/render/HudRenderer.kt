@@ -16,10 +16,18 @@ import kotlin.math.roundToInt
  * integer formatting avoid per-frame String/`String.format` allocation, protecting the 60 FPS
  * budget (AC#14, coding-guidelines § performance). The fuel line turns red and appends "LOW" while
  * the tank is below the low-fuel threshold — the player-facing cue that speed is being limited.
+ *
+ * [uiScale] (ADR 0015) magnifies the whole overlay: the built-in font is scaled by it once at
+ * construction and every base layout constant (margins, line height) is multiplied by it at its use
+ * site — the constants stay authored at their base (×1) values so [UiScale.factor] remains the single
+ * knob. The font is bitmap, so [BitmapFont.getData].setScale bilinearly stretches it (slightly blurry);
+ * acceptable as a placeholder until a real scaled font/atlas exists.
  */
-class HudRenderer : Disposable {
+class HudRenderer(
+    private val uiScale: Float = UiScale.factor,
+) : Disposable {
     private val batch = SpriteBatch()
-    private val font = BitmapFont()
+    private val font = BitmapFont().apply { data.setScale(uiScale) }
     private val line = StringBuilder(24)
     private val projection = Matrix4()
 
@@ -33,24 +41,28 @@ class HudRenderer : Disposable {
         viewportHeight: Float,
         inCombat: Boolean = false,
     ) {
+        // Base layout constants scaled at the use site — UiScale.factor stays the single knob.
+        val margin = MARGIN * uiScale
+        val lineHeight = LINE_HEIGHT * uiScale
+
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
         batch.projectionMatrix = projection
         batch.begin()
 
         line.setLength(0)
         line.append("SPEED ").append(speed.roundToInt())
-        font.draw(batch, line, MARGIN, viewportHeight - MARGIN)
+        font.draw(batch, line, margin, viewportHeight - margin)
 
         line.setLength(0)
         line.append("HDG ").append(normalizeDegrees(headingRadians)).append(DEGREE)
-        font.draw(batch, line, MARGIN, viewportHeight - MARGIN - LINE_HEIGHT)
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight)
 
         line.setLength(0)
         line.append("FUEL ").append(fuelLevel.roundToInt()).append('/').append(fuelCapacity.roundToInt())
         if (lowFuel) line.append("  LOW")
         // Red cue while low; reset to white afterwards so other lines stay neutral next frame.
         font.color = if (lowFuel) Color.RED else Color.WHITE
-        font.draw(batch, line, MARGIN, viewportHeight - MARGIN - LINE_HEIGHT * 2f)
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 2f)
         font.color = Color.WHITE
 
         // UC13: a red "IN COMBAT" cue while an encounter is live, drawn alongside the per-section ship
@@ -59,7 +71,7 @@ class HudRenderer : Disposable {
             line.setLength(0)
             line.append("IN COMBAT")
             font.color = Color.RED
-            font.draw(batch, line, MARGIN, viewportHeight - MARGIN - LINE_HEIGHT * 3f)
+            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 3f)
             font.color = Color.WHITE
         }
 

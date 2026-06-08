@@ -18,8 +18,15 @@ import com.orbitalfrontier.combat.ShipSection
  * Drawn in screen space with a [ShapeRenderer] (mirrors [HudRenderer]'s screen-space text). Placeholder
  * programmatic art — no labels yet (the built-in font is the HudRenderer's; the bar order is the fixed
  * [ShipSection] declaration order). It only **reads** the damage + derived max HP (render reads state).
+ *
+ * [uiScale] (ADR 0015) magnifies the schematic: every base layout constant (margin, bar size, gaps) is
+ * multiplied by it at its use site, and the top offset matches HudRenderer's scaled three text lines so
+ * the schematic still sits just below them. Constants stay authored at base (×1) — [UiScale.factor] is
+ * the single knob.
  */
-class ShipSchematicRenderer : Disposable {
+class ShipSchematicRenderer(
+    private val uiScale: Float = UiScale.factor,
+) : Disposable {
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
 
@@ -36,8 +43,12 @@ class ShipSchematicRenderer : Disposable {
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
         shapeRenderer.projectionMatrix = projection
 
-        val left = MARGIN
-        var top = viewportHeight - TOP_OFFSET
+        // Base layout constants scaled at the use site — UiScale.factor stays the single knob.
+        val left = MARGIN * uiScale
+        val barWidth = BAR_WIDTH * uiScale
+        val barHeight = BAR_HEIGHT * uiScale
+        val barGap = BAR_GAP * uiScale
+        var top = viewportHeight - TOP_OFFSET * uiScale
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         for (section in ShipSection.entries) {
@@ -47,14 +58,14 @@ class ShipSchematicRenderer : Disposable {
 
             // Background track.
             shapeRenderer.color = TRACK_COLOR
-            shapeRenderer.rect(left, top - BAR_HEIGHT, BAR_WIDTH, BAR_HEIGHT)
+            shapeRenderer.rect(left, top - barHeight, barWidth, barHeight)
 
             // Filled portion, coloured by remaining fraction.
             if (fraction > 0f) {
                 shapeRenderer.color = colorFor(fraction)
-                shapeRenderer.rect(left, top - BAR_HEIGHT, BAR_WIDTH * fraction, BAR_HEIGHT)
+                shapeRenderer.rect(left, top - barHeight, barWidth * fraction, barHeight)
             }
-            top -= BAR_HEIGHT + BAR_GAP
+            top -= barHeight + barGap
         }
         shapeRenderer.end()
     }

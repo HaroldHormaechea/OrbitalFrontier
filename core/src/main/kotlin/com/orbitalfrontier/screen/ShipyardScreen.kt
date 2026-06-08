@@ -11,6 +11,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FleetOrder
@@ -40,7 +41,7 @@ class ShipyardScreen(
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val root = Table()
 
     init {
