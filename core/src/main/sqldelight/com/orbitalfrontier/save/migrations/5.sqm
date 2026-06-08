@@ -1,0 +1,16 @@
+-- Migration v5 -> v6 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v5 (UC07) held meta + settings + the save header (game_state) + ship kinematics + dock state +
+-- ship fuel + cargo + field_deposit. v6 (UC08) adds the player's credit balance. This migration is
+-- purely additive: it adds the `game_state.credits` column with DEFAULT 0, so an existing save row
+-- is backfilled to a zero balance. A migrated save therefore upgrades broke (a new game seeds a
+-- starting balance in code, not via this default), leaving all prior meta/settings/game_state/ship/
+-- cargo/field_deposit data untouched.
+--
+-- ALTER TABLE ... ADD COLUMN with a constant DEFAULT is supported by the bundled SQLite on
+-- minSdk-24 devices (it long predates 24), so this is minSdk-safe — same rationale as the v4 -> v5
+-- ship.fuel add.
+
+ALTER TABLE game_state ADD COLUMN credits INTEGER NOT NULL DEFAULT 0;
+
+UPDATE meta SET save_version = 6 WHERE id = 0;

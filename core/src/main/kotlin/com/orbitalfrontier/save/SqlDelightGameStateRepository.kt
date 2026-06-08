@@ -55,6 +55,10 @@ class SqlDelightGameStateRepository(
                         level = row.fuel.toFloat().coerceIn(0f, FuelParams.DEFAULT_TANK_CAPACITY),
                         capacity = FuelParams.DEFAULT_TANK_CAPACITY,
                     ),
+                // Credits (UC08): the player's wallet. coerceAtLeast(0) guards a corrupt/negative row so
+                // the balance is never negative — degrade gracefully, never crash. A v5 save migrated to
+                // v6 reads back 0 (the migration's backfill).
+                credits = row.credits.coerceAtLeast(0),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -83,6 +87,8 @@ class SqlDelightGameStateRepository(
                     current_sector = state.currentSector.value,
                     active_ship_id = ACTIVE_SHIP_ID,
                     docked_station_id = state.dockedStation?.value,
+                    // Credits (UC08): the player's wallet, persisted in the same atomic header write.
+                    credits = state.credits,
                 )
 
                 // Cargo: full-snapshot rewrite of the active ship's rows (delete-then-plain-INSERT,
