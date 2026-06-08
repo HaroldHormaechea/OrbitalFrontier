@@ -23,6 +23,8 @@ import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.TradeScreen
 import com.orbitalfrontier.ship.Fleet
+import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
@@ -174,6 +176,12 @@ class OrbitalFrontierGame(
                 fuelStatus = { playScreen?.fuelStatusLine() ?: "" },
                 // UC14: the station's owning faction (cosmetic), resolved from the authored catalog.
                 factionName = station.factionId?.let { Factions.byId(it)?.displayName },
+                // UC15: BUILD founds a personal station via the play screen's pure StationBuilder. Per
+                // ADR 0014 there is no dedicated build screen yet, so the action fires a default
+                // FoundStation order (the first catalogued module) directly; the full build/edit UI
+                // (module choice, expansion) is deferred. The row only shows at a build-capable station.
+                onBuild = { playScreen?.build(StationBuildOrder.FoundStation(StationModuleCatalog.MVP.all.first().id)) },
+                buildsStations = station.buildsStations,
             )
         stationHubScreen = hub
         setScreen(hub)

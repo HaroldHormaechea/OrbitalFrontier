@@ -65,6 +65,15 @@ data class Station(
      * the authored gated `:premium` offer is gated on this faction.
      */
     val factionId: FactionId? = null,
+    /**
+     * Whether the player can build / expand a **personal station** while docked here (UC15 AC#1) — the
+     * station-building capability flag, the [hiresCrew] analogue. Defaulted to `false` so an existing
+     * station — and every call site authored before UC15 — reads back as "no build service"; an
+     * authored build-capable station sets it `true`. Like the markets above, this is fixed authored map
+     * data carried with the world, not a persisted row, and it is a station **capability**, not a new
+     * [StationKind] (ADR 0014). [com.orbitalfrontier.station.StationBuilder] gates a build on this flag.
+     */
+    val buildsStations: Boolean = false,
 ) : Poi, Transponder {
     override val contactKind: ContactKind get() = ContactKind.STATION
 

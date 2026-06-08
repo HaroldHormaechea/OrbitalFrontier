@@ -8,6 +8,7 @@ import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.station.StationRegistry
 
 /**
  * Immutable snapshot of the player's place in the world: which sector they are in, the **fleet** they
@@ -83,6 +84,16 @@ data class WorldState(
      * ([com.orbitalfrontier.faction.ReputationGate]).
      */
     val reputation: Reputation = Reputation.EMPTY,
+    /**
+     * The player-owned stations (UC15 AC#1/#3) — save-wide, the station analogue of [fleet]. Defaults
+     * to [StationRegistry.EMPTY] (no owned stations) so a fresh game, and every pre-UC15 save with no
+     * `owned_station` rows, reads back with zero stations and replays byte-identically — the default
+     * keeps the snapshot byte-identical for a pre-UC15 playthrough. The pure
+     * [com.orbitalfrontier.station.StationBuilder] folds a build result back in; persistence stores one
+     * `owned_station` row per station plus its `station_module` rows (additive v13 — ADR 0014). In the
+     * MVP the registry only ever grows (stations are never removed, AC#3).
+     */
+    val stations: StationRegistry = StationRegistry.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

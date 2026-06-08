@@ -30,6 +30,11 @@ import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.ShipType
 import com.orbitalfrontier.ship.ShipTypeId
+import com.orbitalfrontier.station.OwnedStation
+import com.orbitalfrontier.station.StationId
+import com.orbitalfrontier.station.StationModuleCatalog
+import com.orbitalfrontier.station.StationModuleId
+import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
@@ -144,6 +149,9 @@ class SqlDelightGameStateRepository(
                 // Reputation (UC14): absent faction = neutral; only non-neutral standings are stored and
                 // each is coerced into the params' bounds, an unknown faction slug skipped (WARN).
                 reputation = loadReputation(),
+                // Owned stations (UC15): the player-built stations + their modules; an unknown module
+                // slug is skipped (WARN). Empty for a fresh / migrated pre-UC15 save (ADR 0014).
+                stations = loadStations(),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -273,6 +281,23 @@ class SqlDelightGameStateRepository(
                 for ((faction, value) in state.reputation.byFaction) {
                     if (value != 0) {
                         queries.insertReputation(faction_id = faction.value, value_ = value.toLong())
+                    }
+                }
+
+                // Owned stations (UC15): one upserted owned_station row per station + a full-snapshot
+                // rewrite of its station_module rows (delete-then-INSERT, minSdk-24-safe), exactly like a
+                // ship's upgrades. A station's module slot map is gap-tolerant, so only the filled
+                // (slot_index) rows are written. Stations only grow, so rows are never deleted at the
+                // station level (no delete-station query); the module rewrite is per-station (ADR 0014).
+                for (station in state.stations.stations) {
+                    queries.upsertOwnedStation(id = station.id.value, sector = station.sector.value)
+                    queries.deleteStationModulesForStation(station.id.value)
+                    for ((slotIndex, moduleId) in station.modules) {
+                        queries.insertStationModule(
+                            station_id = station.id.value,
+                            slot_index = slotIndex.toLong(),
+                            module_type = moduleId.value,
+                        )
                     }
                 }
             }
@@ -454,6 +479,52 @@ class SqlDelightGameStateRepository(
             if (value != 0) standings[faction] = value
         }
         return Reputation(standings)
+    }
+
+    /**
+     * Reconstruct the player's [StationRegistry] from `owned_station` + `station_module` (UC15). Each
+     * station's modules are grouped by station id (slot index -> module slug); an unknown module slug is
+     * **skipped with a WARN** (the rest of the station's modules still load — never stranded). Stations
+     * are sorted by id for a deterministic, registry-invariant order. Empty for a fresh / migrated
+     * pre-UC15 save (no rows) — read back as [StationRegistry.EMPTY].
+     */
+    private fun loadStations(): StationRegistry {
+        val modulesByStation = loadStationModulesByStation()
+        val stations =
+            queries.selectAllOwnedStations().executeAsList()
+                .map { row ->
+                    OwnedStation(
+                        id = StationId(row.id),
+                        sector = SectorId(row.sector),
+                        modules = modulesByStation[row.id] ?: emptyMap(),
+                    )
+                }
+                .sortedBy { it.id.value }
+        return StationRegistry(stations)
+    }
+
+    /**
+     * Group every station's persisted module rows by station id (UC15): slot index -> [StationModuleId].
+     * A module slug the [StationModuleCatalog] no longer knows is skipped with a WARN (the rest of the
+     * station's modules still load — never stranded).
+     */
+    private fun loadStationModulesByStation(): Map<Long, Map<Int, StationModuleId>> {
+        val byStation = LinkedHashMap<Long, LinkedHashMap<Int, StationModuleId>>()
+        for (entry in queries.selectAllStationModules().executeAsList()) {
+            val moduleId = parseStationModule(entry.module_type) ?: continue
+            byStation.getOrPut(entry.station_id) { LinkedHashMap() }[entry.slot_index.toInt()] = moduleId
+        }
+        return byStation
+    }
+
+    /** Map a persisted station-module slug to a catalogued [StationModuleId], or null (logged) if unknown. */
+    private fun parseStationModule(slug: String): StationModuleId? {
+        if (slug.isNotBlank()) {
+            val moduleId = StationModuleId(slug)
+            if (StationModuleCatalog.MVP.module(moduleId) != null) return moduleId
+        }
+        logger.warn(TAG, "Skipping unknown persisted station module '$slug' (catalog changed?)")
+        return null
     }
 
     /**

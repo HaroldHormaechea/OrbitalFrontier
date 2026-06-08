@@ -45,6 +45,12 @@ class StationHubScreen(
     // UC14: optional owning-faction display name; null for an unaligned station. Purely cosmetic and
     // defaulted so existing call sites / tests need not supply it (must not crash when absent).
     factionName: String? = null,
+    // UC15: BUILD action + whether this station is build-capable. The BUILD row is shown only at a
+    // build-capable station (the one MVP station with buildsStations=true); both default so existing
+    // call sites / tests need not supply them. Per the deferred-build-UI decision (ADR 0014) BUILD is a
+    // direct hub action (no dedicated build screen) routed to the play screen's pure StationBuilder.
+    private val onBuild: () -> Unit = {},
+    buildsStations: Boolean = false,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -96,6 +102,13 @@ class StationHubScreen(
         // turn in active missions). The play screen owns the pure Missions.resolve + MissionGenerator;
         // this button just fires the intent so the game switches to the MissionBoardScreen.
         root.add(serviceButton("MISSIONS", onMissions)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Active BUILD service (UC15 AC#1): only at a build-capable station. Founds/expands a personal
+        // station via the play screen's pure StationBuilder. Per ADR 0014 there is NO dedicated build
+        // screen yet — the action fires a default build order directly; the full build UI is deferred.
+        if (buildsStations) {
+            root.add(serviceButton("BUILD", onBuild)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        }
 
         // Active REFUEL service (UC07 AC#5): the play screen owns the pure Refueling.resolve; this row
         // shows the current tank and a button that fires the intent, then re-reads the readout.
