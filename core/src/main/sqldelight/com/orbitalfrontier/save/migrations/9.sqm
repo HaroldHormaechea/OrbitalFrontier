@@ -1,0 +1,31 @@
+-- Migration v9 -> v10 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v9 (UC11) held meta + settings + the save header (game_state, with credits + active_ship_id) +
+-- per-ship kinematics/type/fuel/crew/cargo/upgrades + field_deposit + revealed_contact, for a fleet of
+-- owned ships. v10 (UC12) adds **missions**: the player's accepted / terminal missions (ACTIVE,
+-- COMPLETED, FAILED). This migration is purely additive: it creates the new `mission` table (empty), so
+-- a migrated save reads back with no missions (an empty mission log) and replays byte-identically.
+-- Available offers are never stored — they are regenerated from the static authored world on load and
+-- filtered against the persisted mission ids (regenerate-and-filter, ADR 0011).
+--
+-- All prior meta/settings/game_state/ship/ship_upgrade/cargo/field_deposit/revealed_contact data is
+-- left untouched. CREATE TABLE is supported by the bundled SQLite on minSdk-24 devices (it long
+-- predates 24), so this is minSdk-safe — same rationale as the prior additive migrations.
+
+CREATE TABLE mission (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reward_credits INTEGER NOT NULL,
+    reward_resource TEXT,
+    reward_resource_units INTEGER NOT NULL DEFAULT 0,
+    quota_resource TEXT,
+    quota_units INTEGER NOT NULL DEFAULT 0,
+    pickup TEXT,
+    destination TEXT,
+    remaining_ticks INTEGER NOT NULL DEFAULT 0,
+    picked_up INTEGER NOT NULL DEFAULT 0
+);
+
+UPDATE meta SET save_version = 10 WHERE id = 0;

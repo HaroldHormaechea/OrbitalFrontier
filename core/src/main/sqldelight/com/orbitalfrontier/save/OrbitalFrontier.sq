@@ -1,10 +1,10 @@
--- Orbital Frontier save schema, version 9 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010).
+-- Orbital Frontier save schema, version 10 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011).
 --
--- This .sq file is ALWAYS the latest schema (currently v9). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v10). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
--- v8 -> v9). Never edit this baseline destructively to make a schema change — bump the version and
--- add a migration instead.
+-- v8 -> v9; 9.sqm: v9 -> v10). Never edit this baseline destructively to make a schema change — bump
+-- the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -34,6 +34,12 @@
 -- from type + loadout, NOT stored — like cargo/fuel capacity). The v8 -> v9 migration is additive: it
 -- adds the column with DEFAULT 0, so a migrated ship reads back with 0 crew. Turret operability is a
 -- pure derived flag (TurretOperability), not persisted; combat (UC13) is future work.
+-- v10 (UC12) adds the new `mission` table: the player's accepted / terminal missions — ACTIVE,
+-- COMPLETED and FAILED (ADR 0011). AVAILABLE offers are deliberately NOT stored: they are regenerated
+-- from the static authored world on load (MissionGenerator) and filtered against the persisted ids, so
+-- an accepted or resolved offer never re-appears (regenerate-and-filter). The v9 -> v10 migration is
+-- additive: it creates the (empty) table, so a migrated save reads back with no missions. Mission
+-- templates / generation are fixed authored logic, not stored — only live mission instances are rows.
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -130,6 +136,31 @@ CREATE TABLE field_deposit (
 -- longer contains is harmless (it resolves to nothing on load).
 CREATE TABLE revealed_contact (
     contact_id TEXT NOT NULL PRIMARY KEY
+);
+
+-- Accepted / terminal missions (UC12). One row per ACTIVE / COMPLETED / FAILED mission, keyed by the
+-- mission's stable id. AVAILABLE offers are NOT stored here — they are regenerated from the static
+-- authored world on load (MissionGenerator) and filtered against these ids, so an accepted or resolved
+-- offer never re-appears (regenerate-and-filter, ADR 0011). `type`/`source`/`status` are the
+-- MissionType/MissionSource/MissionStatus enum *names* (stable across reordering, unlike ordinals);
+-- `reward_resource`/`quota_resource` are ResourceType enum names (nullable). The courier columns
+-- (`pickup`/`destination` PoiId values, `remaining_ticks` model timer, `picked_up` 0/1) are NULL/0 for
+-- a mining mission and vice-versa. An unknown enum / resource / station name degrades on load (the row
+-- is skipped with a WARN — never stranded), so an evolved catalog never crashes a load.
+CREATE TABLE mission (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reward_credits INTEGER NOT NULL,
+    reward_resource TEXT,
+    reward_resource_units INTEGER NOT NULL DEFAULT 0,
+    quota_resource TEXT,
+    quota_units INTEGER NOT NULL DEFAULT 0,
+    pickup TEXT,
+    destination TEXT,
+    remaining_ticks INTEGER NOT NULL DEFAULT 0,
+    picked_up INTEGER NOT NULL DEFAULT 0
 );
 
 -- Read the stored save-format version (null before the meta row is seeded).
@@ -232,3 +263,24 @@ SELECT contact_id FROM revealed_contact;
 -- minSdk-24-safe form (no ON CONFLICT clause) matches the other write queries.
 insertRevealedContact:
 INSERT OR IGNORE INTO revealed_contact(contact_id) VALUES (?);
+
+-- Read every accepted / terminal mission (UC12), ordered by id for a deterministic load order. Empty
+-- when nothing has been accepted yet.
+selectAllMissions:
+SELECT id, type, source, status, reward_credits, reward_resource, reward_resource_units,
+       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up
+FROM mission
+ORDER BY id;
+
+-- Clear every mission row. The save path does delete-then-plain-INSERT (a full snapshot rewrite of the
+-- accepted/terminal missions) rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24
+-- devices lacks — the same rationale as the cargo / ship_upgrade snapshots.
+deleteAllMissions:
+DELETE FROM mission;
+
+-- Insert one mission row. Always preceded by deleteAllMissions in the same transaction, so a plain
+-- INSERT (not INSERT OR REPLACE) suffices and there is never a primary-key collision.
+insertMission:
+INSERT INTO mission(id, type, source, status, reward_credits, reward_resource, reward_resource_units,
+                    quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

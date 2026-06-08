@@ -3,6 +3,7 @@ package com.orbitalfrontier.world
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
 
@@ -38,6 +39,12 @@ import com.orbitalfrontier.ship.ShipKinematics
  * across the sector graph) and **monotonic**: a scan only ever adds ids ([Scanning.resolve]); revealed
  * contacts never re-hide, even on leaving range, and persist across save/reload (UC10 AC#4). Defaults
  * to empty — a fresh game has scanned nothing.
+ *
+ * [missions] (UC12) is the player's [MissionLog]. Persistence stores only its accepted/terminal
+ * missions ([MissionLog.accepted]); the available offers are **not** persisted — they are regenerated
+ * from the static authored world on load and filtered against the persisted ids (regenerate-and-filter,
+ * ADR 0011). Defaults to [MissionLog.EMPTY] — a fresh game has no missions — so a pre-UC12 save reads
+ * back with an empty log and replays byte-identically.
  */
 data class WorldState(
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
@@ -46,6 +53,7 @@ data class WorldState(
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
     val credits: Long = 0L,
     val revealedContacts: Set<PoiId> = emptySet(),
+    val missions: MissionLog = MissionLog.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics
