@@ -5,7 +5,9 @@ import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
@@ -95,6 +97,18 @@ class PlaythroughRecorder(
         resource: ResourceType,
         units: Int,
     ): PlaythroughRecorder = record(TradeEvent(tick = tick, kind = kind, resource = resource, units = units))
+
+    /** Convenience: record an [OutfitEvent] for [order] at [tick] (UC09). */
+    fun recordOutfit(
+        tick: Int,
+        order: OutfitOrder,
+    ): PlaythroughRecorder = record(OutfitEvent.from(tick, order))
+
+    /** Convenience: record a [FleetEvent] for [order] at [tick] (UC09). */
+    fun recordFleet(
+        tick: Int,
+        order: FleetOrder,
+    ): PlaythroughRecorder = record(FleetEvent.from(tick, order))
 
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {

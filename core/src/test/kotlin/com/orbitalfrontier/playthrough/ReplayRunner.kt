@@ -3,8 +3,10 @@ package com.orbitalfrontier.playthrough
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.platform.SeededRng
 import com.orbitalfrontier.platform.TickTimeSource
+import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
@@ -77,7 +79,20 @@ class ReplayRunner {
             val mineAction = mineActionFor(tickEvents)
             val refuelAction = refuelActionFor(tickEvents)
             val tradeOrder = tradeOrderFor(tickEvents)
-            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction, refuelAction, tradeOrder)
+            val outfitOrder = outfitOrderFor(tickEvents)
+            val fleetOrder = fleetOrderFor(tickEvents)
+            state =
+                simulation.step(
+                    state,
+                    input,
+                    playthrough.dtSeconds,
+                    dockAction,
+                    mineAction,
+                    refuelAction,
+                    tradeOrder,
+                    outfitOrder,
+                    fleetOrder,
+                )
             perTick?.add(state)
         }
 
@@ -134,4 +149,20 @@ class ReplayRunner {
                 TradeKind.SELL -> TradeOrder.Sell(event.resource, event.units)
             }
         } ?: TradeOrder.None
+
+    /**
+     * Reduce a tick's events to the [OutfitOrder] the sim steps with (UC09). When several outfit
+     * samples share a tick the latest wins; a tick with no [OutfitEvent] steps with [OutfitOrder.None],
+     * so non-outfitting artifacts (UC01..UC08) replay exactly as before.
+     */
+    private fun outfitOrderFor(events: List<InputEvent>): OutfitOrder =
+        events.filterIsInstance<OutfitEvent>().lastOrNull()?.toOutfitOrder() ?: OutfitOrder.None
+
+    /**
+     * Reduce a tick's events to the [FleetOrder] the sim steps with (UC09). When several fleet samples
+     * share a tick the latest wins; a tick with no [FleetEvent] steps with [FleetOrder.None], so
+     * non-fleet artifacts (UC01..UC08) replay exactly as before.
+     */
+    private fun fleetOrderFor(events: List<InputEvent>): FleetOrder =
+        events.filterIsInstance<FleetEvent>().lastOrNull()?.toFleetOrder() ?: FleetOrder.None
 }

@@ -69,7 +69,8 @@ class OutfittingTest {
                 credits = 1000L,
                 loadout = Loadout.EMPTY,
                 slotCounts = slotCounts,
-                outfitMarket = OutfitMarket.EMPTY, // offers nothing
+                // OutfitMarket.EMPTY offers nothing.
+                outfitMarket = OutfitMarket.EMPTY,
                 isJunkyard = false,
                 order = OutfitOrder.BuyInstall(engine),
             )
@@ -82,7 +83,8 @@ class OutfittingTest {
     fun `buy-install is a no-op when the player cannot afford it`() {
         val result =
             Outfitting.resolve(
-                credits = enginePrice - 1, // one credit short
+                // One credit short of the engine price.
+                credits = enginePrice - 1,
                 loadout = Loadout.EMPTY,
                 slotCounts = slotCounts,
                 outfitMarket = market,
@@ -150,7 +152,8 @@ class OutfittingTest {
                 loadout = loadout,
                 slotCounts = slotCounts,
                 outfitMarket = OutfitMarket.EMPTY,
-                isJunkyard = false, // a normal dealer
+                // A normal dealer (not a junkyard).
+                isJunkyard = false,
                 order = OutfitOrder.RemoveSell(SlotCategory.ENGINES, 0),
             )
 

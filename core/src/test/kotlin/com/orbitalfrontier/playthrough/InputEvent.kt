@@ -4,7 +4,13 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.outfit.OutfitOrder
+import com.orbitalfrontier.outfit.SlotCategory
+import com.orbitalfrontier.outfit.UpgradeId
+import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
+import com.orbitalfrontier.ship.ShipId
+import com.orbitalfrontier.ship.ShipTypeId
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import kotlinx.serialization.SerialName
@@ -143,3 +149,119 @@ data class TradeEvent(
     val resource: ResourceType,
     val units: Int,
 ) : InputEvent()
+
+/** Which [OutfitOrder] kind an [OutfitEvent] carries — the serialized discriminator for the order. */
+enum class OutfitOrderKind {
+    /** No outfitting (maps to [OutfitOrder.None]). */
+    NONE,
+
+    /** Buy + install an upgrade (maps to [OutfitOrder.BuyInstall]); [OutfitEvent.upgradeId] is set. */
+    BUY_INSTALL,
+
+    /** Remove + sell a used part at a junkyard (maps to [OutfitOrder.RemoveSell]); category+index set. */
+    REMOVE_SELL,
+}
+
+/**
+ * An outfitting control sample for one tick (UC09 AC#2/#3/#4) — one buy-install / remove-sell the
+ * station outfit desk feeds in while docked. Carried alongside the other per-tick events;
+ * [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs an [OutfitOrder] from it and dispatches
+ * it to [com.orbitalfrontier.sim.Simulation.step], where it is resolved inside the docked-freeze
+ * branch (so it only has an effect while docked).
+ *
+ * Flat serializable fields keep the domain [OutfitOrder] (a non-serializable sealed hierarchy)
+ * annotation-free: [kind] is the discriminator, [upgradeId] is the part slug for a BUY_INSTALL, and
+ * [slotCategory]/[slotIndex] address the slot for a REMOVE_SELL ([SlotCategory] is a plain enum,
+ * emitted by its constant name). A tick with no [OutfitEvent] reconstructs as [OutfitOrder.None].
+ */
+@Serializable
+@SerialName("outfit")
+data class OutfitEvent(
+    override val tick: Int,
+    val kind: OutfitOrderKind,
+    val upgradeId: String? = null,
+    val slotCategory: SlotCategory? = null,
+    val slotIndex: Int? = null,
+) : InputEvent() {
+    /** Reconstruct the domain [OutfitOrder] this event recorded. */
+    fun toOutfitOrder(): OutfitOrder =
+        when (kind) {
+            OutfitOrderKind.NONE -> OutfitOrder.None
+            OutfitOrderKind.BUY_INSTALL ->
+                OutfitOrder.BuyInstall(UpgradeId(requireNotNull(upgradeId) { "BUY_INSTALL requires an upgradeId" }))
+            OutfitOrderKind.REMOVE_SELL ->
+                OutfitOrder.RemoveSell(
+                    requireNotNull(slotCategory) { "REMOVE_SELL requires a slotCategory" },
+                    requireNotNull(slotIndex) { "REMOVE_SELL requires a slotIndex" },
+                )
+        }
+
+    companion object {
+        /** Snapshot an [OutfitOrder] into its serializable event form at [tick]. */
+        fun from(
+            tick: Int,
+            order: OutfitOrder,
+        ): OutfitEvent =
+            when (order) {
+                OutfitOrder.None -> OutfitEvent(tick, OutfitOrderKind.NONE)
+                is OutfitOrder.BuyInstall -> OutfitEvent(tick, OutfitOrderKind.BUY_INSTALL, upgradeId = order.upgradeId.value)
+                is OutfitOrder.RemoveSell ->
+                    OutfitEvent(tick, OutfitOrderKind.REMOVE_SELL, slotCategory = order.category, slotIndex = order.slotIndex)
+            }
+    }
+}
+
+/** Which [FleetOrder] kind a [FleetEvent] carries — the serialized discriminator for the order. */
+enum class FleetOrderKind {
+    /** No fleet action (maps to [FleetOrder.None]). */
+    NONE,
+
+    /** Buy a hull from the docked shipyard (maps to [FleetOrder.BuyShip]); [FleetEvent.shipType] is set. */
+    BUY_SHIP,
+
+    /** Switch the active ship (maps to [FleetOrder.SwitchActive]); [FleetEvent.shipId] is set. */
+    SWITCH_ACTIVE,
+}
+
+/**
+ * A fleet control sample for one tick (UC09 AC#5) — one buy-ship / switch-active the station shipyard
+ * / hub feeds in while docked. Carried alongside the other per-tick events;
+ * [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs a [FleetOrder] from it and dispatches it
+ * to [com.orbitalfrontier.sim.Simulation.step], where it is resolved inside the docked-freeze branch
+ * (so buying / switching only has an effect while docked).
+ *
+ * Flat serializable fields keep the domain [FleetOrder] annotation-free: [kind] is the discriminator,
+ * [shipType] is the [ShipTypeId] slug for a BUY_SHIP, and [shipId] is the [ShipId] value for a
+ * SWITCH_ACTIVE. A tick with no [FleetEvent] reconstructs as [FleetOrder.None].
+ */
+@Serializable
+@SerialName("fleet")
+data class FleetEvent(
+    override val tick: Int,
+    val kind: FleetOrderKind,
+    val shipType: String? = null,
+    val shipId: Long? = null,
+) : InputEvent() {
+    /** Reconstruct the domain [FleetOrder] this event recorded. */
+    fun toFleetOrder(): FleetOrder =
+        when (kind) {
+            FleetOrderKind.NONE -> FleetOrder.None
+            FleetOrderKind.BUY_SHIP ->
+                FleetOrder.BuyShip(ShipTypeId(requireNotNull(shipType) { "BUY_SHIP requires a shipType" }))
+            FleetOrderKind.SWITCH_ACTIVE ->
+                FleetOrder.SwitchActive(ShipId(requireNotNull(shipId) { "SWITCH_ACTIVE requires a shipId" }))
+        }
+
+    companion object {
+        /** Snapshot a [FleetOrder] into its serializable event form at [tick]. */
+        fun from(
+            tick: Int,
+            order: FleetOrder,
+        ): FleetEvent =
+            when (order) {
+                FleetOrder.None -> FleetEvent(tick, FleetOrderKind.NONE)
+                is FleetOrder.BuyShip -> FleetEvent(tick, FleetOrderKind.BUY_SHIP, shipType = order.typeId.value)
+                is FleetOrder.SwitchActive -> FleetEvent(tick, FleetOrderKind.SWITCH_ACTIVE, shipId = order.shipId.value)
+            }
+    }
+}

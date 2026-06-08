@@ -5,9 +5,14 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.outfit.OutfitOrder
+import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
+import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
@@ -41,6 +46,19 @@ object PlaythroughFixtures {
 
     /** UC08 trade playthrough name: start docked at Alpha Station with cargo and sell it for credits. */
     const val UC08_TRADE: String = "uc08-trade"
+
+    /**
+     * UC09 outfitting playthrough name: start docked at Alpha Station with credits, buy + install an
+     * engine upgrade (active ship's max speed rises), buy a second ship, and switch the active ship.
+     */
+    const val UC09_OUTFIT: String = "uc09-outfit"
+
+    /**
+     * Starting credit balance the UC09 outfit fixture seeds — comfortably above the engine-tune-i
+     * (300) + Swift hull (1800) total so both purchases clear. Authored as a literal so the fixture
+     * stays self-contained.
+     */
+    const val UC09_STARTING_CREDITS: Long = 5000L
 
     /**
      * Starting credit balance the UC08 trade fixture seeds (mirrors the new-game wallet seed). Authored
@@ -77,6 +95,7 @@ object PlaythroughFixtures {
             UC06_MINE to ::uc06Mine,
             UC07_LOW_FUEL to ::uc07LowFuel,
             UC08_TRADE to ::uc08Trade,
+            UC09_OUTFIT to ::uc09Outfit,
         )
 
     /**
@@ -309,6 +328,44 @@ object PlaythroughFixtures {
         // Tick 0: sell all the Titanium to Alpha Station. The docked freeze resolves the trade once; the
         // trailing held ticks (1..3) carry no trade event, proving credits + cargo stay put while docked.
         recorder.recordTrade(0, TradeKind.SELL, ResourceType.TITANIUM, UC08_TITANIUM_UNITS)
+        recorder.extendToTick(3)
+        return recorder.build()
+    }
+
+    /**
+     * UC09 outfitting scenario (AC#8): the ship starts **docked at Alpha Station** in
+     * [MvpSectorMap.START_SECTOR] (Alpha) — a DEALER whose outfit desk stocks `engine-tune-i` and whose
+     * shipyard sells the Swift — with a single starter ship and a [UC09_STARTING_CREDITS] wallet. The
+     * docked composition (refuel→trade→outfit→fleet) resolves one order per tick:
+     *  - tick 0: **BuyInstall(engine-tune-i)** — installs the engine into the active starter ship, so
+     *    its effective max speed rises (the engine delta is added by [com.orbitalfrontier.outfit.ShipStats]);
+     *  - tick 1: **BuyShip(Swift)** — adds a second ship (id 1) to the fleet for 1800 credits;
+     *  - tick 2: **SwitchActive(ship 1)** — makes the Swift the active ship (activeShipId changes 0→1).
+     *
+     * The single trailing held tick proves the docked state stays put with no further orders. Starting
+     * docked keeps the artifact tiny while exercising the full outfit + fleet path against the real
+     * [MvpSectorMap] data; [Uc09OutfitReplayTest] asserts the speed rise and the active-ship change.
+     */
+    fun uc09Outfit(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC09_OUTFIT,
+                seed = 9L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at Alpha Station (its outfit desk + shipyard resolve from MvpSectorMap),
+                        // a single starter ship at rest, with a wallet that covers both purchases.
+                        fleet = singleShipFleet(),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC09_STARTING_CREDITS,
+                    ),
+            )
+        // One docked order per tick so each effect is isolated and replay-verifiable.
+        recorder.recordOutfit(0, OutfitOrder.BuyInstall(UpgradeCatalog.ENGINE_TUNE_I))
+        recorder.recordFleet(1, FleetOrder.BuyShip(ShipRoster.SWIFT.id))
+        recorder.recordFleet(2, FleetOrder.SwitchActive(ShipId(1)))
+        // One trailing held tick: docked + no order ⇒ everything stays put.
         recorder.extendToTick(3)
         return recorder.build()
     }

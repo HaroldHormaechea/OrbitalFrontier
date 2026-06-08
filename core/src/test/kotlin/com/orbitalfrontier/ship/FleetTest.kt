@@ -156,7 +156,13 @@ class FleetTest {
     @Test
     fun `buy-ship is a no-op when the yard does not offer the type`() {
         val fleet = Fleet.starter()
-        val result = FleetResolver.resolve(fleet, credits = 99_999L, shipyard = Shipyard.EMPTY, order = FleetOrder.BuyShip(ShipRoster.SWIFT.id))
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 99_999L,
+                shipyard = Shipyard.EMPTY,
+                order = FleetOrder.BuyShip(ShipRoster.SWIFT.id),
+            )
 
         assertFalse(result.changed)
         assertEquals(99_999L, result.credits)
@@ -198,7 +204,13 @@ class FleetTest {
     @Test
     fun `switch-active is a no-op when the target is already active`() {
         val fleet = Fleet.starter()
-        val result = FleetResolver.resolve(fleet, credits = 0L, shipyard = Shipyard.EMPTY, order = FleetOrder.SwitchActive(OwnedShip.STARTER_SHIP_ID))
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 0L,
+                shipyard = Shipyard.EMPTY,
+                order = FleetOrder.SwitchActive(OwnedShip.STARTER_SHIP_ID),
+            )
 
         assertFalse(result.changed)
     }
