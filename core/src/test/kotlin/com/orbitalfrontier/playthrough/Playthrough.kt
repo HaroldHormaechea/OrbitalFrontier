@@ -32,6 +32,10 @@ import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.ShipTypeId
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.station.OwnedStation
+import com.orbitalfrontier.station.StationId
+import com.orbitalfrontier.station.StationModuleId
+import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
@@ -519,6 +523,15 @@ data class StateSnapshotDto(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val reputation: ReputationDto = ReputationDto.EMPTY,
+    /**
+     * The player's owned stations (UC15 AC#1/#3) — the save-wide registry carried on
+     * [SimulationState.stations]. Marked `@EncodeDefault(NEVER)` and defaulted to [StationsDto.EMPTY] so an
+     * empty registry (every pre-UC15 fixture, and a fresh game) **omits** it on disk — keeping the existing
+     * committed fixtures byte-identical despite the codec's global `encodeDefaults = true`. A non-empty
+     * registry is written as a list of [OwnedStationDto] (id + anchor sector + slot→module-slug map).
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val stations: StationsDto = StationsDto.EMPTY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -538,6 +551,8 @@ data class StateSnapshotDto(
             lastDockedStation = lastDockedStation?.let(::PoiId),
             // UC14: the per-faction standing (an absent / omitted field decodes to neutral EMPTY).
             reputation = reputation.toReputation(),
+            // UC15: the player's owned stations (an absent / omitted field decodes to the empty registry).
+            stations = stations.toStationRegistry(),
         )
 
     /**
@@ -602,6 +617,64 @@ data class StateSnapshotDto(
                 lastDockedStation = state.lastDockedStation?.value,
                 // UC14: the per-faction standing — neutral EMPTY omits on disk (byte-identical pre-UC14).
                 reputation = ReputationDto.from(state.reputation),
+                // UC15: the player's owned stations — empty registry omits on disk (byte-identical pre-UC15).
+                stations = StationsDto.from(state.stations),
+            )
+    }
+}
+
+/**
+ * Serializable mirror of [StationRegistry] (UC15 AC#1/#3). Stores the player's owned stations as a list of
+ * [OwnedStationDto]. [EMPTY] (the no-stations default) is the value [StateSnapshotDto.stations] omits via
+ * `@EncodeDefault(NEVER)`, so a fresh game and every pre-UC15 fixture serialize without a stations field at
+ * all. On decode the registry is rebuilt sorted by id (the domain [StationRegistry] requires sorted-unique
+ * ids), so the on-disk order need not be authoritative.
+ */
+@Serializable
+data class StationsDto(
+    val stations: List<OwnedStationDto> = emptyList(),
+) {
+    /** Reconstruct the domain [StationRegistry] (sorted by id, as the domain invariant requires). */
+    fun toStationRegistry(): StationRegistry =
+        StationRegistry(stations.map { it.toOwnedStation() }.sortedBy { it.id.value })
+
+    companion object {
+        /** The empty registry — a fresh game and every pre-UC15 / migrated save. */
+        val EMPTY: StationsDto = StationsDto()
+
+        /** Snapshot [registry] into its serializable form (one [OwnedStationDto] per owned station). */
+        fun from(registry: StationRegistry): StationsDto = StationsDto(registry.stations.map(OwnedStationDto::from))
+    }
+}
+
+/**
+ * Serializable mirror of one [OwnedStation] (UC15 AC#1/#2/#3) — its [id], anchor [sector] slug, and the
+ * gap-tolerant `slotIndex → module-slug` [modules] map (the [StationModuleId] is the persisted slug; the
+ * module's function/cost are authored catalog data, never stored — resolved through
+ * [com.orbitalfrontier.station.StationModuleCatalog] on use). Mirrors the production `owned_station` +
+ * `station_module` row shape (UC15 persistence) and keeps the domain types annotation-free.
+ */
+@Serializable
+data class OwnedStationDto(
+    val id: Long,
+    val sector: String,
+    val modules: Map<Int, String> = emptyMap(),
+) {
+    /** Reconstruct the domain [OwnedStation]. */
+    fun toOwnedStation(): OwnedStation =
+        OwnedStation(
+            id = StationId(id),
+            sector = SectorId(sector),
+            modules = modules.mapValues { StationModuleId(it.value) },
+        )
+
+    companion object {
+        /** Snapshot [station] into its serializable form. */
+        fun from(station: OwnedStation): OwnedStationDto =
+            OwnedStationDto(
+                id = station.id.value,
+                sector = station.sector.value,
+                modules = station.modules.mapValues { it.value.value },
             )
     }
 }
