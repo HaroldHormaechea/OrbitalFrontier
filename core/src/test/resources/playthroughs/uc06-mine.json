@@ -42,7 +42,25 @@
     "cargo": {},
     "fieldDepletion": {},
     "fuel": 100.0,
-    "credits": 0
+    "credits": 0,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": -600.0,
+        "posY": -510.0,
+        "velX": 0.0,
+        "velY": 120.0,
+        "headingRadians": 1.5707964,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {}
+      }
+    ],
+    "activeShipId": 0
   },
   "inputEvents": [
     {

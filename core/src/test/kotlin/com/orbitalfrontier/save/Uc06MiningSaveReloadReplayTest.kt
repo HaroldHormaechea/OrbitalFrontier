@@ -47,9 +47,8 @@ class Uc06MiningSaveReloadReplayTest {
     private fun worldStateFrom(state: SimulationState): WorldState =
         WorldState(
             currentSector = state.currentSector,
-            ship = state.ship,
+            fleet = state.fleet,
             dockedStation = state.dockedStation,
-            cargo = state.cargo,
             fieldDepletion = state.fieldDepletion,
         )
 

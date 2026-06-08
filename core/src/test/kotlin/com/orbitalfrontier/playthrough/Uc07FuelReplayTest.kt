@@ -32,7 +32,16 @@ class Uc07FuelReplayTest {
     /** The same playthrough with its initial tank swapped to full — the control for the comparison. */
     private fun toFullFuelControl(depleted: Playthrough): Playthrough {
         val initial = requireNotNull(depleted.initialState) { "the low-fuel fixture must carry an initial snapshot" }
-        return depleted.copy(initialState = initial.copy(fuel = FuelParams.DEFAULT_TANK_CAPACITY))
+        // UC09: the fixture carries an authoritative ownedShips list, so swapping the tank to full means
+        // updating the ACTIVE ship's fuelLevel — the flat `fuel` field is ignored when ownedShips is
+        // present (StateSnapshotDto.toFleet). The flat field is set too, harmlessly, for human-diffability.
+        val fullTankShips =
+            initial.ownedShips.map { ship ->
+                if (ship.id == initial.activeShipId) ship.copy(fuelLevel = FuelParams.DEFAULT_TANK_CAPACITY) else ship
+            }
+        return depleted.copy(
+            initialState = initial.copy(fuel = FuelParams.DEFAULT_TANK_CAPACITY, ownedShips = fullTankShips),
+        )
     }
 
     @Test

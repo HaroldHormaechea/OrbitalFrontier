@@ -8,6 +8,7 @@ import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
@@ -122,11 +123,14 @@ object PlaythroughFixtures {
                 dtSeconds = DT_SECONDS,
                 initialState =
                     SimulationState(
-                        ship =
-                            ShipKinematics(
-                                position = Vec2(1180f, 0f),
-                                velocity = Vec2(120f, 0f),
-                                headingRadians = 0f,
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = Vec2(1180f, 0f),
+                                        velocity = Vec2(120f, 0f),
+                                        headingRadians = 0f,
+                                    ),
                             ),
                         // currentSector defaults to MvpSectorMap.START_SECTOR (alpha).
                     ),
@@ -155,11 +159,14 @@ object PlaythroughFixtures {
                 dtSeconds = DT_SECONDS,
                 initialState =
                     SimulationState(
-                        ship =
-                            ShipKinematics(
-                                position = Vec2(0f, 480f),
-                                velocity = Vec2(0f, 120f),
-                                headingRadians = (Math.PI / 2).toFloat(),
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = Vec2(0f, 480f),
+                                        velocity = Vec2(0f, 120f),
+                                        headingRadians = (Math.PI / 2).toFloat(),
+                                    ),
                             ),
                         // currentSector defaults to MvpSectorMap.START_SECTOR (alpha).
                     ),
@@ -201,13 +208,16 @@ object PlaythroughFixtures {
                 dtSeconds = DT_SECONDS,
                 initialState =
                     SimulationState(
-                        ship =
-                            ShipKinematics(
-                                // x aligned with the field centre; ~110 wu south of it (just out of
-                                // the radius-100 circle) so a few ticks of northward thrust enter it.
-                                position = Vec2(-600f, -510f),
-                                velocity = Vec2(0f, 120f),
-                                headingRadians = (Math.PI / 2).toFloat(),
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        // x aligned with the field centre; ~110 wu south of it (just out of
+                                        // the radius-100 circle) so a few ticks of northward thrust enter it.
+                                        position = Vec2(-600f, -510f),
+                                        velocity = Vec2(0f, 120f),
+                                        headingRadians = (Math.PI / 2).toFloat(),
+                                    ),
                             ),
                         // currentSector defaults to MvpSectorMap.START_SECTOR (alpha).
                     ),
@@ -247,10 +257,9 @@ object PlaythroughFixtures {
                 powerConfig = UC07_THIRSTY_POWER,
                 initialState =
                     SimulationState(
-                        // At rest at the origin.
-                        ship = ShipKinematics(),
-                        // Start just above the 0.20 threshold so the burn crosses it during the run.
-                        fuel = Fuel(level = 24f, capacity = 100f),
+                        // At rest at the origin, with a near-empty tank just above the 0.20 threshold
+                        // so the burn crosses it during the run.
+                        fleet = singleShipFleet(fuel = Fuel(level = 24f, capacity = 100f)),
                     ),
             )
         val north = MovementInput(targetDirection = Vec2(0f, 1f), magnitude = 1f, released = false)
@@ -287,10 +296,12 @@ object PlaythroughFixtures {
                     SimulationState(
                         // Docked at Alpha Station so the trade desk's authored market resolves; at rest,
                         // in the start sector (currentSector defaults to MvpSectorMap.START_SECTOR / alpha).
-                        ship = ShipKinematics(),
-                        dockedStation = PoiId("alpha-station"),
                         // A hold of sellable Titanium — Alpha pays the map's highest sell (50/unit) for it.
-                        cargo = Cargo(mapOf(ResourceType.TITANIUM to UC08_TITANIUM_UNITS), Cargo.DEFAULT_CAPACITY),
+                        fleet =
+                            singleShipFleet(
+                                cargo = Cargo(mapOf(ResourceType.TITANIUM to UC08_TITANIUM_UNITS), Cargo.DEFAULT_CAPACITY),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
                         // A non-zero starting wallet so the sale's gain is measured from a known baseline.
                         credits = UC08_STARTING_CREDITS,
                     ),

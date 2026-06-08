@@ -12,6 +12,7 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
@@ -57,17 +58,25 @@ class SqlDelightGameStateRepositoryTest {
 
     private fun newRepository() = SqlDelightGameStateRepository(database, logger)
 
-    /** A non-trivial world state with awkward Float values, to make an exact round-trip meaningful. */
-    private fun sampleState(): WorldState =
+    /** The active ship's awkward-Float kinematics shared by every sample state (exact round-trip bait). */
+    private val sampleKinematics =
+        ShipKinematics(
+            position = Vec2(123.456f, -987.654f),
+            velocity = Vec2(0.125f, -64.0f),
+            headingRadians = 1.5707963f,
+            angularVelocity = -0.3333333f,
+        )
+
+    /**
+     * A non-trivial world state with awkward Float values, to make an exact round-trip meaningful.
+     * [cargo] is on the active ship of the (single starter ship) fleet; override it to exercise the
+     * hold (UC09 moved cargo/fuel onto [com.orbitalfrontier.ship.OwnedShip], so it can no longer be
+     * set via `WorldState.copy`).
+     */
+    private fun sampleState(cargo: Cargo = Cargo.empty()): WorldState =
         WorldState(
             currentSector = SectorId("beta"),
-            ship =
-                ShipKinematics(
-                    position = Vec2(123.456f, -987.654f),
-                    velocity = Vec2(0.125f, -64.0f),
-                    headingRadians = 1.5707963f,
-                    angularVelocity = -0.3333333f,
-                ),
+            fleet = singleShipFleet(kinematics = sampleKinematics, cargo = cargo),
         )
 
     // --- AC#1: first run has no save ---
@@ -135,12 +144,13 @@ class SqlDelightGameStateRepositoryTest {
     @Test
     fun `cargo and field depletion round-trip exactly through a reload`() {
         val state =
-            sampleState().copy(
+            sampleState(
                 cargo =
                     Cargo(
                         mapOf(ResourceType.HYDROGEN to 12, ResourceType.IRON_ORE to 7),
                         Cargo.DEFAULT_CAPACITY,
                     ),
+            ).copy(
                 fieldDepletion =
                     mapOf(
                         // An exhausted resource (0 remaining) and a partially-mined one in one field…
@@ -174,7 +184,7 @@ class SqlDelightGameStateRepositoryTest {
     @Test
     fun `cargo entries with zero units are not persisted`() {
         // Cargo.add never stores zeros, but a hand-built contents map could; the repo skips them.
-        val withZero = sampleState().copy(cargo = Cargo(mapOf(ResourceType.COPPER to 0, ResourceType.NICKEL to 4), Cargo.DEFAULT_CAPACITY))
+        val withZero = sampleState(cargo = Cargo(mapOf(ResourceType.COPPER to 0, ResourceType.NICKEL to 4), Cargo.DEFAULT_CAPACITY))
         newRepository().saveGameState(withZero)
 
         val reloaded = newRepository().loadGameState()
@@ -186,13 +196,13 @@ class SqlDelightGameStateRepositoryTest {
     fun `the latest cargo snapshot wins (a shrinking hold drops old rows)`() {
         val repo = newRepository()
         repo.saveGameState(
-            sampleState().copy(
+            sampleState(
                 cargo = Cargo(mapOf(ResourceType.HYDROGEN to 9, ResourceType.IRON_ORE to 4), Cargo.DEFAULT_CAPACITY),
             ),
         )
         // A later save with fewer resources must not leave stale rows behind (full-snapshot rewrite).
         repo.saveGameState(
-            sampleState().copy(cargo = Cargo(mapOf(ResourceType.HYDROGEN to 2), Cargo.DEFAULT_CAPACITY)),
+            sampleState(cargo = Cargo(mapOf(ResourceType.HYDROGEN to 2), Cargo.DEFAULT_CAPACITY)),
         )
 
         assertEquals(mapOf(ResourceType.HYDROGEN to 2), newRepository().loadGameState()?.cargo?.contents)
@@ -214,7 +224,7 @@ class SqlDelightGameStateRepositoryTest {
         val later =
             WorldState(
                 currentSector = SectorId("gamma"),
-                ship = ShipKinematics(position = Vec2(7f, 8f), velocity = Vec2(-1f, 2f), headingRadians = 0.5f),
+                fleet = singleShipFleet(kinematics = ShipKinematics(position = Vec2(7f, 8f), velocity = Vec2(-1f, 2f), headingRadians = 0.5f)),
             )
         repo.saveGameState(later)
 
@@ -239,7 +249,7 @@ class SqlDelightGameStateRepositoryTest {
         val doomed =
             WorldState(
                 currentSector = SectorId("gamma"),
-                ship = ShipKinematics(position = Vec2(999f, 999f)),
+                fleet = singleShipFleet(kinematics = ShipKinematics(position = Vec2(999f, 999f))),
             )
         // Autosave-style: the failure is caught and logged, never propagated.
         failingRepo.saveGameState(doomed)

@@ -42,7 +42,7 @@ class Uc05DockSaveReloadReplayTest {
 
     /** The production game-state value the save layer persists, derived from a replayed snapshot. */
     private fun worldStateFrom(state: SimulationState): WorldState =
-        WorldState(currentSector = state.currentSector, ship = state.ship, dockedStation = state.dockedStation)
+        WorldState(currentSector = state.currentSector, fleet = state.fleet, dockedStation = state.dockedStation)
 
     @Test
     fun `a replayed dock playthrough saves while docked and reloads docked`() {
