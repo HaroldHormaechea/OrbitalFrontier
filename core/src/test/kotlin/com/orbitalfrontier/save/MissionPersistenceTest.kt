@@ -203,11 +203,11 @@ class MissionPersistenceTest {
             assertEquals("prior data is preserved", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
             assertEquals("the save version is bumped to 10", 10L, queries.selectSaveVersion().executeAsOne())
 
-            // Continue the chain to the current schema so the now-v11-aware repository (which reads the
-            // ship_section_damage table + game_state.last_docked_station_id, added by v11) can load — the
-            // canonical v10 -> v11 migration assertions live in SaveMigrationTest.
-            OrbitalFrontier.Schema.migrate(v9, 10L, 11L)
-            assertEquals("the chain reaches the current save version", 11L, queries.selectSaveVersion().executeAsOne())
+            // Continue the chain to the current schema so the now-v12-aware repository (which reads the
+            // ship_section_damage table + game_state.last_docked_station_id added by v11, and the reputation
+            // table added by v12) can load — the canonical v10->v11 / v11->v12 assertions live in SaveMigrationTest.
+            OrbitalFrontier.Schema.migrate(v9, 10L, 12L)
+            assertEquals("the chain reaches the current save version", 12L, queries.selectSaveVersion().executeAsOne())
 
             // The migrated save loads through the repository with an empty mission log, and a freshly
             // saved mission round-trips on top of it (the new table is writable, not just present).

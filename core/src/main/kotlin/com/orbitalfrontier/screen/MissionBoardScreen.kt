@@ -10,6 +10,8 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.faction.Factions
+import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionType
@@ -46,6 +48,11 @@ class MissionBoardScreen(
     private val creditsSupplier: () -> Long,
     private val onMissionOrder: (MissionOrder) -> Unit,
     private val onBack: () -> Unit,
+    // UC14: reputation-gated offers the player hasn't unlocked yet (shown as LOCKED rows) and the
+    // player's current per-faction standing (shown as a readout). Defaulted so non-UC14 call sites and
+    // tests need not supply them.
+    private val lockedSupplier: () -> List<Mission> = { emptyList() },
+    private val reputationSupplier: () -> Reputation = { Reputation.EMPTY },
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -69,6 +76,9 @@ class MissionBoardScreen(
         root.add(Label(stationName, skin.labelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("MISSION BOARD", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         root.add(Label("CREDITS: ${creditsSupplier()}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
+        // UC14: current per-faction reputation readout.
+        root.add(Label("REPUTATION: ${describeReputation(reputationSupplier())}", skin.labelStyle))
+            .colspan(COLSPAN).padBottom(SERVICE_GAP).row()
 
         // Available board offers (ACCEPT). Empty ⇒ a "no offers" note.
         root.add(Label("AVAILABLE", skin.labelStyle)).colspan(COLSPAN).padBottom(ROW_GAP).row()
@@ -78,6 +88,17 @@ class MissionBoardScreen(
         } else {
             for (mission in available) {
                 addMissionRow(mission, "ACCEPT") { onMissionOrder(MissionOrder.Accept(mission.id)) }
+            }
+        }
+
+        // UC14 locked (reputation-gated) offers — surfaced read-only so the player sees what reputation
+        // unlocks. No ACCEPT button (the offer is not yet available); the row shows its gate.
+        val locked = lockedSupplier()
+        if (locked.isNotEmpty()) {
+            root.add(Label("LOCKED", skin.labelStyle)).colspan(COLSPAN).padTop(SECTION_GAP).padBottom(ROW_GAP).row()
+            for (mission in locked) {
+                root.add(Label(describeLocked(mission), skin.labelStyle))
+                    .colspan(COLSPAN).left().padBottom(ROW_GAP).row()
             }
         }
 
@@ -128,6 +149,23 @@ class MissionBoardScreen(
         )
         root.add(Label(describe(mission), skin.labelStyle)).left().padRight(CELL_GAP).padBottom(ROW_GAP)
         root.add(button).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+    }
+
+    /** A one-line LOCKED-row description: the offer plus the faction + standing it needs to unlock. */
+    private fun describeLocked(mission: Mission): String {
+        val faction = mission.unlockFaction
+        val factionName = faction?.let { Factions.byId(it)?.displayName ?: it.value } ?: "?"
+        return "${describe(mission)}  [needs $factionName ${mission.unlockThreshold}]"
+    }
+
+    /** A compact readout of the player's non-neutral standings, or "neutral" when there are none. */
+    private fun describeReputation(reputation: Reputation): String {
+        val nonNeutral = reputation.byFaction.entries.filter { it.value != 0 }
+        if (nonNeutral.isEmpty()) return "neutral"
+        return nonNeutral.joinToString("  ") { (id, value) ->
+            val name = Factions.byId(id)?.displayName ?: id.value
+            "$name $value"
+        }
     }
 
     /** A short, human-readable one-line description of [mission] for the board row. */

@@ -7,6 +7,10 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Factions
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.ReputationParams
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionId
 import com.orbitalfrontier.mission.MissionLog
@@ -137,6 +141,9 @@ class SqlDelightGameStateRepository(
                 // Last docked station (UC13): the respawn point. NULL column (a fresh / migrated v10 save)
                 // -> never docked yet, so destruction leaves the player in place until their first dock.
                 lastDockedStation = header.last_docked_station_id?.let { PoiId(it) },
+                // Reputation (UC14): absent faction = neutral; only non-neutral standings are stored and
+                // each is coerced into the params' bounds, an unknown faction slug skipped (WARN).
+                reputation = loadReputation(),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -252,7 +259,21 @@ class SqlDelightGameStateRepository(
                         destination = mission.destination?.value,
                         remaining_ticks = mission.remainingTicks.toLong(),
                         picked_up = if (mission.pickedUp) 1L else 0L,
+                        // Faction attribution (UC14): the faction this mission credits/costs reputation
+                        // to; NULL for a faction-less mission. The gate is not persisted (offers are).
+                        faction_id = mission.factionId?.value,
                     )
+                }
+
+                // Reputation (UC14): full-snapshot rewrite of the non-neutral per-faction standings
+                // (delete-then-plain-INSERT, minSdk-24-safe), like the mission table. Only non-neutral
+                // standings are stored — a faction at neutral (0) is simply absent (the Reputation map
+                // already holds only non-neutral entries, so this writes exactly the non-zero rows).
+                queries.deleteAllReputation()
+                for ((faction, value) in state.reputation.byFaction) {
+                    if (value != 0) {
+                        queries.insertReputation(faction_id = faction.value, value_ = value.toLong())
+                    }
                 }
             }
             logger.info(
@@ -408,9 +429,43 @@ class SqlDelightGameStateRepository(
                     destination = row.destination?.let { PoiId(it) },
                     remainingTicks = row.remaining_ticks.toInt().coerceAtLeast(0),
                     pickedUp = row.picked_up != 0L,
+                    // Faction attribution (UC14): best-effort — an unknown faction slug degrades to "no
+                    // attribution" (the mission still loads; it just grants no reputation on turn-in). The
+                    // gate (unlockFaction/unlockThreshold) is not persisted — accepted missions are never re-gated.
+                    factionId = parseFaction(row.faction_id),
                 )
         }
         return missions
+    }
+
+    /**
+     * Reconstruct the player's per-faction reputation from the `reputation` table (UC14). Each row's
+     * value is coerced into the [ReputationParams] bounds; a faction whose slug the [Factions] catalog no
+     * longer knows is **skipped with a WARN** (never stranded). A standing that coerces to neutral (0) is
+     * dropped, keeping the in-memory map canonical (only non-neutral entries) — so a fully-neutral or
+     * migrated-empty save reads back as [Reputation.EMPTY].
+     */
+    private fun loadReputation(): Reputation {
+        val params = ReputationParams()
+        val standings = LinkedHashMap<FactionId, Int>()
+        for (row in queries.selectReputation().executeAsList()) {
+            val faction = parseFaction(row.faction_id) ?: continue
+            val value = row.value_.toInt().coerceIn(params.min, params.max)
+            if (value != 0) standings[faction] = value
+        }
+        return Reputation(standings)
+    }
+
+    /**
+     * Map a persisted faction slug to a catalogued [FactionId] (UC14), or null (logged) when it is null /
+     * blank / not in the [Factions] catalog (an evolved/removed faction) — best-effort, never stranded.
+     */
+    private fun parseFaction(slug: String?): FactionId? {
+        if (slug.isNullOrBlank()) return null
+        val id = FactionId(slug)
+        if (Factions.byId(id) != null) return id
+        logger.warn(TAG, "Skipping unknown persisted faction '$slug' (catalog changed?)")
+        return null
     }
 
     /** Map a persisted mission-type name to its [MissionType], or null (logged) if unknown. */

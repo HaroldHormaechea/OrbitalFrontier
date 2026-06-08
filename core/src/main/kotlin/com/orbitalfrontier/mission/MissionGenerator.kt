@@ -3,6 +3,7 @@ package com.orbitalfrontier.mission
 import com.orbitalfrontier.common.DeterministicRng
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
@@ -39,6 +40,16 @@ import com.orbitalfrontier.world.Station
  */
 object MissionGenerator {
     /**
+     * Reputation a player must have with a faction station for its gated `:premium` offer to surface
+     * (UC14 AC#3/#6). Authored `<=` the default [com.orbitalfrontier.faction.ReputationParams]
+     * `missionCompleteDelta` (10), so a single completed faction mission opens the gate. [TUNE]
+     */
+    private const val PREMIUM_UNLOCK_THRESHOLD: Int = 10
+
+    /** Flat extra credits a `:premium` offer pays over a regular courier of the same span. [TUNE] */
+    private const val PREMIUM_REWARD_BONUS: Long = 600L
+
+    /**
      * The mission-board offers for the station with [stationId] (UC12 AC#2): a MINING offer (when the
      * station's sector has minable resources) and a COURIER offer (when another station exists to
      * deliver to). All offers are [MissionStatus.AVAILABLE]; the caller filters them against
@@ -50,7 +61,7 @@ object MissionGenerator {
         params: MissionParams = MissionParams(),
     ): List<Mission> {
         val (sectorId, station) = locateStation(world, stationId) ?: return emptyList()
-        val offers = ArrayList<Mission>(2)
+        val offers = ArrayList<Mission>(3)
 
         miningOffer(
             world = world,
@@ -61,9 +72,19 @@ object MissionGenerator {
             quotaMin = params.boardMiningQuotaMin,
             quotaMax = params.boardMiningQuotaMax,
             params = params,
+            // UC14: stamp the board mining offer with the station's owning faction, so completing it
+            // credits that faction's reputation (and, at Alpha, unlocks Alpha's gated premium offer).
+            factionId = station.factionId,
         )?.let { offers += it }
 
         courierOffer(world, station, params)?.let { offers += it }
+
+        // UC14: the gated `:premium` board offer for a faction station — a higher-paying courier that is
+        // surfaced only once the player has earned enough reputation with the station's faction. Authored
+        // here from STATIC world state only (its faction + gate are fixed); the SEPARATE ReputationGate
+        // filter (applied after this list is built + the takenIds filter) decides visibility. Independently
+        // string-seeded, so appending it never perturbs the bytes of the mining/courier offers above.
+        premiumOffer(world, station, params)?.let { offers += it }
 
         return offers
     }
@@ -98,6 +119,8 @@ object MissionGenerator {
                 quotaMin = params.radioMiningQuotaMin,
                 quotaMax = params.radioMiningQuotaMax,
                 params = params,
+                // UC14: a radio mining offer is credited to its broadcasting station's faction.
+                factionId = station.factionId,
             )?.let { offers += it }
         }
         return offers
@@ -118,6 +141,7 @@ object MissionGenerator {
         quotaMin: Int,
         quotaMax: Int,
         params: MissionParams,
+        factionId: FactionId? = null,
     ): Mission? {
         // Resources present in this sector's fields, with their total authored units. Ordered by the
         // stable ResourceType.name string (NOT ordinal/hashCode) so selection is reorder-proof.
@@ -141,6 +165,7 @@ object MissionGenerator {
             rewardCredits = reward,
             quotaResource = resource,
             quotaUnits = quota,
+            factionId = factionId,
         )
     }
 
@@ -177,6 +202,59 @@ object MissionGenerator {
             destination = destination.id,
             remainingTicks = ticks,
             pickedUp = false,
+            // UC14: a courier is credited to its PICKUP (source) station's faction — even though the
+            // parcel is delivered at the destination, the contract is the source faction's.
+            factionId = station.factionId,
+        )
+    }
+
+    /**
+     * Build the gated `:premium` board offer for [station] (UC14 AC#3), or null when [station] has no
+     * owning faction (an unaligned station has no premium contract) or there is no other station to
+     * deliver to. A premium offer is a higher-paying [MissionType.COURIER] (always instanceable while a
+     * second station exists, regardless of local minable resources — so even a resource-less faction
+     * station like the Gamma junkyard gets one) carrying the reputation **gate**: its [Mission.unlockFaction]
+     * is the station's faction and its [Mission.unlockThreshold] is [PREMIUM_UNLOCK_THRESHOLD]. The gate
+     * is authored here from STATIC state only; the SEPARATE [com.orbitalfrontier.faction.ReputationGate]
+     * decides visibility from live reputation, so generation stays a pure function of the authored world.
+     *
+     * Independently string-seeded (`board:<station>:premium`), so it never perturbs the other offers'
+     * bytes. [PREMIUM_UNLOCK_THRESHOLD] is `<=` the default [com.orbitalfrontier.faction.ReputationParams]
+     * `missionCompleteDelta`, so completing one faction mission at the station opens its gate (UC14 AC#6).
+     */
+    private fun premiumOffer(
+        world: SectorWorld,
+        station: Station,
+        params: MissionParams,
+    ): Mission? {
+        val faction = station.factionId ?: return null
+        val others =
+            allStations(world)
+                .filter { it.id != station.id }
+                .sortedBy { it.id.value }
+        if (others.isEmpty()) return null
+
+        val rng = MissionRng(fnv1a("board:${station.id.value}:premium"))
+        val destination = others[rng.nextInt(others.size)]
+        val ticks = rng.nextIntInRange(params.courierTickLimitMin, params.courierTickLimitMax)
+        // A premium reward: the courier base + span, plus a flat premium bonus.
+        val reward = params.courierRewardBase + rng.nextInt(params.courierRewardSpan + 1).toLong() + PREMIUM_REWARD_BONUS
+
+        return Mission(
+            id = MissionId("board:${station.id.value}:premium"),
+            type = MissionType.COURIER,
+            source = MissionSource.BOARD,
+            status = MissionStatus.AVAILABLE,
+            rewardCredits = reward,
+            pickup = station.id,
+            destination = destination.id,
+            remainingTicks = ticks,
+            pickedUp = false,
+            // The premium offer is itself a faction contract (completing it credits reputation) AND is
+            // gated on that same faction's standing.
+            factionId = faction,
+            unlockFaction = faction,
+            unlockThreshold = PREMIUM_UNLOCK_THRESHOLD,
         )
     }
 

@@ -1,8 +1,8 @@
 # Design Note — Missions
 
-- **Status:** in-progress (MVP mining + courier **implemented in UC12** — see ADR 0011; markers/faction-gen/combat still deferred)
+- **Status:** in-progress (MVP mining + courier **implemented in UC12** — see ADR 0011; **faction attribution + reputation gating implemented in UC14** — see ADR 0013; map/HUD markers + combat missions still deferred)
 - **Last updated:** 2026-06-08
-- **Related:** PROJECT_BRIEF.md → in_scope #2, core_gameplay_loop (Earn); [world-and-sector.md](world-and-sector.md) (stations, asteroids), [economy-and-resources.md](economy-and-resources.md) (rewards, cargo), [upgrades-and-progression.md](upgrades-and-progression.md) (crew rewards), [combat.md](combat.md) (combat missions, later phase), [save-and-persistence.md](save-and-persistence.md) (mission persistence), [adr/0011-missions.md](../adr/0011-missions.md) (the MVP decision record)
+- **Related:** PROJECT_BRIEF.md → in_scope #2, core_gameplay_loop (Earn); [world-and-sector.md](world-and-sector.md) (stations, asteroids), [economy-and-resources.md](economy-and-resources.md) (rewards, cargo), [upgrades-and-progression.md](upgrades-and-progression.md) (crew rewards), [combat.md](combat.md) (combat missions, later phase), [save-and-persistence.md](save-and-persistence.md) (mission persistence), [adr/0011-missions.md](../adr/0011-missions.md) (the MVP decision record), [adr/0013-factions-and-reputation.md](../adr/0013-factions-and-reputation.md) (factions & reputation)
 
 ## MVP implementation (UC12)
 
@@ -74,6 +74,33 @@ Missions **can fail or time out**, with **predefined consequences** per mission/
 
 **Concurrency:** the player can hold **multiple missions at once**.
 
+## Factions & reputation (UC14)
+
+The deferred "station faction state drives availability" hook is now implemented (ADR 0013) as a
+small, deterministic layer on top of the UC12 mission system — **without** touching generation's
+purity:
+
+- **Faction attribution.** Stations now carry an owning `factionId` (authored map data: Alpha + Beta
+  → `league`, Gamma junkyard → `independents`). `MissionGenerator` **stamps** each offer with its
+  source-station faction (a courier with its **pickup** station's faction). Completing a faction
+  mission grants reputation to that faction; a courier timeout costs it. This is the only place
+  reputation changes — the pure `Missions.resolve` / `Missions.advance`, action-driven.
+- **Reputation gating.** Reputation changes a mission offer's **visibility only — never its id or
+  content**. Gating is a **separate pure filter** (`ReputationGate.isAvailable`) applied **after**
+  `MissionGenerator` + the `takenIds` filter, at all three surface sites (board, radio, simulation).
+  `MissionGenerator` never reads reputation, so each offer stays independently string-seeded and
+  adding a gated offer does not perturb existing offers' bytes — the ADR 0011 determinism invariant
+  holds unchanged, and pre-UC14 replays stay byte-identical.
+- **Gated `:premium` offers.** Each faction station authors one gated `board:<station>:premium`
+  courier, surfaced only once the player's standing with the station's faction reaches its threshold.
+  The threshold (10) is `<=` the mission-complete delta (10), so completing one faction mission at a
+  station opens its premium gate (UC14 AC#6).
+- **Tunables.** `ReputationParams` (`missionCompleteDelta`, `courierFailDelta`, `min`, `max`) is
+  pinnable per recorded playthrough, like `MissionParams`.
+
+Still deferred (hooks recorded in ADR 0013, none required by UC14): reward modulation by standing,
+combat-driven reputation, and faction-state dynamic pricing (the UC08 economy tie-in).
+
 ## Player-facing behavior
 
 - **Mission log** (MVP): view available/active/completed missions, accept and track them.
@@ -105,9 +132,10 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 
 - **Active-mission markers:** how to surface them on map/HUD (still deferred, post-MVP — the mission
   log / board is the MVP surface).
-- **Faction/sector-driven generation:** exactly how faction/sector state shapes which
-  missions appear and their rewards. _UC12 instances from static sector/asteroid state only;
-  faction state does not exist yet (UC14)._
+- **Faction/sector-driven generation:** _Resolved in UC14 (ADR 0013):_ stations carry an owning
+  faction; offers are stamped with it and **reputation-gated** via a separate post-generation filter
+  (`ReputationGate`). Generation stays a pure function of static state. **Reward** modulation by
+  standing remains deferred (a recorded hook).
 - **Reward balancing + radio cadence:** still placeholders — all live as `[TUNE]` constants in
   `MissionParams` (pinnable per recorded playthrough), so tuning never affects determinism.
 
@@ -127,7 +155,8 @@ deterministic string-hash→LCG from static authored state.
 - Rewards can include **credits, items/loot, crew, reputation** (no pilot XP — horizontal
   progression).
 - Missions **can fail/time out with predefined consequences**.
-- **Reputation system: yes, but post-MVP.** Active-mission **markers: post-MVP.**
+- **Reputation system: implemented in UC14** (per-faction standing, action-driven, gates offers via a
+  separate pure filter — ADR 0013). Active-mission **markers: still post-MVP.**
 
 ## References
 

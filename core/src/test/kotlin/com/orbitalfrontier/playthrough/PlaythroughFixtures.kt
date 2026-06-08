@@ -8,6 +8,7 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionId
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.outfit.OutfitOrder
@@ -88,6 +89,14 @@ object PlaythroughFixtures {
     const val UC13_COMBAT: String = "uc13-combat"
 
     /**
+     * UC14 factions playthrough name (AC#6): start docked at Alpha (a LEAGUE station) with neutral
+     * reputation, complete the board faction mining mission, and end with +10 LEAGUE reputation — enough
+     * to unlock Alpha's gated `:premium` offer. [Uc14FactionReplayTest] asserts the premium is ABSENT at
+     * rep 0, PRESENT after the turn-in, and that the standing rose by exactly the mission-complete delta.
+     */
+    const val UC14_FACTION: String = "uc14-faction"
+
+    /**
      * Starting credit balance the UC11 crew fixture seeds — comfortably above one hire's cost
      * ([com.orbitalfrontier.crew.Hiring.HIRE_COST_PER_CREW] = 100) so the single hire clears and the
      * post-hire wallet is a known non-zero baseline. Authored as a literal so the fixture stays
@@ -142,6 +151,7 @@ object PlaythroughFixtures {
             UC11_CREW to ::uc11Crew,
             UC12_MISSION to ::uc12Mission,
             UC13_COMBAT to ::uc13Combat,
+            UC14_FACTION to ::uc14Faction,
         )
 
     /**
@@ -578,6 +588,77 @@ object PlaythroughFixtures {
         // / docked, so the exact arrival tick need not be hand-computed).
         val backThrust = MovementInput(targetDirection = inbound, magnitude = 1f, released = false)
         val returnStart = 1 + outboundTicks
+        for (i in 0 until UC12_RETURN_TICKS) {
+            val tick = returnStart + i
+            recorder.recordMovement(tick, backThrust)
+            recorder.recordDockAction(tick, DockAction.DOCK)
+            recorder.recordMission(tick, MissionOrder.TurnIn(UC12_BOARD_MINING))
+        }
+        return recorder.build()
+    }
+
+    /**
+     * UC14 factions & reputation scenario (AC#6) — the same dock → mine → turn-in round trip as
+     * [uc12Mission], but recorded as the dedicated faction artifact: the accepted board mining mission is
+     * a LEAGUE contract (Alpha is a LEAGUE station, so [com.orbitalfrontier.mission.MissionGenerator]
+     * stamps `factionId = league` on it), so completing it grants +10 LEAGUE reputation — clearing the
+     * `board:alpha-station:premium` offer's threshold of 10.
+     *
+     * The ship starts **docked at Alpha Station** with neutral reputation ([Reputation.EMPTY]) and a zero
+     * wallet, already facing the alpha-belt. The script (identical recipe to UC12, which is proven to mine
+     * the 8-Hydrogen quota and dock back to turn in):
+     *  - **tick 0** (docked): accept `board:alpha-station:mining`.
+     *  - **outbound**: undock and thrust to the alpha-belt holding MINE (gathers Hydrogen past the quota).
+     *  - **return**: thrust back holding DOCK + re-issuing TurnIn until docked, which completes the mission,
+     *    pays the 400-credit reward, and grants +10 LEAGUE reputation.
+     *
+     * [Uc14FactionReplayTest] asserts the AC#6 contract end-to-end: the premium offer is absent at rep 0,
+     * the standing rises by exactly the mission-complete delta (+10), and the premium then surfaces — plus
+     * determinism. Geometry + flight profile are reused from the UC12 mission fixture (the same constants).
+     */
+    fun uc14Faction(): Playthrough {
+        val outbound = UC12_BELT - UC12_STATION // station -> belt
+        val inbound = UC12_STATION - UC12_BELT // belt -> station
+        val recorder =
+            PlaythroughRecorder(
+                name = UC14_FACTION,
+                seed = 14L,
+                dtSeconds = DT_SECONDS,
+                config = UC12_FAST_FLIGHT,
+                initialState =
+                    SimulationState(
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = UC12_STATION,
+                                        headingRadians = atan2(outbound.y, outbound.x),
+                                    ),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = 0L,
+                        // Start neutral — the AC#6 contract is that the run EARNS the reputation that
+                        // unlocks the premium offer (it isn't seeded with it).
+                        reputation = Reputation.EMPTY,
+                    ),
+            )
+
+        // Tick 0 (docked): accept the LEAGUE board mining mission. The ship is frozen this tick.
+        recorder.recordMission(0, MissionOrder.Accept(UC12_BOARD_MINING))
+
+        // Outbound leg: undock on the first flight tick, then thrust toward the belt holding MINE.
+        val outThrust = MovementInput(targetDirection = outbound, magnitude = 1f, released = false)
+        for (i in 0 until UC12_OUTBOUND_TICKS) {
+            val tick = 1 + i
+            recorder.recordMovement(tick, outThrust)
+            recorder.recordMineAction(tick, MineAction.MINE)
+            if (i == 0) recorder.recordDockAction(tick, DockAction.UNDOCK)
+        }
+
+        // Return leg: thrust back, holding DOCK + re-issuing TurnIn each tick so the mission completes on
+        // the first docked tick (both no-op until in range / docked, so no exact tick need be computed).
+        val backThrust = MovementInput(targetDirection = inbound, magnitude = 1f, released = false)
+        val returnStart = 1 + UC12_OUTBOUND_TICKS
         for (i in 0 until UC12_RETURN_TICKS) {
             val tick = returnStart + i
             recorder.recordMovement(tick, backThrust)

@@ -18,6 +18,8 @@ import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.faction.ReputationGate
+import com.orbitalfrontier.faction.ReputationParams
 import com.orbitalfrontier.mission.MissionGenerator
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionParams
@@ -91,6 +93,7 @@ class Simulation(
     private val fuelParams: FuelParams = FuelParams(),
     private val missionParams: MissionParams = MissionParams(),
     private val combatParams: CombatParams = CombatParams(),
+    private val reputationParams: ReputationParams = ReputationParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -244,7 +247,14 @@ class Simulation(
             // stretch stays bit-for-bit stable and pre-UC12 fixtures step byte-identically.
             val dockedStationId = state.dockedStation
             val dockedActive = fleetAfterHire.active
-            val boardOffers = MissionGenerator.boardOffers(world, dockedStationId, missionParams)
+            // UC14: the reputation gate is a SEPARATE filter applied AFTER the takenIds filter (the board
+            // site of the three symmetric gating sites — mirroring PlayScreen.stationMissionBoard). It only
+            // hides offers the player hasn't unlocked; generation stays a pure function of static state, so a
+            // gated `:premium` offer never perturbs the bytes of the mining/courier offers it sits beside.
+            val boardOffers =
+                MissionGenerator.boardOffers(world, dockedStationId, missionParams)
+                    .filter { it.id !in state.missions.takenIds }
+                    .filter { ReputationGate.isAvailable(it, state.reputation) }
             val missionResolve =
                 Missions.resolve(
                     log = state.missions,
@@ -254,9 +264,18 @@ class Simulation(
                     cargo = dockedActive.cargo,
                     credits = hire.credits,
                     params = missionParams,
+                    reputation = state.reputation,
+                    reputationParams = reputationParams,
                 )
             val missionAdvance =
-                Missions.advance(missionResolve.log, missionResolve.credits, missionResolve.cargo, missionParams)
+                Missions.advance(
+                    missionResolve.log,
+                    missionResolve.credits,
+                    missionResolve.cargo,
+                    missionParams,
+                    missionResolve.reputation,
+                    reputationParams,
+                )
             // Fold the post-mission cargo back onto the active ship only when it actually changed (a mining
             // turn-in consumes the quota / a resource bonus lands); otherwise keep the same instance.
             val fleetAfterMission =
@@ -271,6 +290,9 @@ class Simulation(
                 fleet = fleetAfterMission,
                 credits = missionAdvance.credits,
                 missions = missionAdvance.log,
+                // UC14: the per-faction standing after this tick's resolve + advance. A faction mission
+                // turn-in moved it; otherwise it is the SAME instance as state.reputation (byte-identical).
+                reputation = missionAdvance.reputation,
                 // UC13: a docked ship's "last docked station" is where it is parked — the respawn point on
                 // destruction (set on dock, retained after undock). Combat never runs on the docked-freeze
                 // path (encounter zones sit in open space, away from stations), so combat threads through
@@ -361,7 +383,12 @@ class Simulation(
         // through and step byte-identically.
         val missionResolve =
             if (nextDocked == null) {
-                val radioOffers = MissionGenerator.radioOffers(world, nextSector, nextShip.position, missionParams)
+                // UC14: the reputation gate — the SEPARATE filter applied AFTER the takenIds filter (the radio
+                // site of the three symmetric gating sites — mirroring PlayScreen's radio-offer surfacing).
+                val radioOffers =
+                    MissionGenerator.radioOffers(world, nextSector, nextShip.position, missionParams)
+                        .filter { it.id !in state.missions.takenIds }
+                        .filter { ReputationGate.isAvailable(it, state.reputation) }
                 Missions.resolve(
                     log = state.missions,
                     offers = radioOffers,
@@ -370,12 +397,21 @@ class Simulation(
                     cargo = mining.cargo,
                     credits = state.credits,
                     params = missionParams,
+                    reputation = state.reputation,
+                    reputationParams = reputationParams,
                 )
             } else {
-                MissionResult(state.missions, state.credits, mining.cargo, false)
+                MissionResult(state.missions, state.credits, mining.cargo, state.reputation, false)
             }
         val missionAdvance =
-            Missions.advance(missionResolve.log, missionResolve.credits, missionResolve.cargo, missionParams)
+            Missions.advance(
+                missionResolve.log,
+                missionResolve.credits,
+                missionResolve.cargo,
+                missionParams,
+                missionResolve.reputation,
+                reputationParams,
+            )
 
         // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
         // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
@@ -443,6 +479,8 @@ class Simulation(
                         credits = missionAdvance.credits,
                         revealedContacts = revealedContacts,
                         missions = missionAdvance.log,
+                        // UC14: standing after this tick's mission resolve/advance (SAME instance if untouched).
+                        reputation = missionAdvance.reputation,
                         combat = respawn.combat,
                         lastDockedStation = lastDockedStation,
                     )
@@ -469,6 +507,9 @@ class Simulation(
             revealedContacts = revealedContacts,
             // The mission log after this tick's resolve + advance (UC12); the SAME instance on a no-op tick.
             missions = missionAdvance.log,
+            // UC14: the per-faction standing after this tick (SAME instance on a no-op tick — a radio turn-in
+            // can't happen in flight, but a courier expiry via advance can move it).
+            reputation = missionAdvance.reputation,
             // UC13: the live encounter (NONE same-instance on a no-op tick) and the persisted respawn point.
             combat = combat,
             lastDockedStation = lastDockedStation,

@@ -1,6 +1,7 @@
 package com.orbitalfrontier.mission
 
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.world.PoiId
 
 /**
@@ -85,6 +86,20 @@ enum class MissionSource {
  *
  * [rewardCredits] is the credit payout on completion; [rewardResource]/[rewardResourceUnits] are an
  * optional resource bonus added to the hold on turn-in (null/0 = credits-only, the MVP default).
+ *
+ * **UC14 — factions & reputation (all defaulted/additive, so every pre-UC14 call site is unchanged).**
+ *  - [factionId] is the faction that **credits the reputation gain** on completion (UC14 AC#4): the
+ *    mission's source-station faction for a board/mining mission, and the **pickup (source) station's**
+ *    faction for a courier (credited on delivery even though the parcel is dropped at the destination).
+ *    `null` ⇒ a faction-less mission (no reputation effect). Stamped by [MissionGenerator] from static
+ *    world state only — never from runtime reputation — so generation stays a pure function of the
+ *    authored world (the determinism invariant, ADR 0011/0013).
+ *  - [unlockFaction] + [unlockThreshold] are the **reputation gate** (UC14 AC#3): an offer with a
+ *    non-null [unlockFaction] is surfaced only when the player's standing with it is `>=`
+ *    [unlockThreshold]. `null` unlockFaction (the default, and every pre-UC14 offer) ⇒ ungated, always
+ *    available. The gate is applied by the SEPARATE pure [com.orbitalfrontier.faction.ReputationGate]
+ *    filter AFTER generation + the takenIds filter — it changes only an offer's *visibility*, never its
+ *    id or content, so adding a gated offer does not perturb any existing offer's bytes.
  */
 data class Mission(
     val id: MissionId,
@@ -102,6 +117,10 @@ data class Mission(
     val destination: PoiId? = null,
     val remainingTicks: Int = 0,
     val pickedUp: Boolean = false,
+    // UC14 faction attribution + reputation gate (defaulted ⇒ additive / back-compatible).
+    val factionId: FactionId? = null,
+    val unlockFaction: FactionId? = null,
+    val unlockThreshold: Int = 0,
 ) {
     init {
         require(rewardCredits >= 0) { "Mission $id rewardCredits must not be negative: $rewardCredits" }

@@ -4,6 +4,7 @@ import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
@@ -73,6 +74,16 @@ data class SimulationState(
      * Defaults null so every pre-UC13 fixture constructs unchanged.
      */
     val lastDockedStation: PoiId? = null,
+    /**
+     * The player's per-faction [Reputation] (UC14 AC#2), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.reputation]. Save-wide standing (like [credits]); the pure
+     * [Simulation] mutates it only through [com.orbitalfrontier.mission.Missions.resolve] (a faction
+     * mission turn-in grants reputation) and `Missions.advance` (a courier expiry costs it), and reads
+     * it via [com.orbitalfrontier.faction.ReputationGate] to filter which board/radio offers surface.
+     * Defaults to [Reputation.EMPTY] (every faction neutral) and stays the SAME instance on a no-op tick,
+     * so every pre-UC14 fixture constructs and **steps byte-identically** (the byte-identical contract).
+     */
+    val reputation: Reputation = Reputation.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

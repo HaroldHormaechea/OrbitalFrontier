@@ -67,6 +67,7 @@ class ReplayRunner {
                 fuelParams = playthrough.fuelConfig.toFuelParams(),
                 missionParams = playthrough.missionConfig.toMissionParams(),
                 combatParams = playthrough.combatConfig.toCombatParams(),
+                reputationParams = playthrough.reputationConfig.toReputationParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()

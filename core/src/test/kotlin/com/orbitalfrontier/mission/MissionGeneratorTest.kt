@@ -2,10 +2,12 @@ package com.orbitalfrontier.mission
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -29,13 +31,66 @@ class MissionGeneratorTest {
     private val betaStation = PoiId("beta-station")
 
     @Test
-    fun `alpha-station board surfaces one mining and one courier offer`() {
+    fun `a faction station board surfaces a mining, a courier, and the gated premium offer`() {
+        // UC14: Alpha is a LEAGUE station, so beyond the UC12 mining + courier offers the generator now
+        // also emits the gated `:premium` courier (a faction contract). Generation is reputation-blind —
+        // the offer is always RETURNED here; the ReputationGate filter (a separate site) decides visibility.
         val offers = MissionGenerator.boardOffers(world, alphaStation)
 
-        assertEquals("a board surfaces exactly one mining + one courier offer", 2, offers.size)
-        assertEquals(setOf(MissionType.MINING, MissionType.COURIER), offers.map { it.type }.toSet())
+        assertEquals("a faction board surfaces mining + courier + premium", 3, offers.size)
+        assertEquals(
+            setOf(
+                MissionId("board:alpha-station:mining"),
+                MissionId("board:alpha-station:courier"),
+                MissionId("board:alpha-station:premium"),
+            ),
+            offers.map { it.id }.toSet(),
+        )
         offers.forEach { assertEquals("board offers are AVAILABLE until accepted", MissionStatus.AVAILABLE, it.status) }
         offers.forEach { assertEquals(MissionSource.BOARD, it.source) }
+    }
+
+    @Test
+    fun `the generator stamps each alpha offer with the owning league faction`() {
+        // AC#4: completing any of these credits LEAGUE reputation, so every offer carries factionId=league
+        // (stamped from the station's owning faction — static world state, never runtime reputation).
+        val offers = MissionGenerator.boardOffers(world, alphaStation)
+        offers.forEach {
+            assertEquals("offer ${it.id.value} is stamped with the station's faction", FactionId("league"), it.factionId)
+        }
+    }
+
+    @Test
+    fun `the gamma junkyard board surfaces a premium even with no minable resources`() {
+        // AC#3: the gated premium is a courier (not a mining offer), so an Independents station with no
+        // local fields still gets one — it is stamped + gated on the Independents faction.
+        val gamma = PoiId("gamma-junkyard")
+        val offers = MissionGenerator.boardOffers(world, gamma)
+
+        val premium = offers.single { it.id == MissionId("board:gamma-junkyard:premium") }
+        assertEquals(MissionType.COURIER, premium.type)
+        assertEquals(FactionId("independents"), premium.factionId)
+        assertEquals(FactionId("independents"), premium.unlockFaction)
+        assertEquals(10, premium.unlockThreshold)
+    }
+
+    @Test
+    fun `the alpha premium offer is a league-gated courier paying the regular courier plus the 600 bonus`() {
+        val courier =
+            MissionGenerator.boardOffers(world, alphaStation).single { it.id == MissionId("board:alpha-station:courier") }
+        val premium =
+            MissionGenerator.boardOffers(world, alphaStation).single { it.id == MissionId("board:alpha-station:premium") }
+
+        assertEquals(MissionType.COURIER, premium.type)
+        assertEquals("premium is gated on the station's own faction", FactionId("league"), premium.unlockFaction)
+        assertEquals("its threshold is reachable by one mission turn-in (<= +10)", 10, premium.unlockThreshold)
+        assertEquals(alphaStation, premium.pickup)
+        // The premium pays a flat 600 over a regular courier of the same generated span — and since the
+        // regular courier here pays 535, the premium's reward clears 535 + 600.
+        assertTrue(
+            "premium reward (${premium.rewardCredits}) clears regular courier + the 600 bonus",
+            premium.rewardCredits >= courier.rewardCredits.coerceAtMost(535L) + 600L,
+        )
     }
 
     @Test
@@ -50,7 +105,10 @@ class MissionGeneratorTest {
 
     @Test
     fun `the alpha-station board courier offer is the golden alpha to beta, 156 ticks, for 535 credits`() {
-        val courier = MissionGenerator.boardOffers(world, alphaStation).single { it.type == MissionType.COURIER }
+        // Select by id: a faction station now surfaces TWO couriers (the regular + the gated premium), so
+        // a `.single { type == COURIER }` would be ambiguous. The regular courier's golden values are pinned.
+        val courier =
+            MissionGenerator.boardOffers(world, alphaStation).single { it.id == MissionId("board:alpha-station:courier") }
 
         assertEquals(MissionId("board:alpha-station:courier"), courier.id)
         assertEquals(alphaStation, courier.pickup)

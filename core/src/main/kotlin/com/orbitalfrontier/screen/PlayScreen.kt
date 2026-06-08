@@ -36,6 +36,9 @@ import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.ReputationGate
+import com.orbitalfrontier.faction.ReputationParams
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionGenerator
 import com.orbitalfrontier.mission.MissionLog
@@ -205,6 +208,14 @@ class PlayScreen(
     // Mission tunables (UC12). Authored defaults; the same params feed the generator and the pure
     // [Missions.resolve]/[Missions.advance] here, so live mission behaviour matches the replay harness.
     private val missionParams = MissionParams()
+
+    // Reputation (UC14): the player's per-faction standing, seeded from the loaded/initial snapshot.
+    // Save-wide (like credits). Mutated only by the pure [Missions.resolve] (a faction mission turn-in)
+    // and [Missions.advance] (a courier expiry), and read by [ReputationGate] to filter which mission
+    // offers surface (board + radio). [currentWorldState] hands it to the autosave. The same
+    // [reputationParams] feed the resolvers here and the replay harness, so live behaviour matches.
+    private var reputation: Reputation = initialWorldState.reputation
+    private val reputationParams = ReputationParams()
 
     // Courier timer drive (UC12): the model timer is TICK-based ([Missions.advance] decrements one
     // `remainingTicks` per call); the device paces those calls off accumulated real time so the
@@ -499,8 +510,12 @@ class PlayScreen(
         // edge-triggered ACCEPT takes the first via the same pure [Missions.resolve] the sim uses.
         val radioOffers =
             if (dockedStation == null) {
+                // UC14: the reputation gate is a SEPARATE filter applied AFTER the takenIds filter (one of
+                // the three symmetric sites) — generation stays a pure function of static state; this only
+                // hides offers the player hasn't unlocked.
                 MissionGenerator.radioOffers(sectorWorld, currentSector, ship.position, missionParams)
                     .filter { it.id !in missionLog.takenIds }
+                    .filter { ReputationGate.isAvailable(it, reputation) }
             } else {
                 emptyList()
             }
@@ -510,11 +525,22 @@ class PlayScreen(
             val offer = radioOffers.firstOrNull()
             if (offer != null) {
                 val result =
-                    Missions.resolve(missionLog, radioOffers, MissionOrder.Accept(offer.id), null, cargo, credits, missionParams)
+                    Missions.resolve(
+                        missionLog,
+                        radioOffers,
+                        MissionOrder.Accept(offer.id),
+                        null,
+                        cargo,
+                        credits,
+                        missionParams,
+                        reputation,
+                        reputationParams,
+                    )
                 if (result.changed) {
                     missionLog = result.log
                     credits = result.credits
                     cargo = result.cargo
+                    reputation = result.reputation
                     autosave.onEvent("mission-accept")
                     logger.info(WORLD_TAG, "Accepted radio mission ${offer.id.value} in sector ${currentSector.value}")
                 }
@@ -528,9 +554,10 @@ class PlayScreen(
         missionTickAccumulator += dt
         while (missionTickAccumulator >= MISSION_TICK_SECONDS) {
             missionTickAccumulator -= MISSION_TICK_SECONDS
-            val advanced = Missions.advance(missionLog, credits, cargo, missionParams)
+            val advanced = Missions.advance(missionLog, credits, cargo, missionParams, reputation, reputationParams)
             missionLog = advanced.log
             credits = advanced.credits
+            reputation = advanced.reputation
             if (advanced.changed) {
                 autosave.onEvent("mission-expired")
                 logger.info(WORLD_TAG, "A courier mission timed out in sector ${currentSector.value}")
@@ -880,6 +907,8 @@ class PlayScreen(
             // never persists it (a reload starts with no encounter). lastDockedStation IS persisted.
             combat = combat,
             lastDockedStation = lastDockedStation,
+            // Reputation (UC14): the live per-faction standing, folded onto the snapshot for the autosave.
+            reputation = reputation,
         )
     }
 
@@ -1115,10 +1144,29 @@ class PlayScreen(
         val station = dockedStation ?: return emptyList()
         return MissionGenerator.boardOffers(sectorWorld, station, missionParams)
             .filter { it.id !in missionLog.takenIds }
+            // UC14: the reputation gate — the SEPARATE filter applied AFTER generation + the takenIds
+            // filter (the board site of the three symmetric gating sites). A gated `:premium` offer only
+            // surfaces once the player's standing with the station's faction reaches its threshold.
+            .filter { ReputationGate.isAvailable(it, reputation) }
     }
 
     /** The player's ACTIVE missions (UC12 AC#3) — what the mission board lists as TURN-IN-able. */
     fun activeMissions(): List<Mission> = missionLog.accepted.filter { it.status == MissionStatus.ACTIVE }
+
+    /**
+     * The docked station's gated offers the player has NOT yet unlocked (UC14) — the board surfaces these
+     * as LOCKED rows (with their faction + threshold) so the player can see what reputation unlocks. The
+     * complement of [stationMissionBoard]'s gate filter: un-taken offers that fail [ReputationGate].
+     */
+    fun lockedStationOffers(): List<Mission> {
+        val station = dockedStation ?: return emptyList()
+        return MissionGenerator.boardOffers(sectorWorld, station, missionParams)
+            .filter { it.id !in missionLog.takenIds }
+            .filter { !ReputationGate.isAvailable(it, reputation) }
+    }
+
+    /** The player's current per-faction reputation (UC14) — read by the board for its standings readout. */
+    fun reputationSnapshot(): Reputation = reputation
 
     /**
      * Execute one mission [order] against the docked station via the pure [Missions.resolve] (UC12
@@ -1134,7 +1182,18 @@ class PlayScreen(
      */
     fun applyMissionOrder(order: MissionOrder) {
         val offers = stationMissionBoard()
-        val result = Missions.resolve(missionLog, offers, order, dockedStation, cargo, credits, missionParams)
+        val result =
+            Missions.resolve(
+                missionLog,
+                offers,
+                order,
+                dockedStation,
+                cargo,
+                credits,
+                missionParams,
+                reputation,
+                reputationParams,
+            )
         if (!result.changed) {
             logger.info(
                 ECONOMY_TAG,
@@ -1145,6 +1204,7 @@ class PlayScreen(
         missionLog = result.log
         credits = result.credits
         cargo = result.cargo
+        reputation = result.reputation
         logger.info(ECONOMY_TAG, "Mission order applied; active=${activeMissions().size}, credits=$credits")
         autosave.onEvent("mission")
     }

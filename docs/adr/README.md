@@ -22,6 +22,8 @@ still wins on any conflict — keep them in sync.
 | [0009](0009-scanning-and-hidden-contacts.md) | Active scanning & hidden contacts: shared Contact capability + additive v8 persistence | Accepted |
 | [0010](0010-crew-and-turret-operability.md) | Crew: persisted per-ship count, derived capacity, one-time hire, turret operability as a pure flag | Accepted |
 | [0011](0011-missions.md) | Missions: deterministic static-state instancing, regenerate-and-filter persistence, virtual courier parcel, tick-authoritative timer | Accepted |
+| [0012](0012-real-time-combat.md) | Real-time combat: transient encounter state, durable per-ship damage, additive v11 persistence | Accepted |
+| [0013](0013-factions-and-reputation.md) | Factions & reputation: action-driven standing, separate gate filter, additive v12 persistence | Accepted |
 
 ## Adding an ADR
 

@@ -1,6 +1,8 @@
 package com.orbitalfrontier.mission
 
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.ReputationParams
 import com.orbitalfrontier.world.PoiId
 
 /**
@@ -16,9 +18,17 @@ import com.orbitalfrontier.world.PoiId
  *
  * **No-op ⇒ same instances.** Any order that cannot apply (offer gone, quota not held, wrong station,
  * not picked up) — and an [advance] with no active courier — returns the **input** [MissionLog],
- * credits and cargo unchanged with `changed = false`, so the caller cheaply detects "nothing happened"
- * and skips the autosave, and pre-UC12 fixtures (empty log) thread the same instances through and step
- * byte-identically.
+ * credits, cargo and reputation unchanged with `changed = false`, so the caller cheaply detects
+ * "nothing happened" and skips the autosave, and pre-UC12 fixtures (empty log) thread the same
+ * instances through and step byte-identically.
+ *
+ * **UC14 — reputation is action-driven, applied here.** Reputation changes only through these pure
+ * resolvers (never as a side effect of generation/gating): a faction mission's turn-in grants
+ * [ReputationParams.missionCompleteDelta] to its [Mission.factionId], and a courier expiry applies
+ * [ReputationParams.courierFailDelta] to the courier's faction. A faction-less mission, and every
+ * non-completing outcome, leaves reputation as the same input instance — so the determinism invariant
+ * (same-instance on no-op, byte-identical pre-UC14 replay) holds for reputation exactly as it does for
+ * credits/cargo.
  */
 object Missions {
     /**
@@ -44,6 +54,10 @@ object Missions {
      *           reward credits (plus any optional resource bonus) are granted. The virtual parcel just
      *           vanishes (it was never in the hold).
      *
+     * A completing **turn-in** of a mission with a [Mission.factionId] also grants
+     * [ReputationParams.missionCompleteDelta] to that faction in [reputation] (UC14 AC#4), clamped to
+     * the params' bounds; every other path returns the input [reputation] instance unchanged.
+     *
      * @param offers the currently-surfaced AVAILABLE offers; an [MissionOrder.Accept] is only honoured
      *   for an id present here and absent from [MissionLog.takenIds].
      */
@@ -55,11 +69,14 @@ object Missions {
         cargo: Cargo,
         credits: Long,
         params: MissionParams = MissionParams(),
+        reputation: Reputation = Reputation.EMPTY,
+        reputationParams: ReputationParams = ReputationParams(),
     ): MissionResult {
         var accepted = log.accepted
         var changed = false
         var workingCargo = cargo
         var workingCredits = credits
+        var workingReputation = reputation
 
         // 1) Automatic courier pickup on docking at the pickup station.
         if (dockedStation != null) {
@@ -102,6 +119,18 @@ object Missions {
                     if (outcome != null) {
                         workingCargo = outcome.cargo
                         workingCredits = outcome.credits
+                        // UC14: a completing turn-in credits reputation to the mission's faction (if any),
+                        // clamped to the params' bounds. A faction-less mission leaves reputation as-is.
+                        val faction = mission.factionId
+                        if (faction != null) {
+                            workingReputation =
+                                workingReputation.with(
+                                    faction,
+                                    reputationParams.missionCompleteDelta,
+                                    reputationParams.min,
+                                    reputationParams.max,
+                                )
+                        }
                         accepted =
                             accepted.toMutableList().also { it[index] = mission.copy(status = MissionStatus.COMPLETED) }
                         changed = true
@@ -110,8 +139,8 @@ object Missions {
             }
         }
 
-        if (!changed) return MissionResult(log, credits, cargo, false)
-        return MissionResult(MissionLog(log.available, accepted), workingCredits, workingCargo, true)
+        if (!changed) return MissionResult(log, credits, cargo, reputation, false)
+        return MissionResult(MissionLog(log.available, accepted), workingCredits, workingCargo, workingReputation, true)
     }
 
     /**
@@ -133,13 +162,16 @@ object Missions {
         credits: Long,
         cargo: Cargo,
         params: MissionParams = MissionParams(),
+        reputation: Reputation = Reputation.EMPTY,
+        reputationParams: ReputationParams = ReputationParams(),
     ): MissionResult {
         val hasActiveCourier =
             log.accepted.any { it.type == MissionType.COURIER && it.status == MissionStatus.ACTIVE }
-        if (!hasActiveCourier) return MissionResult(log, credits, cargo, false)
+        if (!hasActiveCourier) return MissionResult(log, credits, cargo, reputation, false)
 
         var expired = false
         var workingCredits = credits
+        var workingReputation = reputation
         val updated =
             log.accepted.map { mission ->
                 if (mission.type == MissionType.COURIER && mission.status == MissionStatus.ACTIVE) {
@@ -147,6 +179,17 @@ object Missions {
                     if (next <= 0) {
                         expired = true
                         workingCredits = (workingCredits - params.courierFailurePenalty).coerceAtLeast(0)
+                        // UC14: a courier timeout also costs reputation with its (pickup-station) faction.
+                        val faction = mission.factionId
+                        if (faction != null) {
+                            workingReputation =
+                                workingReputation.with(
+                                    faction,
+                                    reputationParams.courierFailDelta,
+                                    reputationParams.min,
+                                    reputationParams.max,
+                                )
+                        }
                         mission.copy(remainingTicks = 0, status = MissionStatus.FAILED)
                     } else {
                         mission.copy(remainingTicks = next)
@@ -155,7 +198,7 @@ object Missions {
                     mission
                 }
             }
-        return MissionResult(MissionLog(log.available, updated), workingCredits, cargo, expired)
+        return MissionResult(MissionLog(log.available, updated), workingCredits, cargo, workingReputation, expired)
     }
 
     /** The cargo + credits a successful turn-in produces, or null when the mission cannot be completed. */

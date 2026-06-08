@@ -2,6 +2,7 @@ package com.orbitalfrontier.world
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.StationMarket
+import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.ship.Shipyard
 
@@ -55,6 +56,15 @@ data class Station(
      * world, not persisted. [com.orbitalfrontier.crew.Hiring] gates a hire on this flag.
      */
     val hiresCrew: Boolean = false,
+    /**
+     * The [FactionId] of the faction that owns this station (UC14 AC#1). Defaulted to `null` so an
+     * existing station — and every call site authored before UC14 — reads back as "unaligned" (no
+     * faction); an authored faction station sets it. Like the markets/shipyard above, this is fixed
+     * authored map data carried with the world, not a persisted row. The mission generator stamps each
+     * offer with its source station's faction (so completing it credits that faction's reputation), and
+     * the authored gated `:premium` offer is gated on this faction.
+     */
+    val factionId: FactionId? = null,
 ) : Poi, Transponder {
     override val contactKind: ContactKind get() = ContactKind.STATION
 
