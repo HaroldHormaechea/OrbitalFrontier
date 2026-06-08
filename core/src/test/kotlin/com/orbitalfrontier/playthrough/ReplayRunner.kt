@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.platform.SeededRng
 import com.orbitalfrontier.platform.TickTimeSource
 import com.orbitalfrontier.ship.MovementInput
@@ -54,6 +55,8 @@ class ReplayRunner {
                 timeSource = TickTimeSource(playthrough.dtSeconds),
                 params = playthrough.config.toParams(),
                 miningParams = playthrough.miningConfig.toMiningParams(),
+                powerParams = playthrough.powerConfig.toPowerParams(),
+                fuelParams = playthrough.fuelConfig.toFuelParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()
@@ -70,7 +73,8 @@ class ReplayRunner {
             val input = movementInputFor(tickEvents)
             val dockAction = dockActionFor(tickEvents)
             val mineAction = mineActionFor(tickEvents)
-            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction)
+            val refuelAction = refuelActionFor(tickEvents)
+            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction, refuelAction)
             perTick?.add(state)
         }
 
@@ -104,4 +108,12 @@ class ReplayRunner {
      */
     private fun mineActionFor(events: List<InputEvent>): MineAction =
         events.filterIsInstance<MineEvent>().lastOrNull()?.action ?: MineAction.NONE
+
+    /**
+     * Reduce a tick's events to the [RefuelAction] the sim steps with (UC07). When several refuel
+     * samples share a tick the latest wins; a tick with no [RefuelEvent] steps with
+     * [RefuelAction.NONE], so non-refuelling artifacts (UC01/UC03/UC05/UC06) replay exactly as before.
+     */
+    private fun refuelActionFor(events: List<InputEvent>): RefuelAction =
+        events.filterIsInstance<RefuelEvent>().lastOrNull()?.action ?: RefuelAction.NONE
 }

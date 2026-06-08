@@ -2,8 +2,11 @@ package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.Fuel
+import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
@@ -30,6 +33,10 @@ import kotlinx.serialization.Serializable
  *   tuning change can't silently invalidate this artifact.
  * @property miningConfig the pinned [MiningParams] snapshot the run was recorded under (UC06), same
  *   rationale as [config]; defaulted so older artifacts (recorded before mining) decode unchanged.
+ * @property powerConfig the pinned [PowerParams] snapshot the run was recorded under (UC07), same
+ *   rationale as [config]; defaulted so older artifacts (recorded before fuel/power) decode unchanged.
+ * @property fuelConfig the pinned [FuelParams] snapshot the run was recorded under (UC07), same
+ *   rationale as [config]; defaulted so older artifacts (recorded before fuel/power) decode unchanged.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -43,6 +50,8 @@ data class Playthrough(
     val tickCount: Int,
     val config: MovementParamsDto = MovementParamsDto.DEFAULT,
     val miningConfig: MiningParamsDto = MiningParamsDto.DEFAULT,
+    val powerConfig: PowerParamsDto = PowerParamsDto.DEFAULT,
+    val fuelConfig: FuelParamsDto = FuelParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -130,6 +139,78 @@ data class MiningParamsDto(
 }
 
 /**
+ * Serializable mirror of [PowerParams] (UC07 config snapshot).
+ *
+ * [PowerParams] is a pure domain type and stays annotation-free; this DTO carries the same fields
+ * for persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers
+ * live in exactly one place. Pinning the power tuning per artifact means a later balancing change to
+ * the reactor output / draw rates cannot silently invalidate an old recorded playthrough.
+ */
+@Serializable
+data class PowerParamsDto(
+    val reactorOutput: Float,
+    val baseModuleDraw: Float,
+    val thrustDraw: Float,
+) {
+    /** Reconstruct the domain [PowerParams] (its `init` re-validates the values). */
+    fun toPowerParams(): PowerParams =
+        PowerParams(
+            reactorOutput = reactorOutput,
+            baseModuleDraw = baseModuleDraw,
+            thrustDraw = thrustDraw,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: PowerParams): PowerParamsDto =
+            PowerParamsDto(
+                reactorOutput = params.reactorOutput,
+                baseModuleDraw = params.baseModuleDraw,
+                thrustDraw = params.thrustDraw,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: PowerParamsDto = from(PowerParams())
+    }
+}
+
+/**
+ * Serializable mirror of [FuelParams] (UC07 config snapshot).
+ *
+ * [FuelParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers
+ * live in exactly one place. Pinning the fuel tuning per artifact means a later change to the low-fuel
+ * threshold / speed floor / conversion ratio cannot silently invalidate an old recorded playthrough.
+ */
+@Serializable
+data class FuelParamsDto(
+    val lowFuelThreshold: Float,
+    val floorSpeedFraction: Float,
+    val hydrogenToFuelRatio: Float,
+) {
+    /** Reconstruct the domain [FuelParams] (its `init` re-validates the values). */
+    fun toFuelParams(): FuelParams =
+        FuelParams(
+            lowFuelThreshold = lowFuelThreshold,
+            floorSpeedFraction = floorSpeedFraction,
+            hydrogenToFuelRatio = hydrogenToFuelRatio,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: FuelParams): FuelParamsDto =
+            FuelParamsDto(
+                lowFuelThreshold = params.lowFuelThreshold,
+                floorSpeedFraction = params.floorSpeedFraction,
+                hydrogenToFuelRatio = params.hydrogenToFuelRatio,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: FuelParamsDto = from(FuelParams())
+    }
+}
+
+/**
  * Serializable mirror of [SimulationState] (UC02 AC#3 optional initial state; AC#6 snapshots).
  *
  * Mirrors the snapshot as flat scalar fields so the domain types ([SimulationState],
@@ -172,6 +253,14 @@ data class StateSnapshotDto(
      * Empty by default, so older artifacts decode with every field pristine.
      */
     val fieldDepletion: Map<String, Map<String, Int>> = emptyMap(),
+    /**
+     * The active ship's fuel **level** in fuel units (UC07 AC#6). Defaulted to a full tank
+     * ([FuelParams.DEFAULT_TANK_CAPACITY]) so older artifacts (recorded before fuel existed) decode
+     * fully fuelled — and so the pre-UC07 fixtures replay byte-identically (a full tank ⇒ no speed
+     * penalty). Like cargo capacity, the tank's **capacity** is a ship stat, not save data, so it is
+     * reconstructed from [FuelParams.DEFAULT_TANK_CAPACITY] on decode rather than stored.
+     */
+    val fuel: Float = FuelParams.DEFAULT_TANK_CAPACITY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -191,6 +280,8 @@ data class StateSnapshotDto(
                 fieldDepletion
                     .mapKeys { (fieldId, _) -> PoiId(fieldId) }
                     .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
+            // Capacity is a ship stat, reconstructed (like Cargo.capacity); only the level is stored.
+            fuel = Fuel(level = fuel, capacity = FuelParams.DEFAULT_TANK_CAPACITY),
         )
 
     companion object {
@@ -212,6 +303,7 @@ data class StateSnapshotDto(
                     state.fieldDepletion
                         .mapKeys { (fieldId, _) -> fieldId.value }
                         .mapValues { (_, deposits) -> deposits.mapKeys { it.key.name } },
+                fuel = state.fuel.level,
             )
     }
 }

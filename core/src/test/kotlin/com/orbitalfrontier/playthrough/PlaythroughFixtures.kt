@@ -1,6 +1,8 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.Fuel
+import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.sim.SimulationState
@@ -29,6 +31,18 @@ object PlaythroughFixtures {
     /** UC06 mining playthrough name: thrust into the alpha-belt and hold MINE until the hold fills. */
     const val UC06_MINE: String = "uc06-mine"
 
+    /** UC07 low-fuel playthrough name: start near-empty and thrust until the tank crosses below the threshold. */
+    const val UC07_LOW_FUEL: String = "uc07-low-fuel"
+
+    /**
+     * Power tuning **pinned for the UC07 low-fuel fixture only** — a deliberately thirsty draw
+     * (10 fuel-units/s while thrusting vs. the default 2) so a short, compact playthrough actually
+     * burns the tank below the low-fuel threshold (the default burn rate would need hundreds of
+     * ticks). Other fixtures keep the default [PowerParams]. Pinning per artifact (UC02 config-pin
+     * rationale) means a later default-tuning change can't silently invalidate this replay.
+     */
+    private val UC07_THIRSTY_POWER: PowerParams = PowerParams(baseModuleDraw = 0.5f, thrustDraw = 9.5f)
+
     /** Fixed timestep used by the fixtures (60 Hz) — a *fixed* step, not a live frame delta. */
     const val DT_SECONDS: Float = 1f / 60f
 
@@ -43,6 +57,7 @@ object PlaythroughFixtures {
             UC03_JUMP to ::uc03Jump,
             UC05_DOCK to ::uc05Dock,
             UC06_MINE to ::uc06Mine,
+            UC07_LOW_FUEL to ::uc07LowFuel,
         )
 
     /**
@@ -185,6 +200,46 @@ object PlaythroughFixtures {
         for (tick in 0 until 40) {
             recorder.recordMovement(tick, north)
             recorder.recordMineAction(tick, MineAction.MINE)
+        }
+        return recorder.build()
+    }
+
+    /**
+     * UC07 low-fuel scenario (AC#3/#7): the ship starts at rest at the origin in
+     * [MvpSectorMap.START_SECTOR] (Alpha) with a **nearly-empty tank** — `Fuel(level = 24, capacity =
+     * 100)`, i.e. fraction 0.24, just above the 0.20 low-fuel threshold — and thrusts straight north
+     * for 90 ticks while the pinned thirsty power draw ([UC07_THIRSTY_POWER], 10 units/s thrusting)
+     * burns it down. The tank crosses **below** the threshold within ~24 ticks and ends at ~9 units
+     * (fraction ~0.09): low enough that [Fuel.speedFactor] scales the max-speed cap well below 1.0
+     * (reduced effective max speed, AC#3) yet **never empty** (nonzero remaining fuel — never
+     * stranded, AC#3).
+     *
+     * Replayed at this low starting fuel the ship's terminal speed is capped below its full-fuel
+     * terminal speed; [Uc07FuelReplayTest] proves that by replaying the *same* input script at a full
+     * tank (the control) and asserting the low-fuel terminal speed is strictly slower while remaining
+     * fuel stays positive. North thrust from the origin keeps the ship clear of any gate/station/field
+     * for the whole run (it travels only a few dozen world-units before the speed penalty bites).
+     */
+    fun uc07LowFuel(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC07_LOW_FUEL,
+                seed = 7L,
+                dtSeconds = DT_SECONDS,
+                powerConfig = UC07_THIRSTY_POWER,
+                initialState =
+                    SimulationState(
+                        // At rest at the origin.
+                        ship = ShipKinematics(),
+                        // Start just above the 0.20 threshold so the burn crosses it during the run.
+                        fuel = Fuel(level = 24f, capacity = 100f),
+                    ),
+            )
+        val north = MovementInput(targetDirection = Vec2(0f, 1f), magnitude = 1f, released = false)
+        // Thrust north the whole time: the tank crosses below the low-fuel threshold and the speed cap
+        // ramps down with it, while the tank never empties (nonzero remaining fuel at the end).
+        for (tick in 0 until 90) {
+            recorder.recordMovement(tick, north)
         }
         return recorder.build()
     }

@@ -1,6 +1,7 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
@@ -95,4 +96,24 @@ data class DockActionEvent(
 data class MineEvent(
     override val tick: Int,
     val action: MineAction,
+) : InputEvent()
+
+/**
+ * A refuel control sample for one tick (UC07 AC#5) — the discrete [RefuelAction] the station hub
+ * feeds in when the REFUEL button is tapped (converting hydrogen cargo into fuel). Carried alongside
+ * [MovementEvent]/[DockActionEvent] in the same tick-stamped script, so a recorded session can dock
+ * *and* refuel; [com.orbitalfrontier.playthrough.ReplayRunner] dispatches it to
+ * [com.orbitalfrontier.sim.Simulation.step] each tick — and because refuelling is resolved **before**
+ * the docked-freeze short-circuit, it works while docked.
+ *
+ * [RefuelAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"REFUEL"` / `"NONE"`. A tick
+ * with no [RefuelEvent] defaults to [RefuelAction.NONE] in the runner, so older artifacts (which
+ * carry none) replay unchanged.
+ */
+@Serializable
+@SerialName("refuel")
+data class RefuelEvent(
+    override val tick: Int,
+    val action: RefuelAction,
 ) : InputEvent()
