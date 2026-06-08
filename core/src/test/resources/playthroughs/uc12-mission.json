@@ -1,0 +1,5053 @@
+{
+  "formatVersion": 1,
+  "name": "uc12-mission",
+  "seed": 12,
+  "dtSeconds": 0.016666668,
+  "tickCount": 306,
+  "config": {
+    "maxSpeed": 600.0,
+    "maxAcceleration": 6000.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 50.0,
+    "maxRotationSpeed": 8.0,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.5,
+    "thrustDraw": 1.5
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "missionConfig": {
+    "boardMiningQuotaMin": 8,
+    "boardMiningQuotaMax": 20,
+    "radioMiningQuotaMin": 6,
+    "radioMiningQuotaMax": 14,
+    "miningRewardBase": 200,
+    "miningRewardPerUnit": 25,
+    "courierRewardBase": 400,
+    "courierRewardSpan": 400,
+    "courierTickLimitMin": 60,
+    "courierTickLimitMax": 240,
+    "courierFailurePenalty": 150,
+    "radioRange": 700.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 600.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": -2.1112158,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": "alpha-station",
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 0,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 0.0,
+        "posY": 600.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": -2.1112158,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {},
+        "crew": 0
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": [],
+    "missions": {
+      "available": [],
+      "accepted": []
+    }
+  },
+  "inputEvents": [
+    {
+      "type": "mission",
+      "tick": 0,
+      "kind": "ACCEPT",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 1,
+      "action": "MINE"
+    },
+    {
+      "type": "dock",
+      "tick": 1,
+      "action": "UNDOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 2,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 3,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 4,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 5,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 6,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 7,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 8,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 9,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 10,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 11,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 12,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 12,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 13,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 13,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 14,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 14,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 15,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 15,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 16,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 16,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 17,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 17,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 18,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 18,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 19,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 19,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 20,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 20,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 21,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 21,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 22,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 22,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 23,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 23,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 24,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 24,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 25,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 25,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 26,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 26,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 27,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 27,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 28,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 28,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 29,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 29,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 30,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 30,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 31,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 31,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 32,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 32,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 33,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 33,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 34,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 34,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 35,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 35,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 36,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 36,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 37,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 37,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 38,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 38,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 39,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 39,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 40,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 40,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 41,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 41,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 42,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 42,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 43,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 43,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 44,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 44,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 45,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 45,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 46,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 46,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 47,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 47,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 48,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 48,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 49,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 49,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 50,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 50,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 51,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 51,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 52,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 52,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 53,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 53,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 54,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 54,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 55,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 55,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 56,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 56,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 57,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 57,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 58,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 58,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 59,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 59,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 60,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 60,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 61,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 61,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 62,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 62,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 63,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 63,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 64,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 64,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 65,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 65,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 66,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 66,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 67,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 67,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 68,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 68,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 69,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 69,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 70,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 70,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 71,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 71,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 72,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 72,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 73,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 73,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 74,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 74,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 75,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 75,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 76,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 76,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 77,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 77,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 78,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 78,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 79,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 79,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 80,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 80,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 81,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 81,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 82,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 82,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 83,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 83,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 84,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 84,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 85,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 85,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 86,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 86,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 87,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 87,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 88,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 88,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 89,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 89,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 90,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 90,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 91,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 91,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 92,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 92,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 93,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 93,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 94,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 94,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 95,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 95,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 96,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 96,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 97,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 97,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 98,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 98,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 99,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 99,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 100,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 100,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 101,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 101,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 102,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 102,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 103,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 103,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 104,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 104,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 105,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 105,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 106,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 106,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 107,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 107,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 108,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 108,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 109,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 109,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 110,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 110,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 111,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 111,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 112,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 112,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 113,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 113,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 114,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 114,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 115,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 115,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 116,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 116,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 117,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 117,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 118,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 118,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 119,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 119,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 120,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 120,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 121,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 121,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 122,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 122,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 123,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 123,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 124,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 124,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 125,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 125,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 126,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 126,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 127,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 127,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 128,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 128,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 129,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 129,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 130,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 130,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 131,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 131,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 132,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 132,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 133,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 133,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 134,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 134,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 135,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 135,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 136,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 136,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 137,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 137,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 138,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 138,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 139,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 139,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 140,
+      "dirX": -600.0,
+      "dirY": -1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 140,
+      "action": "MINE"
+    },
+    {
+      "type": "movement",
+      "tick": 141,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 141,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 141,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 142,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 142,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 142,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 143,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 143,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 143,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 144,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 144,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 144,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 145,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 145,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 145,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 146,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 146,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 146,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 147,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 147,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 147,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 148,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 148,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 148,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 149,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 149,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 149,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 150,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 150,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 150,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 151,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 151,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 151,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 152,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 152,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 152,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 153,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 153,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 153,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 154,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 154,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 154,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 155,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 155,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 155,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 156,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 156,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 156,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 157,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 157,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 157,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 158,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 158,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 158,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 159,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 159,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 159,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 160,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 160,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 160,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 161,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 161,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 161,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 162,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 162,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 162,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 163,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 163,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 163,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 164,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 164,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 164,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 165,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 165,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 165,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 166,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 166,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 166,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 167,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 167,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 167,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 168,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 168,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 168,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 169,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 169,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 169,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 170,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 170,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 170,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 171,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 171,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 171,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 172,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 172,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 172,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 173,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 173,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 173,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 174,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 174,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 174,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 175,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 175,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 175,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 176,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 176,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 176,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 177,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 177,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 177,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 178,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 178,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 178,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 179,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 179,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 179,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 180,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 180,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 180,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 181,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 181,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 181,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 182,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 182,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 182,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 183,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 183,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 183,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 184,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 184,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 184,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 185,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 185,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 185,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 186,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 186,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 186,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 187,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 187,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 187,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 188,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 188,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 188,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 189,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 189,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 189,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 190,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 190,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 190,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 191,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 191,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 191,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 192,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 192,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 192,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 193,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 193,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 193,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 194,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 194,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 194,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 195,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 195,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 195,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 196,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 196,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 196,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 197,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 197,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 197,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 198,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 198,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 198,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 199,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 199,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 199,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 200,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 200,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 200,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 201,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 201,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 201,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 202,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 202,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 202,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 203,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 203,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 203,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 204,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 204,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 204,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 205,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 205,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 205,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 206,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 206,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 206,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 207,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 207,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 207,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 208,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 208,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 208,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 209,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 209,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 209,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 210,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 210,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 210,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 211,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 211,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 211,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 212,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 212,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 212,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 213,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 213,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 213,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 214,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 214,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 214,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 215,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 215,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 215,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 216,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 216,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 216,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 217,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 217,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 217,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 218,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 218,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 218,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 219,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 219,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 219,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 220,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 220,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 220,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 221,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 221,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 221,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 222,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 222,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 222,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 223,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 223,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 223,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 224,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 224,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 224,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 225,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 225,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 225,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 226,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 226,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 226,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 227,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 227,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 227,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 228,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 228,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 228,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 229,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 229,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 229,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 230,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 230,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 230,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 231,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 231,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 231,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 232,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 232,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 232,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 233,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 233,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 233,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 234,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 234,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 234,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 235,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 235,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 235,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 236,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 236,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 236,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 237,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 237,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 237,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 238,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 238,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 238,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 239,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 239,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 239,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 240,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 240,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 240,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 241,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 241,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 241,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 242,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 242,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 242,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 243,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 243,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 243,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 244,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 244,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 244,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 245,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 245,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 245,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 246,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 246,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 246,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 247,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 247,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 247,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 248,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 248,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 248,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 249,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 249,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 249,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 250,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 250,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 250,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 251,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 251,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 251,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 252,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 252,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 252,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 253,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 253,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 253,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 254,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 254,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 254,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 255,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 255,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 255,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 256,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 256,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 256,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 257,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 257,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 257,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 258,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 258,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 258,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 259,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 259,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 259,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 260,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 260,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 260,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 261,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 261,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 261,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 262,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 262,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 262,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 263,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 263,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 263,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 264,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 264,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 264,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 265,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 265,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 265,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 266,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 266,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 266,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 267,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 267,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 267,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 268,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 268,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 268,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 269,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 269,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 269,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 270,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 270,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 270,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 271,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 271,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 271,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 272,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 272,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 272,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 273,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 273,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 273,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 274,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 274,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 274,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 275,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 275,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 275,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 276,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 276,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 276,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 277,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 277,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 277,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 278,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 278,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 278,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 279,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 279,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 279,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 280,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 280,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 280,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 281,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 281,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 281,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 282,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 282,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 282,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 283,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 283,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 283,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 284,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 284,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 284,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 285,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 285,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 285,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 286,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 286,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 286,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 287,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 287,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 287,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 288,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 288,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 288,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 289,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 289,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 289,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 290,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 290,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 290,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 291,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 291,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 291,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 292,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 292,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 292,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 293,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 293,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 293,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 294,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 294,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 294,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 295,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 295,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 295,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 296,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 296,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 296,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 297,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 297,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 297,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 298,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 298,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 298,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 299,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 299,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 299,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 300,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 300,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 300,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 301,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 301,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 301,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 302,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 302,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 302,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 303,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 303,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 303,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 304,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 304,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 304,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    },
+    {
+      "type": "movement",
+      "tick": 305,
+      "dirX": 600.0,
+      "dirY": 1000.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 305,
+      "action": "DOCK"
+    },
+    {
+      "type": "mission",
+      "tick": 305,
+      "kind": "TURN_IN",
+      "missionId": "board:alpha-station:mining"
+    }
+  ]
+}

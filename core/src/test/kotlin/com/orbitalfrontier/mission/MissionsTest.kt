@@ -197,7 +197,8 @@ class MissionsTest {
                 log = log,
                 offers = emptyList(),
                 order = MissionOrder.None,
-                dockedStation = alphaStation, // the pickup station
+                // alphaStation is the courier's pickup station.
+                dockedStation = alphaStation,
                 cargo = Cargo.empty(),
                 credits = 0L,
             )
@@ -216,7 +217,8 @@ class MissionsTest {
                 log = log,
                 offers = emptyList(),
                 order = MissionOrder.TurnIn(courier.id),
-                dockedStation = betaStation, // the destination
+                // betaStation is the courier's delivery destination.
+                dockedStation = betaStation,
                 cargo = Cargo.empty(),
                 credits = 0L,
             )

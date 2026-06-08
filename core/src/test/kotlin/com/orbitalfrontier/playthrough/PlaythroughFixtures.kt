@@ -5,6 +5,8 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.mission.MissionId
+import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.power.PowerParams
@@ -12,6 +14,7 @@ import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
@@ -20,6 +23,7 @@ import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
+import kotlin.math.atan2
 
 /**
  * Reproducible test playthrough fixtures, built from the [PlaythroughRecorder] (UC02 AC#4/#7).
@@ -65,6 +69,13 @@ object PlaythroughFixtures {
      * a small wallet, hire one crew, and assert the crew count rises and the turret-operability flag flips.
      */
     const val UC11_CREW: String = "uc11-crew"
+
+    /**
+     * UC12 mission playthrough name: start docked at Alpha Station, accept the board mining mission, fly
+     * to the alpha-belt and mine the Hydrogen quota, fly back and dock, then turn the mission in for the
+     * credit reward (AC#7).
+     */
+    const val UC12_MISSION: String = "uc12-mission"
 
     /**
      * Starting credit balance the UC11 crew fixture seeds — comfortably above one hire's cost
@@ -119,6 +130,7 @@ object PlaythroughFixtures {
             UC09_OUTFIT to ::uc09Outfit,
             UC10_SCAN to ::uc10Scan,
             UC11_CREW to ::uc11Crew,
+            UC12_MISSION to ::uc12Mission,
         )
 
     /**
@@ -466,4 +478,107 @@ object PlaythroughFixtures {
         recorder.extendToTick(2)
         return recorder.build()
     }
+
+    /** The board mining mission accepted + turned in by the UC12 fixture (the golden 8-Hydrogen offer). */
+    private val UC12_BOARD_MINING: MissionId = MissionId("board:alpha-station:mining")
+
+    /** Alpha Station's dock position (read from the production map) — the fixture's start + turn-in point. */
+    private val UC12_STATION: Vec2 = Vec2(0f, 600f)
+
+    /** The alpha-belt field centre (read from the production map) — where the Hydrogen quota is mined. */
+    private val UC12_BELT: Vec2 = Vec2(-600f, -400f)
+
+    /**
+     * A deliberately brisk movement profile **pinned for the UC12 mission fixture only** so the full
+     * dock → fly-out → mine → fly-back → dock round trip (≈ 2 × 1166 wu between Alpha Station and the
+     * alpha-belt) fits in a compact artifact instead of the ~1200 ticks the default 120 wu/s cruise would
+     * need. Snappy rotation keeps the out-and-back essentially 1-D along the station↔belt axis, so the
+     * ship passes cleanly through the belt's and the station's 100 wu circles. Pinning per artifact (the
+     * UC02 config-pin rationale) means a later default-tuning change can't silently invalidate this replay.
+     */
+    private val UC12_FAST_FLIGHT: ShipMovementParams =
+        ShipMovementParams(
+            maxSpeed = 600f,
+            maxAcceleration = 6000f,
+            rotationAcceleration = 50f,
+            maxRotationSpeed = 8f,
+        )
+
+    /**
+     * UC12 mission scenario (AC#7): the full accept → mine → turn-in loop of the board mining mission.
+     *
+     * The ship starts **docked at Alpha Station** in [MvpSectorMap.START_SECTOR] (Alpha), already facing
+     * the alpha-belt, with an empty hold and a zero wallet. The script:
+     *  - **tick 0** (docked): [MissionOrder.Accept] the golden board mining offer
+     *    (`board:alpha-station:mining` — 8 HYDROGEN for 400 credits); the ship is frozen, so the accept
+     *    resolves against the docked station's board.
+     *  - **outbound leg**: undock and thrust straight toward the alpha-belt while **holding MINE**.
+     *    Mining is proximity-gated, so it auto-starts on entering the field's 100 wu circle and gathers
+     *    Hydrogen (extracted first, in [com.orbitalfrontier.economy.ResourceType] ordinal order) well past
+     *    the 8-unit quota.
+     *  - **return leg**: thrust back toward Alpha Station while **holding DOCK and re-issuing TurnIn** —
+     *    DOCK is proximity-gated (docks on re-entering the station circle) and the TurnIn no-ops until the
+     *    ship is docked with the quota in the hold, at which point it completes the mission and pays out.
+     *
+     * [Uc12MissionReplayTest] asserts the mission ends COMPLETED with credits risen by exactly 400 and the
+     * Hydrogen quota consumed, and that the replay is deterministic. The flight uses the pinned
+     * [UC12_FAST_FLIGHT] profile; all geometry is read from the production [MvpSectorMap].
+     */
+    fun uc12Mission(): Playthrough {
+        val outbound = UC12_BELT - UC12_STATION // station -> belt
+        val inbound = UC12_STATION - UC12_BELT // belt -> station
+        val recorder =
+            PlaythroughRecorder(
+                name = UC12_MISSION,
+                seed = 12L,
+                dtSeconds = DT_SECONDS,
+                config = UC12_FAST_FLIGHT,
+                initialState =
+                    SimulationState(
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = UC12_STATION,
+                                        // Already facing the belt so the outbound leg needs no initial turn.
+                                        headingRadians = atan2(outbound.y, outbound.x),
+                                    ),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = 0L,
+                    ),
+            )
+
+        // Tick 0 (docked): accept the board mining mission. The ship is frozen this tick.
+        recorder.recordMission(0, MissionOrder.Accept(UC12_BOARD_MINING))
+
+        // Outbound leg: undock on the first flight tick, then thrust toward the belt holding MINE.
+        val outThrust = MovementInput(targetDirection = outbound, magnitude = 1f, released = false)
+        val outboundTicks = UC12_OUTBOUND_TICKS
+        for (i in 0 until outboundTicks) {
+            val tick = 1 + i
+            recorder.recordMovement(tick, outThrust)
+            recorder.recordMineAction(tick, MineAction.MINE)
+            if (i == 0) recorder.recordDockAction(tick, DockAction.UNDOCK)
+        }
+
+        // Return leg: thrust back toward the station, holding DOCK + re-issuing TurnIn every tick so the
+        // mission completes on the first docked tick (both are no-ops until the ship is actually in range
+        // / docked, so the exact arrival tick need not be hand-computed).
+        val backThrust = MovementInput(targetDirection = inbound, magnitude = 1f, released = false)
+        val returnStart = 1 + outboundTicks
+        for (i in 0 until UC12_RETURN_TICKS) {
+            val tick = returnStart + i
+            recorder.recordMovement(tick, backThrust)
+            recorder.recordDockAction(tick, DockAction.DOCK)
+            recorder.recordMission(tick, MissionOrder.TurnIn(UC12_BOARD_MINING))
+        }
+        return recorder.build()
+    }
+
+    /** Outbound (station → belt) thrust ticks for [uc12Mission] — enough to reach + dwell in the belt. */
+    private const val UC12_OUTBOUND_TICKS: Int = 140
+
+    /** Return (belt → station) thrust ticks for [uc12Mission] — enough to fly back, dock, and turn in. */
+    private const val UC12_RETURN_TICKS: Int = 165
 }

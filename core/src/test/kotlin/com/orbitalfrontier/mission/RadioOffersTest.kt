@@ -3,7 +3,6 @@ package com.orbitalfrontier.mission
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.world.MvpSectorMap
-import com.orbitalfrontier.world.PoiId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,7 +54,8 @@ class RadioOffersTest {
                 log = MissionLog.EMPTY,
                 offers = offers,
                 order = MissionOrder.Accept(offer.id),
-                dockedStation = null, // in flight — radio is the in-flight channel
+                // In flight (not docked) — radio is the in-flight offer channel.
+                dockedStation = null,
                 cargo = Cargo.empty(),
                 credits = 0L,
             )
@@ -76,7 +76,8 @@ class RadioOffersTest {
         val result =
             Missions.resolve(
                 log = MissionLog.EMPTY,
-                offers = offers, // empty — nothing in range
+                // The offer list is empty — nothing is in range to accept.
+                offers = offers,
                 order = MissionOrder.Accept(MissionId("radio:alpha-station")),
                 dockedStation = null,
                 cargo = Cargo.empty(),

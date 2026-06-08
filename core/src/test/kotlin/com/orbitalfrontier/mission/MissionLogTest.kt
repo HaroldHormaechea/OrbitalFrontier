@@ -75,7 +75,11 @@ class MissionLogTest {
     @Test
     fun `takenIds excludes an accepted offer from a freshly-regenerated offer list`() {
         // Simulate the regenerate-and-filter the screen does: regenerate offers, drop any already taken.
-        val regenerated = listOf(mining("board:alpha-station:mining").copy(status = MissionStatus.AVAILABLE), courier("board:alpha-station:courier").copy(status = MissionStatus.AVAILABLE))
+        val regenerated =
+            listOf(
+                mining("board:alpha-station:mining").copy(status = MissionStatus.AVAILABLE),
+                courier("board:alpha-station:courier").copy(status = MissionStatus.AVAILABLE),
+            )
         val log = MissionLog(accepted = listOf(mining("board:alpha-station:mining")))
 
         val surfaced = regenerated.filter { it.id !in log.takenIds }
