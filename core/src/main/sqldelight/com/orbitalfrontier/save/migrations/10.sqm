@@ -1,0 +1,33 @@
+-- Migration v10 -> v11 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v10 (UC12) held meta + settings + the save header (game_state: current_sector, active_ship_id,
+-- docked_station_id, credits) + per-ship rows + cargo + ship_upgrade + field_deposit +
+-- revealed_contact + mission. v11 (UC13) adds the player's durable **combat** state:
+--
+--  1. `ship.section_damage` is NOT a column — per-section damage is variable-cardinality (one row per
+--     damaged section), so it is a new child table `ship_section_damage`, full-snapshot per ship exactly
+--     like `cargo` (delete-then-insert on save). A section with NO row is pristine (full derived HP); only
+--     damaged sections are stored, so an undamaged fleet writes no rows and a migrated save reads back
+--     undamaged.
+--  2. `game_state.last_docked_station_id` is the player's most-recent dock — the respawn point on
+--     destruction (UC13 AC#5). NULLABLE; NULL means "never docked yet" (a brand-new game / a migrated save
+--     that predates the column), in which case the model leaves the player where they are on respawn.
+--
+-- Transient combat (hostiles, projectiles, combat RNG) is deliberately NOT persisted — it is regenerated
+-- from the seeded encounter on load (a mid-combat save reloads with combat cleared, ADR 0012). Only the
+-- durable per-ship section damage and the last docked station are rows.
+--
+-- This migration is purely additive: a new (empty) table + a new NULLABLE column. CREATE TABLE / ALTER
+-- TABLE ADD COLUMN are both supported by the bundled SQLite on minSdk-24 devices (they long predate 24),
+-- so this is minSdk-safe — same rationale as every prior additive migration. All prior data is untouched.
+
+CREATE TABLE ship_section_damage (
+    ship_id INTEGER NOT NULL,
+    section TEXT NOT NULL,
+    current_hp INTEGER NOT NULL,
+    PRIMARY KEY (ship_id, section)
+);
+
+ALTER TABLE game_state ADD COLUMN last_docked_station_id TEXT;
+
+UPDATE meta SET save_version = 11 WHERE id = 0;

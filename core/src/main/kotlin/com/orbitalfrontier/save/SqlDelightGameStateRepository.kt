@@ -1,5 +1,8 @@
 package com.orbitalfrontier.save
 
+import com.orbitalfrontier.combat.SectionDamage
+import com.orbitalfrontier.combat.SectionDamages
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
@@ -64,6 +67,7 @@ class SqlDelightGameStateRepository(
 
             val cargoByShip = loadCargoByShip()
             val upgradesByShip = loadUpgradesByShip()
+            val sectionDamageByShip = loadSectionDamageByShip()
 
             val ships =
                 shipRows
@@ -93,6 +97,10 @@ class SqlDelightGameStateRepository(
                             // Crew (UC11): a persisted count; capacity is derived (above). coerceIn guards a
                             // corrupt/over-capacity row so the OwnedShip(0 <= crew <= capacity) invariant holds.
                             crew = row.crew.toInt().coerceIn(0, crewCapacity),
+                            // Section damage (UC13): per-section current HP, clamped to each section's
+                            // derived max HP (type + loadout) so a stored value above the new max (after a
+                            // refit since the save) degrades gracefully into range — never stranded.
+                            sectionDamage = clampToDerivedMax(sectionDamageByShip[row.id].orEmpty(), type, loadout),
                         )
                     }
                     .sortedBy { it.id.value }
@@ -123,6 +131,12 @@ class SqlDelightGameStateRepository(
                 // Missions (UC12): only the accepted / terminal missions are persisted; the available
                 // offers are regenerated from the static authored world on load (regenerate-and-filter).
                 missions = MissionLog(available = emptyList(), accepted = loadMissions()),
+                // Combat (UC13): transient — hostiles/projectiles/RNG are regenerated from the seeded
+                // encounter, never persisted, so a load always starts with no live encounter (ADR 0012).
+                combat = com.orbitalfrontier.combat.CombatState.NONE,
+                // Last docked station (UC13): the respawn point. NULL column (a fresh / migrated v10 save)
+                // -> never docked yet, so destruction leaves the player in place until their first dock.
+                lastDockedStation = header.last_docked_station_id?.let { PoiId(it) },
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -140,6 +154,8 @@ class SqlDelightGameStateRepository(
                     active_ship_id = state.fleet.activeShipId.value,
                     docked_station_id = state.dockedStation?.value,
                     credits = state.credits,
+                    // Last docked station (UC13): the respawn point, persisted (null until the first dock).
+                    last_docked_station_id = state.lastDockedStation?.value,
                 )
 
                 for (ship in state.fleet.ships) {
@@ -170,6 +186,18 @@ class SqlDelightGameStateRepository(
                                 units = units.toLong(),
                             )
                         }
+                    }
+
+                    // Section damage (UC13): full-snapshot rewrite per ship (delete-then-INSERT), like
+                    // cargo. An absent section is pristine, so only damaged sections (current HP stored)
+                    // are written; an undamaged ship writes no rows. Max HP is derived, not persisted.
+                    queries.deleteShipSectionDamageForShip(ship.id.value)
+                    for ((section, currentHp) in ship.sectionDamage) {
+                        queries.insertShipSectionDamage(
+                            ship_id = ship.id.value,
+                            section = section.name,
+                            current_hp = currentHp.toLong(),
+                        )
                     }
 
                     // Installed upgrades (UC09): full-snapshot rewrite per ship (delete-then-INSERT). A
@@ -245,6 +273,46 @@ class SqlDelightGameStateRepository(
             logger.error(TAG, "Failed to query save presence; treating as no save", e)
             false
         }
+    }
+
+    /**
+     * Group every ship's persisted section-damage rows by ship id (UC13): section name -> current HP. An
+     * unknown section name (enum changed) is skipped with a WARN — the rest of the ship's damage still
+     * loads (never stranded). Stored values are raw current HP; the caller clamps them to the derived max.
+     */
+    private fun loadSectionDamageByShip(): Map<Long, SectionDamage> {
+        val byShip = LinkedHashMap<Long, LinkedHashMap<ShipSection, Int>>()
+        for (entry in queries.selectAllShipSectionDamage().executeAsList()) {
+            val section = parseSection(entry.section) ?: continue
+            byShip.getOrPut(entry.ship_id) { LinkedHashMap() }[section] = entry.current_hp.toInt()
+        }
+        return byShip
+    }
+
+    /**
+     * Re-canonicalise persisted section damage against the ship's **derived** max HP (UC13): coerce each
+     * stored current HP into `0..maxHp` and drop any section now at/above full (absent = pristine), so a
+     * value above the current fit's max (after a refit since the save) degrades gracefully into range.
+     */
+    private fun clampToDerivedMax(
+        damage: SectionDamage,
+        type: ShipType,
+        loadout: Loadout,
+    ): SectionDamage {
+        if (damage.isEmpty()) return SectionDamages.PRISTINE
+        var result: SectionDamage = SectionDamages.PRISTINE
+        for ((section, hp) in damage) {
+            val maxHp = ShipStats.sectionHp(type, loadout, section)
+            result = SectionDamages.setHp(result, section, hp, maxHp)
+        }
+        return result
+    }
+
+    /** Map a persisted section name to its [ShipSection], or null (logged) if unknown. */
+    private fun parseSection(name: String): ShipSection? {
+        val section = ShipSection.entries.firstOrNull { it.name == name }
+        if (section == null) logger.warn(TAG, "Skipping unknown persisted section '$name' (enum changed?)")
+        return section
     }
 
     /** Group every ship's persisted cargo rows by ship id (resource name -> units; unknown names skipped). */

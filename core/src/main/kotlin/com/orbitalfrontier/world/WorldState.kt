@@ -1,5 +1,6 @@
 package com.orbitalfrontier.world
 
+import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -54,6 +55,23 @@ data class WorldState(
     val credits: Long = 0L,
     val revealedContacts: Set<PoiId> = emptySet(),
     val missions: MissionLog = MissionLog.EMPTY,
+    /**
+     * The live combat encounter (UC13). **Transient** — hostiles, projectiles and the combat RNG are
+     * regenerated from the seeded encounter and are **never row-persisted** (a mid-combat save reloads
+     * with combat cleared, ADR 0012). Defaults to [CombatState.NONE] so a fresh game, a pre-UC13 save
+     * and every replay step that isn't fighting reads back with no encounter — and the default keeps
+     * the snapshot byte-identical. Only the player's durable combat state ([lastDockedStation] here, and
+     * each ship's [com.orbitalfrontier.ship.OwnedShip.sectionDamage]) survives a save.
+     */
+    val combat: CombatState = CombatState.NONE,
+    /**
+     * The [PoiId] of the station the player most recently docked at (UC13 AC#5) — the respawn point on
+     * destruction. **Persisted** (unlike [dockedStation], which is null while in flight): it is the
+     * *last* dock, set on each dock and retained after undocking, so a ship destroyed mid-flight knows
+     * where to respawn. Null until the player's first dock (a brand-new game); on respawn
+     * [com.orbitalfrontier.combat.Respawn] relocates the ship here with a cargo-loss penalty.
+     */
+    val lastDockedStation: PoiId? = null,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

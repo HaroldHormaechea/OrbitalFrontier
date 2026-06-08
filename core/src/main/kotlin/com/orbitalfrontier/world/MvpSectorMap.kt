@@ -1,5 +1,7 @@
 package com.orbitalfrontier.world
 
+import com.orbitalfrontier.combat.EncounterZone
+import com.orbitalfrontier.combat.HostileArchetypes
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarket
@@ -42,6 +44,28 @@ object MvpSectorMap {
 
     /** Soft content radius (world-units) of each MVP sector; ~30 s to cross at max speed. [TUNE] */
     const val CONTENT_EXTENT_WORLD_UNITS: Float = 1800f
+
+    /**
+     * The one authored **natural encounter** zone of the MVP map (UC13) — a patch of hostile space in
+     * the START_SECTOR (Alpha), east of the centre, so the player flying out from the start cluster
+     * crosses into it and is ambushed (edge-triggered, [EncounterSpawner]). A single [HostileArchetypes
+     * .RAIDER] spawns, which the AC#8 recorded playthrough flies into, fires on and destroys. Tagged with
+     * the sector's String id so `combat` needs no `world` dependency. [TUNE]
+     */
+    val ENCOUNTER_ZONES: List<EncounterZone> =
+        listOf(
+            EncounterZone(
+                id = "alpha-raider-picket",
+                sectorId = "alpha",
+                center = Vec2(900f, 0f),
+                radius = 260f,
+                archetypeId = HostileArchetypes.RAIDER.id,
+                hostileCount = 1,
+            ),
+        )
+
+    /** The authored encounter zones in [sectorId] (UC13) — what the screen checks for an edge-crossing. */
+    fun encounterZones(sectorId: SectorId): List<EncounterZone> = ENCOUNTER_ZONES.filter { it.sectorId == sectorId.value }
 
     /** Distance (world-units) of each gate from its sector centre — out toward the content edge. [TUNE] */
     private const val GATE_ORBIT_RADIUS: Float = 1300f
