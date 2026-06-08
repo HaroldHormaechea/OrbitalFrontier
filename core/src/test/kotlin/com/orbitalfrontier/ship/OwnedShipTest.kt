@@ -1,5 +1,7 @@
 package com.orbitalfrontier.ship
 
+import com.orbitalfrontier.combat.SectionDamages
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
@@ -187,5 +189,49 @@ class OwnedShipTest {
 
         assertEquals("crew clamps down to the new (base) capacity", 2, shrunk.crew)
         assertTrue("the crew invariant holds (crew <= capacity)", shrunk.crew <= 2)
+    }
+
+    // --- UC13: per-section combat damage round-trip + withLoadout re-clamp ---
+
+    /** A loadout with one HULL_PLATING part (no catalogued upgrade yet, but it raises HULL max HP by 25). */
+    private val platingLoadout = Loadout(mapOf(SlotCategory.HULL_PLATING to mapOf(0 to UpgradeId("hull-plate-test"))))
+
+    @Test
+    fun `withSectionDamage stores the damage and copy preserves it`() {
+        val damage = mapOf(ShipSection.HULL to 80, ShipSection.ENGINE to 20)
+        val damaged = OwnedShip.starter().withSectionDamage(damage)
+
+        assertEquals("withSectionDamage sets the map", damage, damaged.sectionDamage)
+        // A plain copy (kinematics/cargo/crew change) preserves the section damage — only withLoadout re-derives it.
+        assertEquals("a copy preserves section damage", damage, damaged.copy(crew = 1).sectionDamage)
+    }
+
+    @Test
+    fun `a fresh ship is pristine (no section damage)`() {
+        assertTrue("a new ship has pristine sections", OwnedShip.starter().sectionDamage.isEmpty())
+        assertTrue(
+            "setting PRISTINE clears the map",
+            OwnedShip.starter().withSectionDamage(SectionDamages.PRISTINE).sectionDamage.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `removing hull plating re-clamps over-max section HP down to the new derived max`() {
+        // HULL_PLATING raises HULL max 100 -> 125; damage it to 120 (valid under 125), then strip the plating.
+        val plated = OwnedShip.starter().withLoadout(platingLoadout).withSectionDamage(mapOf(ShipSection.HULL to 120))
+        assertEquals("precondition: HULL at 120 under the plated max of 125", 120, plated.sectionDamage[ShipSection.HULL])
+
+        val stripped = plated.withLoadout(Loadout.EMPTY)
+
+        // HULL max drops to 100; the stored 120 exceeds it, so it re-clamps to full (100) and drops to pristine.
+        assertTrue("an over-max section is re-clamped to pristine on a shrinking refit", stripped.sectionDamage.isEmpty())
+    }
+
+    @Test
+    fun `withLoadout preserves section damage that still fits the new max`() {
+        // Damage HULL to 60 while plated (max 125); stripping to base max 100 keeps 60 (< 100), unchanged.
+        val plated = OwnedShip.starter().withLoadout(platingLoadout).withSectionDamage(mapOf(ShipSection.HULL to 60))
+        val stripped = plated.withLoadout(Loadout.EMPTY)
+        assertEquals("damage under the new max survives a refit", 60, stripped.sectionDamage[ShipSection.HULL])
     }
 }

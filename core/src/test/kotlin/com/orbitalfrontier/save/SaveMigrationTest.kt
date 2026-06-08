@@ -1067,7 +1067,7 @@ class SaveMigrationTest {
         ).value
 
     @Test
-    fun `migrating a real v10 database to v11 adds the ship_section_damage table and last_docked_station_id column, preserves the save, and bumps the version`() {
+    fun `migrating a real v10 database to v11 adds combat state, preserves the save, and bumps the version`() {
         buildRealV10Database()
 
         // Apply the sequential v10 -> v11 migration (runs migrations/10.sqm).

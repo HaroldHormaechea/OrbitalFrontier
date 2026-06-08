@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.CombatParams
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
@@ -41,6 +42,7 @@ class PlaythroughRecorder(
     powerConfig: PowerParams = PowerParams(),
     fuelConfig: FuelParams = FuelParams(),
     missionConfig: MissionParams = MissionParams(),
+    combatConfig: CombatParams = CombatParams(),
     initialState: SimulationState? = null,
 ) {
     init {
@@ -52,6 +54,7 @@ class PlaythroughRecorder(
     private val powerConfigDto = PowerParamsDto.from(powerConfig)
     private val fuelConfigDto = FuelParamsDto.from(fuelConfig)
     private val missionConfigDto = MissionParamsDto.from(missionConfig)
+    private val combatConfigDto = CombatParamsDto.from(combatConfig)
     private val initialStateDto = initialState?.let(StateSnapshotDto::from)
     private val events = mutableListOf<InputEvent>()
     private var tickCount = 0
@@ -173,6 +176,7 @@ class PlaythroughRecorder(
             powerConfig = powerConfigDto,
             fuelConfig = fuelConfigDto,
             missionConfig = missionConfigDto,
+            combatConfig = combatConfigDto,
             initialState = initialStateDto,
             inputEvents = events.toList(),
         )

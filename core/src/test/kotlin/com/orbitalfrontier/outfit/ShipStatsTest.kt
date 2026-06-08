@@ -1,5 +1,6 @@
 package com.orbitalfrontier.outfit
 
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -7,6 +8,7 @@ import com.orbitalfrontier.ship.ShipRoster
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -199,5 +201,54 @@ class ShipStatsTest {
         assertEquals(baseParams.maxAcceleration * 1.2f, result.maxAcceleration, 1e-3f)
         // The handling params are still copied through untouched.
         assertEquals(baseParams.inputDeadzone, result.inputDeadzone, 0f)
+    }
+
+    // --- UC13: derived per-section HP + weapon fit ---
+
+    @Test
+    fun `the starter ship derives the authored base section HP`() {
+        assertEquals("base HULL", 100, ShipStats.sectionHp(starter, Loadout.EMPTY, ShipSection.HULL))
+        assertEquals("base ENGINE", 40, ShipStats.sectionHp(starter, Loadout.EMPTY, ShipSection.ENGINE))
+        assertEquals("base TURRET", 30, ShipStats.sectionHp(starter, Loadout.EMPTY, ShipSection.TURRET))
+        assertEquals("base WEAPON", 30, ShipStats.sectionHp(starter, Loadout.EMPTY, ShipSection.WEAPON))
+    }
+
+    @Test
+    fun `sectionHpMap covers every section`() {
+        val map = ShipStats.sectionHpMap(starter, Loadout.EMPTY)
+        assertEquals("every ShipSection has a derived max HP", ShipSection.entries.toSet(), map.keys)
+        assertEquals(100, map[ShipSection.HULL])
+        assertEquals(40, map[ShipSection.ENGINE])
+    }
+
+    @Test
+    fun `installed hull plating adds HP to the HULL only`() {
+        // The HULL_PLATING category carries no catalogued upgrade yet, but ShipStats reads the installed
+        // COUNT — so a directly-built loadout with one plating part exercises the +25 HULL bonus.
+        val plated = Loadout(mapOf(SlotCategory.HULL_PLATING to mapOf(0 to UpgradeId("hull-plate"))))
+
+        assertEquals("HULL gains +25 per plating part", 125, ShipStats.sectionHp(starter, plated, ShipSection.HULL))
+        // Other sections are untouched by hull plating.
+        assertEquals("ENGINE unaffected by hull plating", 40, ShipStats.sectionHp(starter, plated, ShipSection.ENGINE))
+        assertEquals("TURRET unaffected by hull plating", 30, ShipStats.sectionHp(starter, plated, ShipSection.TURRET))
+    }
+
+    @Test
+    fun `the starter weapon fit is one fixed gun and one crew-gated turret`() {
+        val fit = ShipStats.weaponLoadout(starter, Loadout.EMPTY)
+        assertEquals("one built-in fixed weapon", 1, fit.fixed.size)
+        assertEquals("one built-in turret", 1, fit.turrets.size)
+        assertEquals("the turret needs 1 crew to operate", 1, fit.turrets.single().requiredCrew)
+        // At the new-game crew of 0 the turret is inoperable (AC#2 demo).
+        assertTrue("no operable turret at 0 crew", fit.operableTurrets(0).isEmpty())
+        assertEquals("the turret is operable at 1 crew", 1, fit.operableTurrets(1).size)
+    }
+
+    @Test
+    fun `each installed weapons-slot part adds another fixed weapon`() {
+        val armed = Loadout(mapOf(SlotCategory.WEAPONS to mapOf(0 to UpgradeId("extra-gun"))))
+        val fit = ShipStats.weaponLoadout(starter, armed)
+        assertEquals("built-in gun + one installed = two fixed weapons", 2, fit.fixed.size)
+        assertEquals("the turret count is unchanged", 1, fit.turrets.size)
     }
 }

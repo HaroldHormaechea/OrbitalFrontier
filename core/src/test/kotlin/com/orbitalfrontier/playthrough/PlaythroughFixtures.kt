@@ -1,5 +1,8 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.FireAction
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
@@ -78,6 +81,13 @@ object PlaythroughFixtures {
     const val UC12_MISSION: String = "uc12-mission"
 
     /**
+     * UC13 combat playthrough name (AC#8): fly from outside into the alpha-raider-picket zone to spawn a
+     * RAIDER, then hold FIRE while loitering until the auto-aim turret destroys it; assert the hostile is
+     * gone and the sectional damage taken is recorded.
+     */
+    const val UC13_COMBAT: String = "uc13-combat"
+
+    /**
      * Starting credit balance the UC11 crew fixture seeds — comfortably above one hire's cost
      * ([com.orbitalfrontier.crew.Hiring.HIRE_COST_PER_CREW] = 100) so the single hire clears and the
      * post-hire wallet is a known non-zero baseline. Authored as a literal so the fixture stays
@@ -131,6 +141,7 @@ object PlaythroughFixtures {
             UC10_SCAN to ::uc10Scan,
             UC11_CREW to ::uc11Crew,
             UC12_MISSION to ::uc12Mission,
+            UC13_COMBAT to ::uc13Combat,
         )
 
     /**
@@ -581,4 +592,81 @@ object PlaythroughFixtures {
 
     /** Return (belt → station) thrust ticks for [uc12Mission] — enough to fly back, dock, and turn in. */
     private const val UC12_RETURN_TICKS: Int = 165
+
+    /** The alpha-raider-picket zone centre (read from the production map) — the AC#8 ambush point. */
+    private val UC13_PICKET_CENTER: Vec2 = Vec2(900f, 0f)
+
+    /**
+     * Combat tuning **pinned for the UC13 combat fixture only** so the AC#8 artifact is compact and its
+     * outcome deterministic: every hit is funnelled to the HULL (so the RAIDER's 30-HP hull falls in a
+     * fixed number of turret hits rather than a stochastic spread across four sections), and the hit radius
+     * is widened so the auto-aim turret's un-led shots connect reliably as the raider juke-closes. Pinning
+     * per artifact (the UC02 config-pin rationale) means a later combat retune can't silently invalidate
+     * this replay. The player damage taken is likewise funnelled to HULL, so "damage recorded" is a single
+     * stable section.
+     */
+    private val UC13_COMBAT_TUNING: CombatParams =
+        CombatParams(sectionHitWeights = mapOf(ShipSection.HULL to 1), hitRadius = 60f)
+
+    /** Thrust-in ticks for [uc13Combat] — enough to cross the picket's r260 edge from just outside it. */
+    private const val UC13_THRUST_IN_TICKS: Int = 12
+
+    /** Total ticks for [uc13Combat] — the thrust-in plus a long loiter while the turret grinds the raider down. */
+    private const val UC13_TOTAL_TICKS: Int = 440
+
+    /**
+     * UC13 combat scenario (AC#8): the player starts **in flight** just **west of** the authored
+     * alpha-raider-picket zone (centre [UC13_PICKET_CENTER], radius 260) in [MvpSectorMap.START_SECTOR]
+     * (Alpha), facing east, with **one crew aboard** (so the built-in auto-aim turret is operable, AC#2) and
+     * the last-docked station recorded at Alpha (the respawn point, exercised by the save/reload test). The
+     * script:
+     *  - **thrust-in**: thrust east for [UC13_THRUST_IN_TICKS] ticks, crossing the picket's r260 edge — the
+     *    edge-triggered [com.orbitalfrontier.combat.EncounterSpawner] ambushes the player with a single
+     *    RAIDER (seeded by the crossing tick);
+     *  - **loiter + fire**: release the stick and hold [FireAction.FIRE] for the rest of the run. The
+     *    AGGRESSIVE raider closes to engage range; the crew-gated turret auto-aims and (with the pinned
+     *    HULL-funnelled tuning) grinds its 30-HP hull down to destruction, while the raider's return fire
+     *    records sectional damage on the player.
+     *
+     * [Uc13CombatReplayTest] asserts the encounter ends with the hostile **gone** (combat cleared to NONE,
+     * a HostileDestroyed having fired), the player **alive** with **recorded** HULL damage, and that the
+     * replay is bit-for-bit deterministic. The combat tuning is the pinned [UC13_COMBAT_TUNING]; geometry is
+     * read from the production [MvpSectorMap]. Loadable via `playtest -Dplaythrough.name=uc13-combat`.
+     */
+    fun uc13Combat(): Playthrough {
+        // Start just OUTSIDE the r260 picket on the -x side (dist 270), already cruising east at 120 wu/s so a
+        // few ticks of eastward thrust carry the ship across the r260 edge and trip the ambush.
+        val start = UC13_PICKET_CENTER - Vec2(270f, 0f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(120f, 0f), headingRadians = 0f),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC13_COMBAT,
+                seed = 13L,
+                dtSeconds = DT_SECONDS,
+                combatConfig = UC13_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        fleet = fleet,
+                        // The respawn point on destruction (persisted); also lets the save/reload test assert it.
+                        lastDockedStation = PoiId("alpha-station"),
+                    ),
+            )
+
+        val east = MovementInput(targetDirection = Vec2(1f, 0f), magnitude = 1f, released = false)
+        // Thrust east to cross the picket edge and spawn the raider; FIRE the whole time.
+        for (tick in 0 until UC13_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, east)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        // Loiter (released stick ⇒ drift to near-rest inside the picket) and keep firing: the turret
+        // auto-aims and destroys the closing raider over the remaining ticks.
+        for (tick in UC13_THRUST_IN_TICKS until UC13_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
 }

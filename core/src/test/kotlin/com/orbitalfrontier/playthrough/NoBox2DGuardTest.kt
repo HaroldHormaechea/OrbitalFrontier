@@ -41,6 +41,41 @@ class NoBox2DGuardTest {
         }
     }
 
+    /**
+     * UC13: the whole `combat` package is the seeded **pure model** the replay harness steps (AC#7), so it
+     * must be engine-free AND determinism-safe. Beyond the Box2D/libGDX/ShipPhysics ban, it must not import
+     * a **non-deterministic RNG** (`kotlin.random.Random` / `java.util.Random` — the only sanctioned source
+     * is the functional [com.orbitalfrontier.combat.CombatRng]) nor any **wall-clock** type (`java.time.*` /
+     * `System` time), which would break record/replay reproducibility.
+     */
+    @Test
+    fun `combat model sources import no Box2D, libGDX, non-deterministic RNG, or wall-clock types`() {
+        val combatDir = locateMainPackageDir("combat")
+        val sources =
+            combatDir.listFiles { file -> file.isFile && file.name.endsWith(".kt") }
+                ?.sortedBy { it.name }
+                .orEmpty()
+        assertTrue("expected combat model sources to scan under ${combatDir.absolutePath}", sources.isNotEmpty())
+        for (file in sources) {
+            val source = file.readText()
+            assertNoForbiddenImports(source, "combat/${file.name}")
+
+            val imports =
+                source.lineSequence().map { it.trim() }.filter { it.startsWith("import ") }.toList()
+            val nonDeterministic =
+                imports.filter { line ->
+                    line.contains("kotlin.random") ||
+                        line.contains("java.util.Random") ||
+                        line.contains("java.time") ||
+                        Regex("\\bimport\\s+java\\.lang\\.System\\b").containsMatchIn(line)
+                }
+            assertTrue(
+                "combat/${file.name} must not import a non-deterministic RNG or wall-clock type, found: $nonDeterministic",
+                nonDeterministic.isEmpty(),
+            )
+        }
+    }
+
     private fun assertNoForbiddenImports(
         source: String,
         label: String,
