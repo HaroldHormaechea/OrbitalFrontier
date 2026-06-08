@@ -261,6 +261,13 @@ data class StateSnapshotDto(
      * reconstructed from [FuelParams.DEFAULT_TANK_CAPACITY] on decode rather than stored.
      */
     val fuel: Float = FuelParams.DEFAULT_TANK_CAPACITY,
+    /**
+     * The player's credit balance (UC08 AC#1). Defaulted to `0L` so older artifacts (recorded before
+     * credits existed) decode broke — matching the production v5→v6 migration backfill — and so the
+     * pre-UC08 fixtures replay byte-identically (no credits, no trade). Credits are save-wide (not
+     * per-ship), so they ride here directly rather than on a ship sub-snapshot.
+     */
+    val credits: Long = 0L,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -282,6 +289,7 @@ data class StateSnapshotDto(
                     .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
             // Capacity is a ship stat, reconstructed (like Cargo.capacity); only the level is stored.
             fuel = Fuel(level = fuel, capacity = FuelParams.DEFAULT_TANK_CAPACITY),
+            credits = credits,
         )
 
     companion object {
@@ -304,6 +312,7 @@ data class StateSnapshotDto(
                         .mapKeys { (fieldId, _) -> fieldId.value }
                         .mapValues { (_, deposits) -> deposits.mapKeys { it.key.name } },
                 fuel = state.fuel.level,
+                credits = state.credits,
             )
     }
 }

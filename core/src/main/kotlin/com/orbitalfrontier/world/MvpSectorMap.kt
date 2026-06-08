@@ -2,6 +2,8 @@ package com.orbitalfrontier.world
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationMarket
+import com.orbitalfrontier.economy.TradeOffer
 
 /**
  * The hand-authored 3-sector MVP map (UC03 AC#1; docs/design/world-and-sector.md, ADR 0004).
@@ -60,7 +62,7 @@ object MvpSectorMap {
                         listOf(
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
-                            station("alpha-station", "Alpha Station", Vec2(0f, 600f)),
+                            station("alpha-station", "Alpha Station", Vec2(0f, 600f), ALPHA_MARKET),
                             // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
                             // so mining it to a full hold still leaves the field partially depleted (UC06).
                             asteroidField(
@@ -83,7 +85,7 @@ object MvpSectorMap {
                         listOf(
                             gate("beta-to-alpha", angleDegrees = 180f, dest = ALPHA, destGate = "alpha-to-beta"),
                             gate("beta-to-gamma", angleDegrees = 60f, dest = GAMMA, destGate = "gamma-to-beta"),
-                            station("beta-station", "Beta Station", Vec2(300f, -300f)),
+                            station("beta-station", "Beta Station", Vec2(300f, -300f), BETA_MARKET),
                             // A modest second field (26 units total) of tech-input resources.
                             asteroidField(
                                 "beta-belt",
@@ -122,16 +124,55 @@ object MvpSectorMap {
             link = GateLink(destinationSector = dest, destinationGate = PoiId(destGate)),
         )
 
+    /**
+     * Alpha Station's fixed trade desk (UC08). Authored so cross-station arbitrage is possible
+     * (AC#4): Titanium **sells** here for 50 — higher than Beta's Titanium **buy** of 40 — so a player
+     * mining/buying Titanium at Beta profits selling it here. Conversely Iron Ore sells low here (8)
+     * but buys cheap (10), feeding the opposite leg (sell it at Beta for 15). Each offer keeps
+     * `0 <= sellPrice <= buyPrice` (a station never pays more to buy back than it charges to sell).
+     */
+    private val ALPHA_MARKET: StationMarket =
+        StationMarket(
+            mapOf(
+                ResourceType.HYDROGEN to TradeOffer(buyPrice = 6, sellPrice = 4),
+                ResourceType.WATER_ICE to TradeOffer(buyPrice = 5, sellPrice = 3),
+                ResourceType.IRON_ORE to TradeOffer(buyPrice = 10, sellPrice = 8),
+                ResourceType.COPPER to TradeOffer(buyPrice = 14, sellPrice = 10),
+                ResourceType.SILICON to TradeOffer(buyPrice = 18, sellPrice = 14),
+                ResourceType.TITANIUM to TradeOffer(buyPrice = 60, sellPrice = 50),
+            ),
+        )
+
+    /**
+     * Beta Station's fixed trade desk (UC08). The arbitrage counterpart to [ALPHA_MARKET]: Iron Ore
+     * **sells** here for 15 — higher than Alpha's Iron Ore **buy** of 10 — so the Alpha→Beta iron run
+     * profits; Titanium buys cheap here (40) to feed the Beta→Alpha titanium run. Prices differ from
+     * Alpha's on every shared good so buy-low/sell-high always exists (AC#4).
+     */
+    private val BETA_MARKET: StationMarket =
+        StationMarket(
+            mapOf(
+                ResourceType.HYDROGEN to TradeOffer(buyPrice = 8, sellPrice = 6),
+                ResourceType.IRON_ORE to TradeOffer(buyPrice = 18, sellPrice = 15),
+                ResourceType.COPPER to TradeOffer(buyPrice = 12, sellPrice = 9),
+                ResourceType.SILICON to TradeOffer(buyPrice = 16, sellPrice = 12),
+                ResourceType.ALUMINUM to TradeOffer(buyPrice = 11, sellPrice = 8),
+                ResourceType.TITANIUM to TradeOffer(buyPrice = 40, sellPrice = 32),
+            ),
+        )
+
     private fun station(
         id: String,
         displayName: String,
         position: Vec2,
+        market: StationMarket = StationMarket.EMPTY,
     ): Station =
         Station(
             id = PoiId(id),
             position = position,
             displayName = displayName,
             dockingRadius = STATION_DOCKING_RADIUS,
+            market = market,
         )
 
     private fun asteroidField(

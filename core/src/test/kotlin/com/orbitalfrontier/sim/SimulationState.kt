@@ -41,6 +41,13 @@ import com.orbitalfrontier.world.SectorId
  * `1.0f` at a full-enough tank, those fixtures also **step movement byte-identically** (the fuel-
  * limited speed cap is a no-op until the tank drops below the low-fuel threshold — UC07 composition
  * guarantee, enforced by [com.orbitalfrontier.ship.FuelLimitedMovement]).
+ *
+ * UC08 adds [credits] (the player's single-currency wallet) — mirroring the production
+ * [com.orbitalfrontier.world.WorldState.credits] so a replayed snapshot maps straight onto the saved
+ * world state (UC08 AC#1). It is defaulted to `0L` so older recorded playthroughs — and the
+ * UC01/03/05/06/07 fixtures — construct unchanged, and because trading resolves only against a docked
+ * station's market (a no-op everywhere else) those fixtures also **step byte-identically** (the default
+ * [com.orbitalfrontier.economy.TradeOrder.None] never moves credits or cargo).
  */
 data class SimulationState(
     val tick: Int = 0,
@@ -50,4 +57,5 @@ data class SimulationState(
     val cargo: Cargo = Cargo.empty(),
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
     val fuel: Fuel = Fuel.full(),
+    val credits: Long = 0L,
 )

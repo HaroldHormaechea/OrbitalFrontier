@@ -5,6 +5,8 @@ import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
+import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
 import com.orbitalfrontier.power.PowerParams
@@ -104,6 +106,15 @@ class Simulation(
      * guarantee for the pre-UC07 fixtures). The post-burn [SimulationState.fuel] threads into the next
      * snapshot (UC07 AC#6). The default [RefuelAction.NONE] + a full default tank makes every pre-UC07
      * fixture step its movement **byte-identically**.
+     *
+     * **Trading (UC08).** [tradeOrder] is resolved **while docked**, in the same frozen branch (after
+     * the refuel resolves, so a refuel + trade in the same tick compose against the post-refuel cargo):
+     * the docked station's authored market is looked up from [world] (mirroring the device's
+     * [com.orbitalfrontier.screen.PlayScreen.trade]) and the pure [Trading.resolve] threads the new
+     * [SimulationState.credits] + [SimulationState.cargo] into the docked-return snapshot (UC08 AC#3).
+     * Trading is implicitly gated on being docked: in flight there is no market, so the in-flight path
+     * simply **passes [SimulationState.credits] through unchanged**. The default [TradeOrder.None] is a
+     * no-op (credits + cargo unchanged), so every pre-UC08 fixture steps **byte-identically**.
      */
     fun step(
         state: SimulationState,
@@ -112,6 +123,7 @@ class Simulation(
         dockAction: DockAction = DockAction.NONE,
         mineAction: MineAction = MineAction.NONE,
         refuelAction: RefuelAction = RefuelAction.NONE,
+        tradeOrder: TradeOrder = TradeOrder.None,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -125,7 +137,19 @@ class Simulation(
         // dock state and field depletion are untouched, so a held-while-docked stretch is bit-for-bit
         // stable (UC05 AC#6) — and burns NO fuel (the station hub, not flight, owns docked time).
         if (state.dockedStation != null && dockAction != DockAction.UNDOCK) {
-            return state.copy(tick = state.tick + 1, fuel = refuel.fuel, cargo = refuel.cargo)
+            // Trading resolves while docked, against the docked station's authored market and the
+            // post-refuel cargo (refuel + trade compose). The same market lookup the device's
+            // PlayScreen.trade uses; an unresolvable station / no trade desk yields a null market and
+            // Trading.resolve no-ops. TradeOrder.None (the default) is a no-op too — credits + cargo
+            // thread through unchanged, so a held-while-docked stretch stays bit-for-bit stable.
+            val market = world.sector(state.currentSector).station(state.dockedStation)?.market
+            val trade = Trading.resolve(state.credits, refuel.cargo, market, tradeOrder)
+            return state.copy(
+                tick = state.tick + 1,
+                fuel = refuel.fuel,
+                cargo = trade.cargo,
+                credits = trade.credits,
+            )
         }
 
         // In flight: burn fuel for this tick's power draw, then derive the fuel-limited movement params.
@@ -171,6 +195,9 @@ class Simulation(
             cargo = mining.cargo,
             fieldDepletion = mining.fieldDepletion,
             fuel = burnedFuel,
+            // In flight there is no station market, so trading is a no-op; the wallet threads through
+            // unchanged (UC08 AC#1 — credits persist tick to tick). Trades happen only while docked.
+            credits = state.credits,
         )
     }
 }

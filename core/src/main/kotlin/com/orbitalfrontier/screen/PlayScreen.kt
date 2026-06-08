@@ -20,6 +20,8 @@ import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
@@ -130,6 +132,12 @@ class PlayScreen(
     // the shared [FuelBurn], topped up by [refuel] (station REFUEL), and handed to the autosave via
     // [currentWorldState]. Low fuel scales the speed caps through [FuelLimitedMovement] (never strands).
     private var fuel: Fuel = initialWorldState.fuel
+
+    // Credits (UC08): the player's single-currency wallet, seeded from the loaded/initial snapshot.
+    // Mutated only by [trade] (the station trade desk, via the pure [Trading.resolve]) and handed to
+    // the autosave via [currentWorldState]. Save-wide (not per-ship), so it lives here alongside the
+    // other mutable world state rather than on the ship.
+    private var credits: Long = initialWorldState.credits
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -443,7 +451,45 @@ class PlayScreen(
      * where touching the body is safe; the returned [WorldState] is immutable and handed to the save
      * executor thread.
      */
-    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion, fuel)
+    fun currentWorldState(): WorldState =
+        WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion, fuel, credits)
+
+    /** The player's current credit balance (UC08) — read by the station trade desk for its readout. */
+    fun creditsBalance(): Long = credits
+
+    /** The active ship's current cargo (UC08) — read by the trade desk for its per-resource held counts. */
+    fun cargoSnapshot(): Cargo = cargo
+
+    /**
+     * Execute one trade [order] against the **docked** station's market via the pure [Trading.resolve]
+     * (UC08 AC#3) — the economy analogue of [refuel]/[undock]. The station trade desk
+     * ([com.orbitalfrontier.screen.TradeScreen]) routes BUY/SELL taps here. The market is the docked
+     * station's authored [com.orbitalfrontier.world.Station.market]; when not docked (or the station is
+     * unresolvable) the market is null and [Trading.resolve] no-ops, so trading is implicitly gated on
+     * being docked (the trade desk is only reachable while docked anyway).
+     *
+     * On a real trade it folds the new credits + cargo back in, logs one INFO line under the "Economy"
+     * tag, and autosaves the event so the trade is durable; a no-op tap (unaffordable, hold full,
+     * nothing to sell, not offered) changes nothing and is not persisted. **Buy-hydrogen → fuel (AC#5)**
+     * is compositional: bought Hydrogen lands in the cargo hold and is converted to fuel by the
+     * existing hub REFUEL ([refuel] → [Refueling.resolve]); no special-case path is needed here.
+     */
+    fun trade(order: TradeOrder) {
+        val market = dockedStation?.let { sectorWorld.sector(currentSector).station(it)?.market }
+        val result = Trading.resolve(credits, cargo, market, order)
+        if (result.tradedUnits <= 0) {
+            logger.info(ECONOMY_TAG, "Trade requested but nothing changed hands (unaffordable, hold full, nothing to sell, or not offered)")
+            return
+        }
+        credits = result.credits
+        cargo = result.cargo
+        logger.info(
+            ECONOMY_TAG,
+            "Traded ${result.kind} ${result.tradedUnits} units; credits=$credits, cargo=${cargo.usedUnits}/${cargo.capacity}",
+        )
+        // Trading is a key world event (mirrors mining/dock/refuel) — persist it now.
+        autosave.onEvent("trade")
+    }
 
     /**
      * A short fuel readout for the station hub's REFUEL row (UC07 AC#5), e.g. `FUEL 12/100`. Read on

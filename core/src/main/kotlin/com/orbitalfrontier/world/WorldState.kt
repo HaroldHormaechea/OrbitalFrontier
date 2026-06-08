@@ -31,6 +31,13 @@ import com.orbitalfrontier.ship.ShipKinematics
  * call sites and a v4 save migrated to v5 read back fully fuelled (the migration backfills the new
  * `ship.fuel` column with a full tank — never stranded). Like cargo capacity, the tank's capacity is
  * a ship stat reconstructed on load (see [Fuel]); only the level is persisted.
+ *
+ * [credits] is the player's single-currency wallet (UC08 AC#1) — the balance earned by selling
+ * resources / mission rewards and spent on buying goods, upgrades, and refuelling. It is save-wide
+ * (not per-ship), persisted on `game_state` (v6). It defaults to 0L so existing call sites and a v5
+ * save migrated to v6 read back broke (the migration backfills the new `game_state.credits` column
+ * with 0); a *new game* seeds a starting balance separately (see the game bootstrap), so the 0L
+ * default is correct only for migrated saves, never a fresh one.
  */
 data class WorldState(
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
@@ -39,4 +46,5 @@ data class WorldState(
     val cargo: Cargo = Cargo.empty(),
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
     val fuel: Fuel = Fuel.full(),
+    val credits: Long = 0L,
 )

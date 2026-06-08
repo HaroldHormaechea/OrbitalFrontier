@@ -51,6 +51,27 @@ MVP** but **dynamic later** (driven by sector/faction state — see
 [world-and-sector.md](world-and-sector.md), factions). Station offers/prices/stock are
 **persisted**.
 
+**Implemented (UC08, [ADR 0007](../adr/0007-trading-prices.md)).** Each station carries a
+`StationMarket` — a map of `ResourceType` → `TradeOffer(buyPrice, sellPrice)` (both `Long`
+credits/unit) — authored per station in
+[`MvpSectorMap`](../../core/src/main/kotlin/com/orbitalfrontier/world/MvpSectorMap.kt). Invariant:
+`buyPrice > 0` and `0 <= sellPrice <= buyPrice`, so no single station pays more to buy back than it
+charges to sell (no money loop); cross-station arbitrage is achieved by authoring **distinct** tables
+(e.g. Iron Ore sells higher at Beta than it buys at Alpha; Titanium sells higher at Alpha than it
+buys at Beta — AC#4). Buying/selling is resolved by a **pure** `Trading.resolve(credits, cargo,
+market, order)` (the mining/refuelling analogue): Buy clamps to `min(units, credits / buyPrice, cargo
+free space)`, Sell to `min(units, held)`, with every recoverable case (not docked / not offered /
+unaffordable / hold full / nothing to sell) a no-op. Trade resolves only while **docked** (the market
+comes from the docked station). **Buying Hydrogen feeds fuel (AC#5)** with no special case — it lands
+in cargo and the existing station REFUEL converts it (UC07).
+
+**Fixed prices are authored, not row-persisted** ([ADR 0007](../adr/0007-trading-prices.md)). Because
+MVP prices are fixed authored constants, they are reconstructed from `MvpSectorMap` on load (like
+cargo/fuel *capacity*), not stored per save — a save always reloads the same prices, so AC#4's
+"prices persist" holds by reconstruction. Only the player's **credits** wallet is persisted
+(`game_state.credits`, schema v6). Dynamic pricing (UC14) is where mutable per-station price state
+will move into the save, behind the same `StationMarket` type.
+
 **Spending sinks:**
 - **Ship upgrades** (see [upgrades-and-progression.md](upgrades-and-progression.md))
 - **Repairs** (sectional damage from combat)
@@ -95,11 +116,14 @@ unlimited.
 ## Data & state
 
 Persisted (see [save-and-persistence.md](save-and-persistence.md)):
-- **Credits.**
+- **Credits** — implemented as `game_state.credits` (schema v6, UC08).
 - **Cargo/inventory per ship**; **owned ships + their loadouts**; **active ship**.
 - **Fuel level per ship.**
-- **Station prices/offers/stock** (MVP-fixed, still persisted) and **asteroid field
-  depletion** (owned by [world-and-sector.md](world-and-sector.md)).
+- **Station prices/offers** — MVP-fixed, so **reconstructed from `MvpSectorMap` on load, not stored
+  per save** ([ADR 0007](../adr/0007-trading-prices.md)); a save reloads the same fixed prices, so
+  they "persist" by reconstruction. (Mutable per-station price/stock state lands in the save with
+  **dynamic pricing**, UC14.) Asteroid-field **depletion** is persisted and owned by
+  [world-and-sector.md](world-and-sector.md).
 
 ## Dependencies & interactions
 

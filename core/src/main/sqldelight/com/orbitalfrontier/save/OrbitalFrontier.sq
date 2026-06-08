@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 5 (ADR 0002 / ADR 0003).
+-- Orbital Frontier save schema, version 6 (ADR 0002 / ADR 0003).
 --
--- This .sq file is ALWAYS the latest schema (currently v5). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v6). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
--- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5). Never edit this baseline destructively to make a schema change
--- — bump the version and add a migration instead.
+-- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6). Never edit this baseline destructively to make
+-- a schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -14,6 +14,10 @@
 -- v5 (UC07) adds the active ship's `ship.fuel` level so fuel/power state persists; the v4 -> v5
 -- migration backfills it with a full tank (DEFAULT 100 == FuelParams.DEFAULT_TANK_CAPACITY) so a
 -- migrated save is never stranded.
+-- v6 (UC08) adds the player's `game_state.credits` wallet (save-wide single currency); the v5 -> v6
+-- migration backfills it with DEFAULT 0 so a migrated save reads back broke (a *new game* seeds a
+-- starting balance in code, not via the column default). Station prices are NOT persisted — they are
+-- fixed authored map data reconstructed from MvpSectorMap on load (ADR 0007).
 -- All save-header singletons live in `game_state`; the `ship` table is keyed by id so
 -- UC09 can grow to multiple owned ships additively (the active ship is the one
 -- `game_state.active_ship_id` points at). Box2D internals are never persisted — only the pure
@@ -31,17 +35,21 @@ CREATE TABLE settings (
     handedness TEXT NOT NULL
 );
 
--- Single-row save "header": which sector the player is in, which owned ship is active, and which
--- station (if any) the ship is docked at. Future save-wide singletons (credits, current mission, …)
--- land here additively as later UCs arrive.
+-- Single-row save "header": which sector the player is in, which owned ship is active, which
+-- station (if any) the ship is docked at, and the player's credit balance. Future save-wide
+-- singletons (current mission, …) land here additively as later UCs arrive.
 -- `docked_station_id` is NULLABLE: NULL means the ship is in flight (the common case); a non-null
 -- value is the [PoiId] of the docked station (UC05 AC#4). Nullable so the v2 -> v3 migration can add
 -- it without a backfill — an existing v2 save reads back as in flight.
+-- `credits` (UC08) is the player's single-currency wallet, save-wide (not per-ship). DEFAULT 0
+-- matches the v5 -> v6 migration's backfill so a migrated save reads back broke; a new game seeds a
+-- starting balance in code. The repository coerces a negative/corrupt value to >= 0 on load.
 CREATE TABLE game_state (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     current_sector TEXT NOT NULL,
     active_ship_id INTEGER NOT NULL,
-    docked_station_id TEXT
+    docked_station_id TEXT,
+    credits INTEGER NOT NULL DEFAULT 0
 );
 
 -- Owned-ship kinematics. One row today (the active ship); UC09 adds more rows (and, later, a
@@ -108,7 +116,7 @@ INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
 -- Read the full save header joined to its active ship's kinematics. Returns no rows when there is
 -- no save yet (-> New Game). One row otherwise (game_state is single-slot).
 selectGameState:
-SELECT game_state.current_sector, game_state.docked_station_id,
+SELECT game_state.current_sector, game_state.docked_station_id, game_state.credits,
        ship.pos_x, ship.pos_y, ship.vel_x, ship.vel_y, ship.heading, ship.ang_vel, ship.fuel
 FROM game_state
 JOIN ship ON ship.id = game_state.active_ship_id
@@ -121,7 +129,7 @@ SELECT EXISTS(SELECT 1 FROM game_state WHERE id = 0);
 -- Insert-or-update the single-slot save header. INSERT OR REPLACE for the same minSdk-24 rationale
 -- as upsertHandedness; single-row, no foreign keys, so REPLACE is side-effect-free.
 upsertGameState:
-INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id) VALUES (0, ?, ?, ?);
+INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits) VALUES (0, ?, ?, ?, ?);
 
 -- Insert-or-update one ship row's kinematics + fuel by id (active ship id today; more rows under UC09).
 upsertShip:

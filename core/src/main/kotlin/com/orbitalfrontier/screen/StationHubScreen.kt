@@ -16,15 +16,16 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 /**
  * The station-hub screen shown while the ship is docked (UC05 AC#3).
  *
- * Intentionally a **thin view with no game logic**: it shows the docked station's name and a column
- * of **inert** service entries (TRADE / OUTFIT / MISSIONS — labels with no listeners) that later UCs
- * (economy UC08, upgrades UC09, missions UC12) will wire up, plus an **active REFUEL** service
- * (UC07 AC#5) and a single **active** UNDOCK button. Tapping UNDOCK fires the injected [onUndock]
- * intent and REFUEL fires [onRefuel]; the owner ([com.orbitalfrontier.app.OrbitalFrontierGame]) routes
- * both to the play screen, which performs the pure transition (dock state / [Refueling.resolve]),
- * autosaves, and is shown again. Keeping that mutation in one place (the play screen) keeps this screen
- * free of world/save coupling (SRP); the screen only renders the [fuelStatus] readout and re-reads it
- * after a refuel tap.
+ * Intentionally a **thin view with no game logic**: it shows the docked station's name, an **active
+ * TRADE** button that opens the station trade desk (UC08), a column of remaining **inert** service
+ * entries (OUTFIT / MISSIONS — labels with no listeners) that later UCs (upgrades UC09, missions
+ * UC12) will wire up, an **active REFUEL** service (UC07 AC#5), and a single **active** UNDOCK
+ * button. Tapping UNDOCK fires [onUndock], TRADE fires [onTrade], and REFUEL fires [onRefuel]; the
+ * owner ([com.orbitalfrontier.app.OrbitalFrontierGame]) routes them — UNDOCK/REFUEL to the play
+ * screen's pure transitions (dock state / [Refueling.resolve]) and TRADE to opening the
+ * [com.orbitalfrontier.screen.TradeScreen]. Keeping that mutation in one place (the play screen)
+ * keeps this screen free of world/save coupling (SRP); the screen only renders the [fuelStatus]
+ * readout and re-reads it after a refuel tap.
  *
  * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes both screens explicitly, so there is no leaked context when the
@@ -34,6 +35,7 @@ class StationHubScreen(
     private val logger: Logger,
     stationName: String,
     private val onUndock: () -> Unit,
+    private val onTrade: () -> Unit,
     private val onRefuel: () -> Unit,
     private val fuelStatus: () -> String,
 ) : ScreenAdapter() {
@@ -51,7 +53,23 @@ class StationHubScreen(
         root.add(Label(stationName, skin.labelStyle)).padBottom(TITLE_GAP).row()
         root.add(Label("STATION SERVICES", skin.labelStyle)).padBottom(SERVICE_GAP).row()
 
-        // Inert service stubs — no listeners; wired by later UCs (economy/upgrades/missions).
+        // Active TRADE service (UC08): opens the station trade desk. The play screen owns the pure
+        // Trading.resolve; this button just fires the intent so the game switches to the TradeScreen.
+        val tradeButton = TextButton("TRADE", skin.settingsButtonStyle)
+        tradeButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    onTrade()
+                }
+            },
+        )
+        root.add(tradeButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Inert service stubs — no listeners; wired by later UCs (upgrades/missions).
         for (service in INERT_SERVICES) {
             root.add(Label("$service  (coming soon)", skin.labelStyle)).padBottom(SERVICE_GAP).row()
         }
@@ -125,7 +143,7 @@ class StationHubScreen(
 
     private companion object {
         const val TAG = "Screen"
-        val INERT_SERVICES = listOf("TRADE", "OUTFIT", "MISSIONS")
+        val INERT_SERVICES = listOf("OUTFIT", "MISSIONS")
         const val MARGIN = 32f
         const val TITLE_GAP = 24f
         const val SERVICE_GAP = 12f

@@ -1,6 +1,8 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.economy.RefuelAction
+import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.platform.SeededRng
 import com.orbitalfrontier.platform.TickTimeSource
 import com.orbitalfrontier.ship.MovementInput
@@ -74,7 +76,8 @@ class ReplayRunner {
             val dockAction = dockActionFor(tickEvents)
             val mineAction = mineActionFor(tickEvents)
             val refuelAction = refuelActionFor(tickEvents)
-            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction, refuelAction)
+            val tradeOrder = tradeOrderFor(tickEvents)
+            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction, refuelAction, tradeOrder)
             perTick?.add(state)
         }
 
@@ -116,4 +119,19 @@ class ReplayRunner {
      */
     private fun refuelActionFor(events: List<InputEvent>): RefuelAction =
         events.filterIsInstance<RefuelEvent>().lastOrNull()?.action ?: RefuelAction.NONE
+
+    /**
+     * Reduce a tick's events to the [TradeOrder] the sim steps with (UC08). When several trade samples
+     * share a tick the latest wins; a tick with no [TradeEvent] steps with [TradeOrder.None], so
+     * non-trading artifacts (UC01/UC03/UC05/UC06/UC07) replay exactly as before. A [TradeEvent] maps to
+     * the matching [TradeOrder.Buy]/[TradeOrder.Sell] carrying its resource + requested units (the
+     * resolver clamps the actual quantity).
+     */
+    private fun tradeOrderFor(events: List<InputEvent>): TradeOrder =
+        events.filterIsInstance<TradeEvent>().lastOrNull()?.let { event ->
+            when (event.kind) {
+                TradeKind.BUY -> TradeOrder.Buy(event.resource, event.units)
+                TradeKind.SELL -> TradeOrder.Sell(event.resource, event.units)
+            }
+        } ?: TradeOrder.None
 }
