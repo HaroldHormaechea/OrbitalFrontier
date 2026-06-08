@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.TradeKind
@@ -65,6 +66,7 @@ class ReplayRunner {
                 powerParams = playthrough.powerConfig.toPowerParams(),
                 fuelParams = playthrough.fuelConfig.toFuelParams(),
                 missionParams = playthrough.missionConfig.toMissionParams(),
+                combatParams = playthrough.combatConfig.toCombatParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()
@@ -88,6 +90,7 @@ class ReplayRunner {
             val scanAction = scanActionFor(tickEvents)
             val hireOrder = hireOrderFor(tickEvents)
             val missionOrder = missionOrderFor(tickEvents)
+            val fireAction = fireActionFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -102,6 +105,7 @@ class ReplayRunner {
                     scanAction,
                     hireOrder,
                     missionOrder,
+                    fireAction,
                 )
             perTick?.add(state)
         }
@@ -144,6 +148,15 @@ class ReplayRunner {
      */
     private fun scanActionFor(events: List<InputEvent>): ScanAction =
         events.filterIsInstance<ScanEvent>().lastOrNull()?.action ?: ScanAction.NONE
+
+    /**
+     * Reduce a tick's events to the [FireAction] the sim steps with (UC13). When several fire samples
+     * share a tick the latest wins; a tick with no [FireEvent] steps with [FireAction.NONE], so
+     * non-combat artifacts (UC01..UC12) replay exactly as before — and a [FireAction.NONE] step on an
+     * inactive encounter is a total no-op (the byte-identical anchor).
+     */
+    private fun fireActionFor(events: List<InputEvent>): FireAction =
+        events.filterIsInstance<FireEvent>().lastOrNull()?.action ?: FireAction.NONE
 
     /**
      * Reduce a tick's events to the [HireOrder] the sim steps with (UC11). When several hire samples

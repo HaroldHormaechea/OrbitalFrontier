@@ -42,6 +42,19 @@
     "courierFailurePenalty": 150,
     "radioRange": 700.0
   },
+  "combatConfig": {
+    "hitRadius": 28.0,
+    "sectionHitWeights": {
+      "HULL": 5,
+      "ENGINE": 2,
+      "TURRET": 2,
+      "WEAPON": 2
+    },
+    "minEngineSpeedFactor": 0.35,
+    "respawnCargoLossFraction": 0.25,
+    "muzzleOffset": 24.0,
+    "spawnDistance": 360.0
+  },
   "initialState": {
     "tick": 0,
     "posX": 1180.0,
@@ -72,7 +85,8 @@
         "fuelLevel": 100.0,
         "fuelCapacity": 100.0,
         "loadout": {},
-        "crew": 0
+        "crew": 0,
+        "sectionDamage": {}
       }
     ],
     "activeShipId": 0,
@@ -80,7 +94,8 @@
     "missions": {
       "available": [],
       "accepted": []
-    }
+    },
+    "lastDockedStation": null
   },
   "inputEvents": [
     {

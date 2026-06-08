@@ -1,5 +1,14 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.combat.Combat
+import com.orbitalfrontier.combat.CombatLimitedMovement
+import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.EncounterSpawner
+import com.orbitalfrontier.combat.FireAction
+import com.orbitalfrontier.combat.PlayerCombatInput
+import com.orbitalfrontier.combat.Respawn
+import com.orbitalfrontier.combat.ShipSection
+import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.economy.FuelBurn
@@ -35,8 +44,10 @@ import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.MiningResult
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
 import com.orbitalfrontier.world.Scanning
+import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.StationKind
 
@@ -79,6 +90,7 @@ class Simulation(
     private val powerParams: PowerParams = PowerParams(),
     private val fuelParams: FuelParams = FuelParams(),
     private val missionParams: MissionParams = MissionParams(),
+    private val combatParams: CombatParams = CombatParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -156,6 +168,7 @@ class Simulation(
         scanAction: ScanAction = ScanAction.NONE,
         hireOrder: HireOrder = HireOrder.None,
         missionOrder: MissionOrder = MissionOrder.None,
+        fireAction: FireAction = FireAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -258,6 +271,11 @@ class Simulation(
                 fleet = fleetAfterMission,
                 credits = missionAdvance.credits,
                 missions = missionAdvance.log,
+                // UC13: a docked ship's "last docked station" is where it is parked — the respawn point on
+                // destruction (set on dock, retained after undock). Combat never runs on the docked-freeze
+                // path (encounter zones sit in open space, away from stations), so combat threads through
+                // unchanged here.
+                lastDockedStation = state.dockedStation,
             )
         }
 
@@ -273,7 +291,18 @@ class Simulation(
         val shipParams = ShipStats.effectiveMovementParams(params, active.type, active.loadout)
         // Byte-identical at a full-enough tank: effectiveParams returns `shipParams` unchanged (factor
         // 1.0), so the movement model steps exactly as before; only a low tank scales the caps (AC#3).
-        val effectiveParams = FuelLimitedMovement.effectiveParams(shipParams, burnedFuel, fuelParams)
+        val fuelLimitedParams = FuelLimitedMovement.effectiveParams(shipParams, burnedFuel, fuelParams)
+        // UC13: engine damage scales the speed caps on top of fuel limiting — the SAME composition the
+        // device's PlayScreen runs. With a pristine engine (the common case, incl. every pre-UC13 fixture)
+        // CombatLimitedMovement returns `fuelLimitedParams` unchanged (factor 1.0, same instance), so
+        // movement stays byte-identical; only engine damage taken in combat reduces effective speed (AC#3).
+        val effectiveParams =
+            CombatLimitedMovement.effectiveParams(
+                fuelLimitedParams,
+                active.sectionDamage,
+                ShipStats.sectionHp(active.type, active.loadout, ShipSection.ENGINE),
+                combatParams,
+            )
 
         val movedShip = movementModel.update(state.ship, input, effectiveParams, dt)
         val traversal = GateTraversal.resolve(world, state.currentSector, movedShip.position)
@@ -354,9 +383,81 @@ class Simulation(
         // same mining.cargo instance unless a mission consumed/added units — same-instance keeps it
         // byte-identical on a no-op tick).
         val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = missionAdvance.cargo, fuel = burnedFuel)
+
+        // --- UC13 combat. Runs in flight only (a freshly-docked tick skips it, like mining/scanning) —
+        // the authored encounter zones sit in open space, away from stations. Edge-triggered natural spawn
+        // on the outside->inside crossing of a zone in this sector, then THE shared pure [Combat.step]
+        // folds the player's new section damage back onto the active ship and runs [Respawn] on
+        // destruction — the same functions PlayScreen.runCombat runs on device, so live and replayed combat
+        // match (AC#7). With combat NONE + FireAction.NONE + no crossing every call returns the SAME
+        // instances, advances no RNG and emits no events, so pre-UC13 fixtures step byte-identically.
+        var combat = state.combat
+        val lastDockedStation = nextDocked ?: state.lastDockedStation
+        var combatFleet = state.fleet.withActive(updatedActive)
+
+        if (nextDocked == null) {
+            // Edge-triggered natural spawn: previous (pre-movement) position outside -> new (post-gate)
+            // position inside an authored zone in this sector. Seeded by the sim [tick] so the replay
+            // reproduces the identical encounter; the spawner no-ops while a fight is already active.
+            if (!combat.active) {
+                for (zone in MvpSectorMap.encounterZones(nextSector)) {
+                    val spawned =
+                        EncounterSpawner.naturalSpawn(combat, zone, state.ship.position, nextShip.position, state.tick, combatParams)
+                    if (spawned !== combat) {
+                        combat = spawned
+                        break
+                    }
+                }
+            }
+
+            if (combat.active) {
+                val combatShip = combatFleet.active
+                val playerInput =
+                    PlayerCombatInput(
+                        kinematics = combatShip.kinematics,
+                        weapons = ShipStats.weaponLoadout(combatShip.type, combatShip.loadout),
+                        maxSectionHp = ShipStats.sectionHpMap(combatShip.type, combatShip.loadout),
+                        crew = combatShip.crew,
+                        sectionDamage = combatShip.sectionDamage,
+                    )
+                val result = Combat.step(combat, playerInput, fireAction, combatParams, dt)
+                combat = result.combat
+
+                if (result.destroyed) {
+                    // Forgiving respawn (AC#5, no permadeath): relocate to the last docked station's
+                    // location, lighten the hold, fully repair, clear combat. With no last dock, respawn in
+                    // place (never stranded) — the same [Respawn] the device runs.
+                    val (respawnSector, respawnPosition) =
+                        resolveRespawnLocation(lastDockedStation, combatShip.kinematics.position)
+                    val respawn = Respawn.respawn(respawnPosition, combatShip.cargo, combatParams)
+                    val respawnedShip =
+                        combatShip
+                            .withSectionDamage(respawn.sectionDamage)
+                            .copy(cargo = respawn.cargo, kinematics = respawn.kinematics)
+                    return state.copy(
+                        tick = state.tick + 1,
+                        fleet = combatFleet.withActive(respawnedShip),
+                        currentSector = respawnSector ?: nextSector,
+                        dockedStation = null,
+                        fieldDepletion = mining.fieldDepletion,
+                        credits = missionAdvance.credits,
+                        revealedContacts = revealedContacts,
+                        missions = missionAdvance.log,
+                        combat = respawn.combat,
+                        lastDockedStation = lastDockedStation,
+                    )
+                }
+
+                // Fold the player's new section damage onto the active ship (=== check skips a no-op tick).
+                if (result.sectionDamage !== combatShip.sectionDamage) {
+                    combatFleet = combatFleet.withActive(combatShip.withSectionDamage(result.sectionDamage))
+                }
+            }
+        }
+
         return state.copy(
             tick = state.tick + 1,
-            fleet = state.fleet.withActive(updatedActive),
+            fleet = combatFleet,
             currentSector = nextSector,
             dockedStation = nextDocked,
             fieldDepletion = mining.fieldDepletion,
@@ -368,6 +469,27 @@ class Simulation(
             revealedContacts = revealedContacts,
             // The mission log after this tick's resolve + advance (UC12); the SAME instance on a no-op tick.
             missions = missionAdvance.log,
+            // UC13: the live encounter (NONE same-instance on a no-op tick) and the persisted respawn point.
+            combat = combat,
+            lastDockedStation = lastDockedStation,
         )
+    }
+
+    /**
+     * The respawn sector + position for a destroyed player (UC13 AC#5): the last docked station's
+     * location if [stationId] is still in the authored [world], else `(null, fallback)` — respawn in
+     * place when there is no recorded dock. Mirrors `PlayScreen.resolveRespawnLocation`.
+     */
+    private fun resolveRespawnLocation(
+        stationId: PoiId?,
+        fallback: Vec2,
+    ): Pair<SectorId?, Vec2> {
+        if (stationId != null) {
+            for (sector in world.sectors) {
+                val station = sector.station(stationId)
+                if (station != null) return sector.id to station.position
+            }
+        }
+        return null to fallback
     }
 }

@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
@@ -94,6 +95,12 @@ class PlaythroughRecorder(
         tick: Int,
         action: ScanAction,
     ): PlaythroughRecorder = record(ScanEvent(tick = tick, action = action))
+
+    /** Convenience: record a [FireEvent] for [action] at [tick] (UC13). */
+    fun recordFireAction(
+        tick: Int,
+        action: FireAction,
+    ): PlaythroughRecorder = record(FireEvent(tick = tick, action = action))
 
     /** Convenience: record a [HireEvent] (a request to hire [units] crew) at [tick] (UC11). */
     fun recordHire(
