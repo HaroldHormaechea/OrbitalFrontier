@@ -17,8 +17,7 @@ object TargetingPriority {
      * A [Comparator] over hostiles implementing the total order (ascending distance² from [from], then
      * ascending [HostileId]). Exposed so callers can sort or `minWith` consistently.
      */
-    fun comparator(from: Vec2): Comparator<Hostile> =
-        compareBy({ distanceSquared(from, it.kinematics.position) }, { it.id.value })
+    fun comparator(from: Vec2): Comparator<Hostile> = compareBy({ distanceSquared(from, it.kinematics.position) }, { it.id.value })
 
     /** The priority target among [hostiles] from [from], or null if there are none. */
     fun selectTarget(

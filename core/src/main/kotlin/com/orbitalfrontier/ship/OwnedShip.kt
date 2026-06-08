@@ -158,6 +158,24 @@ data class OwnedShip(
          * [ResourceType] declaration order (deterministic) until the cap is reached. A no-op when
          * everything already fits (the common case — capacity only ever grows in the MVP).
          */
+        private fun clampContents(
+            contents: Map<ResourceType, Int>,
+            capacity: Int,
+        ): Map<ResourceType, Int> {
+            if (contents.values.sum() <= capacity) return contents
+            val clamped = LinkedHashMap<ResourceType, Int>()
+            var remaining = capacity
+            for (resource in ResourceType.entries) {
+                if (remaining <= 0) break
+                val held = contents[resource] ?: 0
+                if (held <= 0) continue
+                val keep = held.coerceAtMost(remaining)
+                clamped[resource] = keep
+                remaining -= keep
+            }
+            return clamped
+        }
+
         /**
          * Coerce each section's current HP in [damage] down to the new fit's derived max HP (UC13), and
          * drop any section now at/above full (canonical: absent = pristine). A no-op (returns the same
@@ -178,24 +196,6 @@ data class OwnedShip(
                 }
             }
             return result
-        }
-
-        private fun clampContents(
-            contents: Map<ResourceType, Int>,
-            capacity: Int,
-        ): Map<ResourceType, Int> {
-            if (contents.values.sum() <= capacity) return contents
-            val clamped = LinkedHashMap<ResourceType, Int>()
-            var remaining = capacity
-            for (resource in ResourceType.entries) {
-                if (remaining <= 0) break
-                val held = contents[resource] ?: 0
-                if (held <= 0) continue
-                val keep = held.coerceAtMost(remaining)
-                clamped[resource] = keep
-                remaining -= keep
-            }
-            return clamped
         }
     }
 }

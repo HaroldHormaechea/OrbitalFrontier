@@ -31,6 +31,7 @@ class HudRenderer : Disposable {
         lowFuel: Boolean,
         viewportWidth: Float,
         viewportHeight: Float,
+        inCombat: Boolean = false,
     ) {
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
         batch.projectionMatrix = projection
@@ -51,6 +52,16 @@ class HudRenderer : Disposable {
         font.color = if (lowFuel) Color.RED else Color.WHITE
         font.draw(batch, line, MARGIN, viewportHeight - MARGIN - LINE_HEIGHT * 2f)
         font.color = Color.WHITE
+
+        // UC13: a red "IN COMBAT" cue while an encounter is live, drawn alongside the per-section ship
+        // schematic ([com.orbitalfrontier.render.ShipSchematicRenderer]); the schematic carries the detail.
+        if (inCombat) {
+            line.setLength(0)
+            line.append("IN COMBAT")
+            font.color = Color.RED
+            font.draw(batch, line, MARGIN, viewportHeight - MARGIN - LINE_HEIGHT * 3f)
+            font.color = Color.WHITE
+        }
 
         batch.end()
     }
