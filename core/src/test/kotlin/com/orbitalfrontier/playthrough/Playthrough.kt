@@ -618,16 +618,14 @@ data class ReputationDto(
     val byFaction: Map<String, Int> = emptyMap(),
 ) {
     /** Reconstruct the domain [Reputation] (factionSlug → standing). */
-    fun toReputation(): Reputation =
-        Reputation(byFaction.mapKeys { FactionId(it.key) })
+    fun toReputation(): Reputation = Reputation(byFaction.mapKeys { FactionId(it.key) })
 
     companion object {
         /** The neutral default — no recorded standing with any faction. */
         val EMPTY: ReputationDto = ReputationDto()
 
         /** Snapshot [reputation] into its serializable form (the non-neutral rows, keyed by faction slug). */
-        fun from(reputation: Reputation): ReputationDto =
-            ReputationDto(reputation.byFaction.mapKeys { it.key.value })
+        fun from(reputation: Reputation): ReputationDto = ReputationDto(reputation.byFaction.mapKeys { it.key.value })
     }
 }
 
