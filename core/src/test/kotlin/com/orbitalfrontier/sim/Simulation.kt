@@ -144,10 +144,12 @@ class Simulation(
             // thread through unchanged, so a held-while-docked stretch stays bit-for-bit stable.
             val market = world.sector(state.currentSector).station(state.dockedStation)?.market
             val trade = Trading.resolve(state.credits, refuel.cargo, market, tradeOrder)
+            // UC09: fold the post-refuel/​trade cargo + fuel back onto the active ship in the fleet.
+            // copy() (not withLoadout) — the loadout is unchanged here, so capacities stay as derived.
+            val updatedActive = state.fleet.active.copy(cargo = trade.cargo, fuel = refuel.fuel)
             return state.copy(
                 tick = state.tick + 1,
-                fuel = refuel.fuel,
-                cargo = trade.cargo,
+                fleet = state.fleet.withActive(updatedActive),
                 credits = trade.credits,
             )
         }
@@ -187,14 +189,15 @@ class Simulation(
                 MiningResult(refuel.cargo, state.fieldDepletion, 0)
             }
 
-        return SimulationState(
+        // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
+        // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
+        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = mining.cargo, fuel = burnedFuel)
+        return state.copy(
             tick = state.tick + 1,
-            ship = nextShip,
+            fleet = state.fleet.withActive(updatedActive),
             currentSector = nextSector,
             dockedStation = nextDocked,
-            cargo = mining.cargo,
             fieldDepletion = mining.fieldDepletion,
-            fuel = burnedFuel,
             // In flight there is no station market, so trading is a no-op; the wallet threads through
             // unchanged (UC08 AC#1 — credits persist tick to tick). Trades happen only while docked.
             credits = state.credits,

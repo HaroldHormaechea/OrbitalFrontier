@@ -14,7 +14,6 @@ import com.orbitalfrontier.save.SqlDelightSettingsRepository
 import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.TradeScreen
-import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
@@ -72,9 +71,10 @@ class OrbitalFrontierGame(
                 loaded
             } else {
                 logger.info(TAG, "New Game: no save present; seeding defaults (credits=$STARTING_CREDITS)")
-                // New game seeds a starting wallet (UC08). A *migrated* save keeps its own balance (the
-                // v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
-                WorldState(currentSector = MvpSectorMap.START_SECTOR, ship = ShipKinematics(), credits = STARTING_CREDITS)
+                // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
+                // (UC09 — WorldState defaults to Fleet.starter()). A *migrated* save keeps its own
+                // balance (the v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
+                WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS)
             }
 
         // Resolve the initial dock state (UC05 AC#4). A saved dock station that no longer resolves to a

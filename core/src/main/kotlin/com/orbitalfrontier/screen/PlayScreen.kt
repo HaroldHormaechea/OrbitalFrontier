@@ -39,6 +39,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
+import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -138,6 +139,14 @@ class PlayScreen(
     // the autosave via [currentWorldState]. Save-wide (not per-ship), so it lives here alongside the
     // other mutable world state rather than on the ship.
     private var credits: Long = initialWorldState.credits
+
+    // Fleet (UC09): the ships the player owns and which is active. Seeded from the loaded/initial
+    // snapshot. The active ship's live kinematics/cargo/fuel are tracked in the fields above (read back
+    // from the Box2D body / mining / fuel burn each frame); [currentWorldState] folds them onto the
+    // active ship in this fleet before handing the snapshot to the autosave. In Stage A there is only
+    // ever one (starter) ship and this never changes after construction; outfitting / ship switching
+    // (Stage B) mutate it.
+    private var fleet: Fleet = initialWorldState.fleet
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -446,13 +455,17 @@ class PlayScreen(
     ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
 
     /**
-     * The live world snapshot (current sector, ship kinematics read back from the Box2D body, and
-     * dock state) used by the [AutosaveController] (UC04/UC05 AC#4). Called on the render thread,
-     * where touching the body is safe; the returned [WorldState] is immutable and handed to the save
-     * executor thread.
+     * The live world snapshot (current sector, the fleet with the active ship's kinematics read back
+     * from the Box2D body, dock state, and credits) used by the [AutosaveController] (UC04/UC05 AC#4;
+     * UC09 AC#6). Called on the render thread, where touching the body is safe; the returned
+     * [WorldState] is immutable and handed to the save executor thread. The active ship's live
+     * kinematics/cargo/fuel are folded back onto it (the loadout is unchanged, so capacities stay as
+     * derived).
      */
-    fun currentWorldState(): WorldState =
-        WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion, fuel, credits)
+    fun currentWorldState(): WorldState {
+        val active = fleet.active.copy(kinematics = physics.readKinematics(), cargo = cargo, fuel = fuel)
+        return WorldState(currentSector, fleet.withActive(active), dockedStation, fieldDepletion, credits)
+    }
 
     /** The player's current credit balance (UC08) — read by the station trade desk for its readout. */
     fun creditsBalance(): Long = credits
