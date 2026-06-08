@@ -2,6 +2,8 @@ package com.orbitalfrontier.app
 
 import app.cash.sqldelight.db.SqlDriver
 import com.badlogic.gdx.Game
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
@@ -11,6 +13,7 @@ import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
 import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.StationHubScreen
+import com.orbitalfrontier.screen.TradeScreen
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
@@ -44,6 +47,7 @@ class OrbitalFrontierGame(
     private var autosave: AutosaveController? = null
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
+    private var tradeScreen: TradeScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
@@ -67,8 +71,10 @@ class OrbitalFrontierGame(
                 logger.info(TAG, "Continue: restored save (sector=${loaded.currentSector.value})")
                 loaded
             } else {
-                logger.info(TAG, "New Game: no save present; seeding defaults")
-                WorldState(MvpSectorMap.START_SECTOR, ShipKinematics())
+                logger.info(TAG, "New Game: no save present; seeding defaults (credits=$STARTING_CREDITS)")
+                // New game seeds a starting wallet (UC08). A *migrated* save keeps its own balance (the
+                // v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
+                WorldState(currentSector = MvpSectorMap.START_SECTOR, ship = ShipKinematics(), credits = STARTING_CREDITS)
             }
 
         // Resolve the initial dock state (UC05 AC#4). A saved dock station that no longer resolves to a
@@ -135,6 +141,9 @@ class OrbitalFrontierGame(
                 logger = logger,
                 stationName = station.displayName,
                 onUndock = { returnToFlight() },
+                // TRADE opens the station trade desk for this station (UC08); the desk routes BUY/SELL
+                // taps back to the play screen's pure Trading.resolve.
+                onTrade = { openTradeDesk(station) },
                 // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
                 // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
                 onRefuel = { playScreen?.refuel() },
@@ -144,6 +153,27 @@ class OrbitalFrontierGame(
         setScreen(hub)
     }
 
+    /**
+     * Open the trade desk for [station] (UC08), owning it so it can be disposed (libGDX only hide()s
+     * the hub). BUY/SELL taps route to [PlayScreen.trade] (pure [com.orbitalfrontier.economy.Trading]);
+     * the desk reads the live credits + cargo back from the play screen for its readouts. BACK returns
+     * to the hub.
+     */
+    private fun openTradeDesk(station: Station) {
+        val desk =
+            TradeScreen(
+                logger = logger,
+                stationName = station.displayName,
+                market = station.market,
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
+                onTrade = { order: TradeOrder -> playScreen?.trade(order) },
+                onBack = { returnToHub() },
+            )
+        tradeScreen = desk
+        setScreen(desk)
+    }
+
     /** Undock and return to the play screen, then dispose the (now hidden) hub to free its GL. */
     private fun returnToFlight() {
         playScreen?.undock()
@@ -151,6 +181,14 @@ class OrbitalFrontierGame(
         // setScreen above already hid the hub; dispose it now that it is no longer the active screen.
         stationHubScreen?.dispose()
         stationHubScreen = null
+    }
+
+    /** Return from the trade desk to the station hub, then dispose the (now hidden) desk to free GL. */
+    private fun returnToHub() {
+        stationHubScreen?.let { setScreen(it) }
+        // setScreen above already hid the desk; dispose it now that it is no longer the active screen.
+        tradeScreen?.dispose()
+        tradeScreen = null
     }
 
     override fun dispose() {
@@ -163,8 +201,8 @@ class OrbitalFrontierGame(
 
         super.dispose() // libGDX Game.dispose() only hide()s the active screen — it does not dispose it.
 
-        // Dispose BOTH owned screens explicitly so neither leaks GL resources (the inactive one was
-        // never hidden/disposed by libGDX, and the active one is only hidden by super.dispose()).
+        // Dispose ALL owned screens explicitly so none leaks GL resources (an inactive one was never
+        // hidden/disposed by libGDX, and the active one is only hidden by super.dispose()).
         try {
             playScreen?.dispose()
         } catch (e: Exception) {
@@ -177,6 +215,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose station hub screen on shutdown", e)
         }
         stationHubScreen = null
+        try {
+            tradeScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose trade screen on shutdown", e)
+        }
+        tradeScreen = null
 
         try {
             driver?.close()
@@ -188,5 +232,12 @@ class OrbitalFrontierGame(
 
     private companion object {
         const val TAG = "App"
+
+        /**
+         * Credits a brand-new game starts with (UC08). An authored balancing tunable — enough to make
+         * a first buy-low/sell-high trade run or an early refuel; migrated saves keep their own balance
+         * (the v5 -> v6 column backfills 0), so this applies only to a fresh game. [TUNE]
+         */
+        const val STARTING_CREDITS: Long = 500L
     }
 }
