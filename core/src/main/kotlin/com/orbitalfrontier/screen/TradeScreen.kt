@@ -15,6 +15,7 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarket
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 
 /**
@@ -48,7 +49,7 @@ class TradeScreen(
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Credit balance readout, refreshed in place after each trade.
     private val balanceLabel = Label("", skin.labelStyle)

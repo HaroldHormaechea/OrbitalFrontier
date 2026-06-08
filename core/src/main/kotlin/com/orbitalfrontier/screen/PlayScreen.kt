@@ -60,6 +60,8 @@ import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
+import com.orbitalfrontier.render.WorldObjectRenderer
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
@@ -150,6 +152,10 @@ class PlayScreen(
     private val hudRenderer = HudRenderer()
     private val gateRenderer = GateRenderer()
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
+
+    // ADR 0015: the one in-world renderer that draws a base glyph for EVERY POI (stations included),
+    // so no POI can render as nothing; gate/asteroid renderers above now draw only their rings.
+    private val worldObjectRenderer = WorldObjectRenderer()
     private val minimap = MinimapRenderer()
 
     // Combat visuals (UC13): hostiles + projectiles in world space, and the per-section HUD ship
@@ -246,7 +252,10 @@ class PlayScreen(
     private val combatParams = CombatParams()
 
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+
+    // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
+    // unitsPerPixel; this is UI-only and does NOT touch the world camera (the playfield stays 1:1).
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val joystick = MovementJoystick(skin)
     private val actionCluster = ActionCluster(skin)
     private val settingsOverlay: SettingsOverlay
@@ -594,8 +603,12 @@ class PlayScreen(
         val sector = sectorWorld.sector(currentSector)
         // Parallax keyed off the camera's world position conveys motion (AC#11).
         starfield.render(ship.position.x, ship.position.y, viewportWidth, viewportHeight)
+        // Ring overlays first (mining / trigger radii), then the per-POI base markers on top: the
+        // shared WorldObjectRenderer draws a glyph for every POI in the sector — stations included
+        // (previously unrendered in-world) and revealed hidden contacts — keyed by WorldGlyphs.forPoi.
         asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
+        worldObjectRenderer.render(worldCamera, sector.pois, revealedContacts)
         shipRenderer.render(worldCamera, ship)
         // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
         hostileRenderer.render(worldCamera, combat)
@@ -1288,6 +1301,7 @@ class PlayScreen(
         hudRenderer.dispose()
         gateRenderer.dispose()
         asteroidFieldRenderer.dispose()
+        worldObjectRenderer.dispose()
         minimap.dispose()
         hostileRenderer.dispose()
         shipSchematicRenderer.dispose()

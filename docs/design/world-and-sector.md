@@ -76,6 +76,17 @@ station carries an authored **`dockingRadius`** (~100 wu) circle; the MVP map au
 Alpha and one in Beta (Gamma has none), placed clear of the gate triggers and inside the content
 extent.
 
+> **In-world rendering (ADR 0015).** Stations now also **draw in the world view**, not only on the
+> minimap. Previously each POI kind had its own hand-wired world renderer and `Station` had none, so a
+> station appeared as a minimap square but **nothing in space** — the reported "objects with no
+> graphic" bug. The fix is structural: a single `render.WorldObjectRenderer` iterates `sector.pois` and
+> draws a base **glyph** for every POI, resolved by the compiler-exhaustive `render.WorldGlyphs.forPoi`
+> over the sealed `Poi` hierarchy. A station draws a green placeholder box; a new POI subtype will not
+> compile until it is given a glyph, so "a POI that renders as nothing" is impossible by construction.
+> A **revealed** hidden contact draws a red placeholder box too (only *unrevealed* ones are skipped).
+> The gate/asteroid renderers are now additive **ring-only overlays** (trigger / mining radius); their
+> marker shapes moved into the base glyphs.
+
 - **Dock trigger — proximity + explicit action (never automatic).** Flying within a station's
   `dockingRadius` makes it *dockable*: the HUD shows an "IN RANGE: <name>" prompt and a context
   **DOCK** button. Docking only happens when the player taps DOCK — proximity alone never docks

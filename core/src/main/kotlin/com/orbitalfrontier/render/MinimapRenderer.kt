@@ -33,6 +33,7 @@ import com.orbitalfrontier.world.Transponder
 class MinimapRenderer(
     private val sizePx: Float = DEFAULT_SIZE,
     private val marginPx: Float = DEFAULT_MARGIN,
+    private val uiScale: Float = UiScale.factor,
 ) : Disposable {
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
@@ -45,12 +46,18 @@ class MinimapRenderer(
         viewportWidth: Float,
         viewportHeight: Float,
     ) {
-        val originX = viewportWidth - marginPx - sizePx
-        val originY = marginPx
-        val centerX = originX + sizePx / 2f
-        val centerY = originY + sizePx / 2f
+        // Base panel/padding constants scaled at the use site (ADR 0015) — UiScale.factor stays the
+        // single knob; the panel keeps the same screen corner, just larger.
+        val size = sizePx * uiScale
+        val margin = marginPx * uiScale
+        val padding = PADDING * uiScale
+
+        val originX = viewportWidth - margin - size
+        val originY = margin
+        val centerX = originX + size / 2f
+        val centerY = originY + size / 2f
         // Map a world radius of contentExtent onto half the panel (minus padding for the markers).
-        val half = sizePx / 2f - PADDING
+        val half = size / 2f - padding
         val scale = if (contentExtent > 0f) half / contentExtent else 0f
 
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
@@ -62,7 +69,7 @@ class MinimapRenderer(
         // Translucent backing panel.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         shapeRenderer.color = PANEL_COLOR
-        shapeRenderer.rect(originX, originY, sizePx, sizePx)
+        shapeRenderer.rect(originX, originY, size, size)
         shapeRenderer.end()
 
         // Contact markers (one per visible contact, styled by contact kind) + ship marker. A
@@ -76,31 +83,31 @@ class MinimapRenderer(
             when (poi.contactKind) {
                 ContactKind.GATE -> {
                     shapeRenderer.color = GATE_COLOR
-                    shapeRenderer.circle(x, y, GATE_MARKER_RADIUS)
+                    shapeRenderer.circle(x, y, GATE_MARKER_RADIUS * uiScale)
                 }
                 ContactKind.STATION -> {
                     shapeRenderer.color = STATION_COLOR
                     // Filled square centred on the marker position, distinct from the gate dot.
-                    val r = STATION_MARKER_RADIUS
+                    val r = STATION_MARKER_RADIUS * uiScale
                     shapeRenderer.rect(x - r, y - r, r * 2f, r * 2f)
                 }
                 ContactKind.SHIP -> {
                     shapeRenderer.color = CONTACT_COLOR
                     // An upward triangle centred on the marker, distinct from the gate dot/station square.
-                    val r = CONTACT_MARKER_RADIUS
+                    val r = CONTACT_MARKER_RADIUS * uiScale
                     shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
                 }
             }
         }
         shapeRenderer.color = SHIP_COLOR
         val (sx, sy) = clampToPanel(centerX, centerY, half, shipPosition, scale)
-        shapeRenderer.circle(sx, sy, SHIP_MARKER_RADIUS)
+        shapeRenderer.circle(sx, sy, SHIP_MARKER_RADIUS * uiScale)
         shapeRenderer.end()
 
         // Panel border.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
         shapeRenderer.color = BORDER_COLOR
-        shapeRenderer.rect(originX, originY, sizePx, sizePx)
+        shapeRenderer.rect(originX, originY, size, size)
         shapeRenderer.end()
 
         Gdx.gl.glDisable(GL20.GL_BLEND)

@@ -13,6 +13,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 
 /**
@@ -46,7 +47,7 @@ class HireScreen(
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Readouts refreshed in place after each hire.
     private val crewLabel = Label("", skin.labelStyle)

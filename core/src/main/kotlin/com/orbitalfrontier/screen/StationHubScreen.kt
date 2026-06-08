@@ -11,6 +11,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 
 /**
@@ -53,7 +54,7 @@ class StationHubScreen(
     buildsStations: Boolean = false,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
-    private val stage = Stage(ScreenViewport())
+    private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Fuel readout (UC07): seeded from the current tank and refreshed in place after each REFUEL tap.
     private val fuelLabel = Label("", skin.labelStyle)
