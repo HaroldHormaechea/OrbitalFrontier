@@ -594,46 +594,158 @@ class SaveMigrationTest {
         // The new (empty) ship_upgrade table exists.
         assertTrue("ship_upgrade table must exist after migration", tableExists("ship_upgrade"))
 
-        // The full save now loads through the v7-aware repository: a single starter ship (no upgrades),
-        // with prior sector + cargo + fuel + credits intact. Cargo/fuel capacities are re-derived from
-        // type + (empty) loadout via ShipStats, so they read back at the starter defaults.
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
-        val loaded = gameStateRepo.loadGameState()
-        assertNotNull("a migrated v6 save must still load", loaded)
-        assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
-        assertEquals("the migrated save is a single-ship fleet", 1, loaded.fleet.ships.size)
-        assertEquals("the one ship is the backfilled starter type", "starter", loaded.fleet.active.type.id.value)
-        assertTrue("the migrated ship has no installed upgrades", loaded.fleet.active.loadout.isEmpty)
-        assertEquals("the saved cargo must survive", 9, loaded.cargo.contents[ResourceType.IRON_ORE])
-        assertEquals("the saved fuel must survive", 42.0, loaded.fuel.level.toDouble(), 1e-9)
-        assertEquals(
-            "fuel capacity is re-derived as a ship stat (starter default)",
-            FuelParams.DEFAULT_TANK_CAPACITY.toDouble(),
-            loaded.fuel.capacity.toDouble(),
-            1e-9,
-        )
-        assertEquals("the saved credits must survive", 1234L, loaded.credits)
+        // Data survival read directly: loadGameState() now (UC10/v8) reads the revealed_contact table,
+        // which a v7 DB lacks — exactly the reason the earlier step tests read columns directly too. A
+        // full repository load of a fully-migrated save is covered by the v7->v8 and full-chain tests below.
+        val (sector, _) = readGameStateColumns()
+        assertEquals("the saved sector must survive", "beta", sector)
+        assertEquals("the migration backfills the existing ship to the starter type", "starter", readShipType())
+        assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
+        assertEquals("the saved credits must survive", 1234L, readGameStateCredits())
+        assertTrue("a migrated v6 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
 
         // The stored save-format version is bumped to 7 (AC#6).
         assertEquals(7L, queries.selectSaveVersion().executeAsOne())
     }
 
+    // --- UC10 AC#4: v7 -> v8 adds the revealed_contact table additively (empty), preserving the save ---
+
+    /**
+     * Build the exact v7 (UC09) schema — `meta` + `settings` + the v7 `game_state` (WITH
+     * `docked_station_id` and `credits`) + the v7 `ship` (WITH `fuel` AND `ship_type`) + `ship_upgrade`
+     * + `cargo` + `field_deposit` — and seed a real in-flight save (a single starter ship with cargo +
+     * fuel + a non-zero wallet) so the v7→v8 migration is exercised against **data-bearing** tables.
+     * This is the v7 baseline the production .sq describes (the v6→v7 migration's output).
+     */
+    private fun buildRealV7Database() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL)",
+            0,
+        )
+        // v7 game_state: INCLUDES docked_station_id AND credits.
+        driver.execute(
+            null,
+            "CREATE TABLE game_state (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), " +
+                "current_sector TEXT NOT NULL, active_ship_id INTEGER NOT NULL, docked_station_id TEXT, " +
+                "credits INTEGER NOT NULL DEFAULT 0)",
+            0,
+        )
+        // v7 ship: INCLUDES fuel AND ship_type (the v6->v7 additions).
+        driver.execute(
+            null,
+            "CREATE TABLE ship (id INTEGER NOT NULL PRIMARY KEY, pos_x REAL NOT NULL, pos_y REAL NOT NULL, " +
+                "vel_x REAL NOT NULL, vel_y REAL NOT NULL, heading REAL NOT NULL, ang_vel REAL NOT NULL, " +
+                "fuel REAL NOT NULL DEFAULT 100, ship_type TEXT NOT NULL DEFAULT 'starter')",
+            0,
+        )
+        // v7 ship_upgrade table (empty here — the seeded ship has no installed upgrades).
+        driver.execute(
+            null,
+            "CREATE TABLE ship_upgrade (ship_id INTEGER NOT NULL, slot_category TEXT NOT NULL, " +
+                "slot_index INTEGER NOT NULL, upgrade_id TEXT NOT NULL, " +
+                "PRIMARY KEY (ship_id, slot_category, slot_index))",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE cargo (ship_id INTEGER NOT NULL, resource TEXT NOT NULL, units INTEGER NOT NULL, " +
+                "PRIMARY KEY (ship_id, resource))",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE field_deposit (field_id TEXT NOT NULL, resource TEXT NOT NULL, " +
+                "remaining_units INTEGER NOT NULL, PRIMARY KEY (field_id, resource))",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 7)", 0)
+        driver.execute(null, "INSERT INTO settings(id, handedness) VALUES (0, 'LEFT_HANDED')", 0)
+        driver.execute(
+            null,
+            "INSERT INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits) " +
+                "VALUES (0, 'beta', 0, NULL, 1234)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type) " +
+                "VALUES (0, 12.5, -7.5, 1.0, 2.0, 0.25, -0.5, 42.0, 'starter')",
+            0,
+        )
+        driver.execute(null, "INSERT INTO cargo(ship_id, resource, units) VALUES (0, 'IRON_ORE', 9)", 0)
+    }
+
+    /** Count the rows in the v8 `revealed_contact` table directly via SQL (used for the empty-after-migration assertion). */
+    private fun readRevealedContactCount(): Long =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT COUNT(*) FROM revealed_contact",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0) ?: 0L)
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
     @Test
-    fun `the full v1 to v7 chain preserves settings, lands every schema change, and ends at version 7`() {
+    fun `migrating a real v7 database to v8 adds the empty revealed_contact table, preserves the save, and bumps the version`() {
+        buildRealV7Database()
+
+        // Apply the sequential v7 -> v8 migration (runs migrations/7.sqm).
+        OrbitalFrontier.Schema.migrate(driver, 7L, 8L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // Data survival: settings + the in-flight game_state + ship + cargo survive the additive migration.
+        assertEquals("v7 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+
+        // The new revealed_contact table exists and is EMPTY — a migrated save has scanned nothing, so
+        // every hidden contact reads back still hidden (UC10 AC#4; the migration is purely additive).
+        assertTrue("revealed_contact table must exist after migration", tableExists("revealed_contact"))
+        assertEquals("a migrated v7 save has nothing revealed", 0L, readRevealedContactCount())
+
+        // The full save now loads through the v8-aware repository: the prior single starter ship with its
+        // sector + cargo + fuel + credits intact, and an empty revealed-contacts set.
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val loaded = gameStateRepo.loadGameState()
+        assertNotNull("a migrated v7 save must still load", loaded)
+        assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
+        assertEquals("the migrated save is a single-ship fleet", 1, loaded.fleet.ships.size)
+        assertEquals("the one ship is the starter type", "starter", loaded.fleet.active.type.id.value)
+        assertEquals("the saved cargo must survive", 9, loaded.cargo.contents[ResourceType.IRON_ORE])
+        assertEquals("the saved fuel must survive", 42.0, loaded.fuel.level.toDouble(), 1e-9)
+        assertEquals("the saved credits must survive", 1234L, loaded.credits)
+        assertTrue("a migrated v7 save reads back with nothing revealed", loaded.revealedContacts.isEmpty())
+
+        // The stored save-format version is bumped to 8 (AC#4).
+        assertEquals(8L, queries.selectSaveVersion().executeAsOne())
+    }
+
+    @Test
+    fun `the full v1 to v8 chain preserves settings, lands every schema change, and ends at version 8`() {
         buildRealV1Database()
 
         // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2), 2.sqm (v2->v3), 3.sqm (v3->v4),
-        // 4.sqm (v4->v5), 5.sqm (v5->v6), 6.sqm (v6->v7).
-        OrbitalFrontier.Schema.migrate(driver, 1L, 7L)
+        // 4.sqm (v4->v5), 5.sqm (v5->v6), 6.sqm (v6->v7), 7.sqm (v7->v8).
+        OrbitalFrontier.Schema.migrate(driver, 1L, 8L)
 
         val database = OrbitalFrontier(driver)
         val queries = database.orbitalFrontierQueries
 
         // v1 settings survive the whole chain.
-        assertEquals("v1 settings must survive the v1->v7 chain", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v1 settings must survive the v1->v8 chain", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
 
         // Every schema change landed: the v2 tables, the v3 dock column, the v4 tables, the v5 fuel
-        // column, the v6 credits column, and the v7 ship_type column + ship_upgrade table.
+        // column, the v6 credits column, the v7 ship_type column + ship_upgrade table, and the v8
+        // revealed_contact table.
         assertTrue("game_state table must exist", tableExists("game_state"))
         assertTrue("ship table must exist", tableExists("ship"))
         assertTrue("docked_station_id column must exist", columnExists("game_state", "docked_station_id"))
@@ -643,12 +755,13 @@ class SaveMigrationTest {
         assertTrue("game_state.credits column must exist", columnExists("game_state", "credits"))
         assertTrue("ship.ship_type column must exist", columnExists("ship", "ship_type"))
         assertTrue("ship_upgrade table must exist", tableExists("ship_upgrade"))
+        assertTrue("revealed_contact table must exist", tableExists("revealed_contact"))
 
         // A migrated-from-v1 DB has no game state (settings-only origin) → New Game.
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
         assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState())
 
         // Ends at the current schema version.
-        assertEquals(7L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(8L, queries.selectSaveVersion().executeAsOne())
     }
 }

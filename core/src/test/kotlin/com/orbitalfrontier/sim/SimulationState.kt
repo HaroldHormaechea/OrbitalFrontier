@@ -15,10 +15,10 @@ import com.orbitalfrontier.world.SectorId
  *
  * UC02 simulated ship movement only (the [tick] index and the ship's [ShipKinematics]); UC03 adds
  * [currentSector]; UC05 adds [dockedStation]; UC06 adds cargo + [fieldDepletion]; UC07 adds fuel;
- * UC08 adds [credits]. Each new field has been **defaulted** so older recorded playthroughs (whose
- * serialized snapshots predate the field) still construct. Keep every field a plain domain type (no
- * serialization annotations) — the on-disk shape lives in a separate DTO
- * ([com.orbitalfrontier.playthrough.StateSnapshotDto]) so persistence concerns never leak in.
+ * UC08 adds [credits]; UC10 adds [revealedContacts]. Each new field has been **defaulted** so older
+ * recorded playthroughs (whose serialized snapshots predate the field) still construct. Keep every
+ * field a plain domain type (no serialization annotations) — the on-disk shape lives in a separate
+ * DTO ([com.orbitalfrontier.playthrough.StateSnapshotDto]) so persistence concerns never leak in.
  *
  * **UC09 — fleet, not a singleton ship.** Where UC04–UC08 carried a single ship's kinematics, cargo
  * and fuel directly, those now live on the **active ship** inside [fleet] (mirroring the production
@@ -36,6 +36,14 @@ data class SimulationState(
     val dockedStation: PoiId? = null,
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
     val credits: Long = 0L,
+    /**
+     * The ids of no-transponder [com.orbitalfrontier.world.HiddenContact]s the player has uncovered by
+     * active scanning (UC10 AC#4), mirroring the production [com.orbitalfrontier.world.WorldState
+     * .revealedContacts]. Save-wide (a contact's [PoiId] is globally unique across the sector graph) and
+     * **monotonic** — a scan only ever adds ids ([com.orbitalfrontier.world.Scanning.resolve]); revealed
+     * contacts never re-hide. Defaults empty so every pre-UC10 fixture constructs and steps unchanged.
+     */
+    val revealedContacts: Set<PoiId> = emptySet(),
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

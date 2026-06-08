@@ -290,6 +290,14 @@ data class StateSnapshotDto(
      * always reconstructs the one starter ship as active.
      */
     val activeShipId: Long = 0L,
+    /**
+     * The ids of hidden contacts the player has revealed by active scanning (UC10 AC#4) — each a
+     * [PoiId.value] slug. Stored as a **sorted** list so the on-disk form is stable and diffable (the
+     * domain side is an order-insensitive `Set`). Defaulted **empty** so older artifacts (recorded
+     * before scanning existed) decode with nothing revealed, and the pre-UC10 fixtures replay
+     * byte-identically.
+     */
+    val revealedContacts: List<String> = emptyList(),
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -303,6 +311,7 @@ data class StateSnapshotDto(
                     .mapKeys { (fieldId, _) -> PoiId(fieldId) }
                     .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
             credits = credits,
+            revealedContacts = revealedContacts.map(::PoiId).toSet(),
         )
 
     /**
@@ -360,6 +369,8 @@ data class StateSnapshotDto(
                 credits = state.credits,
                 ownedShips = state.fleet.ships.map(OwnedShipDto::from),
                 activeShipId = state.fleet.activeShipId.value,
+                // Sorted slug list: stable/diffable on disk; the domain side is an order-insensitive Set.
+                revealedContacts = state.revealedContacts.map { it.value }.sorted(),
             )
     }
 }

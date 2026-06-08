@@ -64,7 +64,8 @@
         "loadout": {}
       }
     ],
-    "activeShipId": 0
+    "activeShipId": 0,
+    "revealedContacts": []
   },
   "inputEvents": [
     {

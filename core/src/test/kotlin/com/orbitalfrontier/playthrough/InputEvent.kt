@@ -13,6 +13,7 @@ import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipTypeId
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
+import com.orbitalfrontier.world.ScanAction
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -104,6 +105,25 @@ data class DockActionEvent(
 data class MineEvent(
     override val tick: Int,
     val action: MineAction,
+) : InputEvent()
+
+/**
+ * A scan control sample for one tick (UC10 AC#3/#6) — the discrete [ScanAction] the play screen feeds
+ * in when the context SCAN button is tapped. Carried alongside [MovementEvent] in the same tick-
+ * stamped script, so a recorded session can thrust *and* scan; [com.orbitalfrontier.playthrough.ReplayRunner]
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step] each tick, where it is resolved against the
+ * active ship's effective sensor range (so the reveal radius reflects any sensors upgrade).
+ *
+ * [ScanAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"SCAN"` / `"NONE"`. A tick with
+ * no [ScanEvent] defaults to [ScanAction.NONE] in the runner, so older artifacts (which carry none)
+ * replay unchanged.
+ */
+@Serializable
+@SerialName("scan")
+data class ScanEvent(
+    override val tick: Int,
+    val action: ScanAction,
 ) : InputEvent()
 
 /**

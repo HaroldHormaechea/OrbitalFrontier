@@ -28,6 +28,8 @@ import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.MiningResult
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.Scanning
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.StationKind
 
@@ -123,6 +125,15 @@ class Simulation(
      * Trading is implicitly gated on being docked: in flight there is no market, so the in-flight path
      * simply **passes [SimulationState.credits] through unchanged**. The default [TradeOrder.None] is a
      * no-op (credits + cargo unchanged), so every pre-UC08 fixture steps **byte-identically**.
+     *
+     * **Scanning (UC10).** After mining, while the ship is **in flight** (it did not dock this tick) the
+     * player's [scanAction] is resolved via the pure [Scanning.resolve] against the post-movement
+     * sector/position. The active ship's effective sensor range is derived from its type + loadout via
+     * [ShipStats.scanRange] — the same derivation the device uses — so a sensors upgrade (UC09 SCANNER_I)
+     * widens the reveal radius (UC10 AC#3). A [ScanAction.SCAN] unions the in-range hidden contacts into
+     * [SimulationState.revealedContacts]; reveal is **monotonic** — ids are never removed, even on leaving
+     * range (UC10 AC#4). The default [ScanAction.NONE] returns the same revealed set instance, so every
+     * pre-UC10 fixture threads its (empty) revealed set through and steps **byte-identically**.
      */
     fun step(
         state: SimulationState,
@@ -134,6 +145,7 @@ class Simulation(
         tradeOrder: TradeOrder = TradeOrder.None,
         outfitOrder: OutfitOrder = OutfitOrder.None,
         fleetOrder: FleetOrder = FleetOrder.None,
+        scanAction: ScanAction = ScanAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -228,6 +240,27 @@ class Simulation(
                 MiningResult(refuel.cargo, state.fieldDepletion, 0)
             }
 
+        // Scanning only while in flight (UC10). The active ship's effective sensor range is derived from
+        // its type + loadout via ShipStats (the SAME derivation the device uses), so a sensors upgrade
+        // (UC09 SCANNER_I) widens what a scan reveals (AC#3). Scanning.resolve unions the in-range hidden
+        // contacts into the revealed set on a ScanAction.SCAN and returns the SAME set instance otherwise
+        // — so a NONE scan (the common path) threads the prior set through unchanged and is monotonic
+        // (revealed ids never re-hide, AC#4). A freshly-docked tick skips scanning, like mining.
+        val revealedContacts =
+            if (nextDocked == null) {
+                val scanRange = ShipStats.scanRange(active.type, active.loadout)
+                Scanning.resolve(
+                    world = world,
+                    currentSector = nextSector,
+                    shipPosition = nextShip.position,
+                    scanRange = scanRange,
+                    revealed = state.revealedContacts,
+                    action = scanAction,
+                )
+            } else {
+                state.revealedContacts
+            }
+
         // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
         // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
         val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = mining.cargo, fuel = burnedFuel)
@@ -240,6 +273,9 @@ class Simulation(
             // In flight there is no station market, so trading is a no-op; the wallet threads through
             // unchanged (UC08 AC#1 — credits persist tick to tick). Trades happen only while docked.
             credits = state.credits,
+            // Revealed hidden contacts after this tick's scan (UC10): grown by a SCAN, otherwise the
+            // prior set threaded through unchanged (monotonic).
+            revealedContacts = revealedContacts,
         )
     }
 }
