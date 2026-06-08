@@ -1,5 +1,9 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.SectionDamage
+import com.orbitalfrontier.combat.SectionDamages
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
@@ -54,6 +58,9 @@ import kotlinx.serialization.Serializable
  *   rationale as [config]; defaulted so older artifacts (recorded before fuel/power) decode unchanged.
  * @property missionConfig the pinned [MissionParams] snapshot the run was recorded under (UC12), same
  *   rationale as [config]; defaulted so older artifacts (recorded before missions) decode unchanged.
+ * @property combatConfig the pinned [CombatParams] snapshot the run was recorded under (UC13), same
+ *   rationale as [config] — a later balance retune of weapon/damage/respawn numbers can't invalidate this
+ *   replay; defaulted so older artifacts (recorded before combat) decode unchanged.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -70,6 +77,7 @@ data class Playthrough(
     val powerConfig: PowerParamsDto = PowerParamsDto.DEFAULT,
     val fuelConfig: FuelParamsDto = FuelParamsDto.DEFAULT,
     val missionConfig: MissionParamsDto = MissionParamsDto.DEFAULT,
+    val combatConfig: CombatParamsDto = CombatParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -295,6 +303,59 @@ data class MissionParamsDto(
 }
 
 /**
+ * Serializable mirror of [CombatParams] (UC13 config snapshot).
+ *
+ * [CombatParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live
+ * in exactly one place. Pinning the combat tuning per artifact (mirroring [MiningParamsDto]) means a
+ * later balance change to hit radius / section weights / engine-speed floor / respawn cargo-loss /
+ * muzzle offset / spawn distance cannot silently invalidate an old recorded combat playthrough — the
+ * projectiles it fires, the sections it strikes (the RNG-weighted pick reads these weights) and the
+ * respawn penalty are reproduced exactly. Defaulted on [Playthrough] so older artifacts (recorded
+ * before combat) decode unchanged.
+ *
+ * [sectionHitWeights] is stored as a [ShipSection.name]-keyed map (the stable enum name, not its
+ * ordinal) so the on-disk form is diffable and survives enum reordering — matching every other enum-keyed
+ * DTO map here.
+ */
+@Serializable
+data class CombatParamsDto(
+    val hitRadius: Float,
+    val sectionHitWeights: Map<String, Int>,
+    val minEngineSpeedFactor: Float,
+    val respawnCargoLossFraction: Float,
+    val muzzleOffset: Float,
+    val spawnDistance: Float,
+) {
+    /** Reconstruct the domain [CombatParams] (its `init` re-validates the values). */
+    fun toCombatParams(): CombatParams =
+        CombatParams(
+            hitRadius = hitRadius,
+            sectionHitWeights = sectionHitWeights.mapKeys { ShipSection.valueOf(it.key) },
+            minEngineSpeedFactor = minEngineSpeedFactor,
+            respawnCargoLossFraction = respawnCargoLossFraction,
+            muzzleOffset = muzzleOffset,
+            spawnDistance = spawnDistance,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: CombatParams): CombatParamsDto =
+            CombatParamsDto(
+                hitRadius = params.hitRadius,
+                sectionHitWeights = params.sectionHitWeights.mapKeys { it.key.name },
+                minEngineSpeedFactor = params.minEngineSpeedFactor,
+                respawnCargoLossFraction = params.respawnCargoLossFraction,
+                muzzleOffset = params.muzzleOffset,
+                spawnDistance = params.spawnDistance,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: CombatParamsDto = from(CombatParams())
+    }
+}
+
+/**
  * Serializable mirror of [SimulationState] (UC02 AC#3 optional initial state; AC#6 snapshots).
  *
  * Mirrors the snapshot as flat scalar fields so the domain types ([SimulationState],
@@ -381,6 +442,15 @@ data class StateSnapshotDto(
      * before missions existed) decode with no missions and the pre-UC12 fixtures replay byte-identically.
      */
     val missions: MissionLogDto = MissionLogDto.EMPTY,
+    /**
+     * The [PoiId] slug of the station the player most recently docked at (UC13 AC#5) — the respawn point
+     * on destruction — or null when the player has never docked. **Persisted** (unlike [dockedStation]).
+     * The transient live combat encounter (hostiles/projectiles/RNG) is deliberately NOT carried here —
+     * it is regenerated from the seeded encounter on load (a mid-combat save reloads with combat cleared,
+     * ADR 0012), so the snapshot only carries the durable combat state (this + each ship's section damage).
+     * Defaulted null so older artifacts (recorded before combat) decode unchanged.
+     */
+    val lastDockedStation: String? = null,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -396,6 +466,8 @@ data class StateSnapshotDto(
             credits = credits,
             revealedContacts = revealedContacts.map(::PoiId).toSet(),
             missions = missions.toMissionLog(),
+            // Combat is transient (ADR 0012) — decode as NONE; only the durable lastDockedStation rides here.
+            lastDockedStation = lastDockedStation?.let(::PoiId),
         )
 
     /**
@@ -456,6 +528,8 @@ data class StateSnapshotDto(
                 // Sorted slug list: stable/diffable on disk; the domain side is an order-insensitive Set.
                 revealedContacts = state.revealedContacts.map { it.value }.sorted(),
                 missions = MissionLogDto.from(state.missions),
+                // UC13: only the durable last docked station is snapshotted; live combat is transient.
+                lastDockedStation = state.lastDockedStation?.value,
             )
     }
 }
@@ -586,6 +660,17 @@ data class OwnedShipDto(
      * the pre-UC11 fixtures replay byte-identically — mirroring the additive v8 -> v9 save migration.
      */
     val crew: Int = 0,
+    /**
+     * This ship's persisted **per-section combat damage** (UC13 AC#3) — `[ShipSection.name]` → current HP,
+     * with an **absent** section meaning pristine (full derived HP), exactly like the domain
+     * [com.orbitalfrontier.ship.OwnedShip.sectionDamage]. String-keyed (the stable enum name, not its
+     * ordinal) so the on-disk form is diffable and survives enum reordering, matching [cargo]. Max HP is
+     * the derived stat [com.orbitalfrontier.outfit.ShipStats.sectionHp] and is never stored. Defaulted
+     * **empty** (pristine) so every pre-UC13 artifact (recorded before combat) decodes back as an
+     * undamaged ship and the pre-UC13 fixtures replay byte-identically — mirroring the additive v10 -> v11
+     * `ship_section_damage` migration (a migrated save has no rows ⇒ pristine).
+     */
+    val sectionDamage: Map<String, Int> = emptyMap(),
 ) {
     /** Reconstruct the domain [OwnedShip]. */
     fun toOwnedShip(): OwnedShip =
@@ -603,6 +688,7 @@ data class OwnedShipDto(
             fuel = Fuel(level = fuelLevel, capacity = fuelCapacity),
             loadout = parseLoadout(loadout),
             crew = crew,
+            sectionDamage = parseSectionDamage(sectionDamage),
         )
 
     companion object {
@@ -626,6 +712,8 @@ data class OwnedShipDto(
                         .mapKeys { (category, _) -> category.name }
                         .mapValues { (_, slots) -> slots.mapValues { (_, upgradeId) -> upgradeId.value } },
                 crew = ship.crew,
+                // Section name -> current HP; an undamaged ship writes no entries (canonical: absent = pristine).
+                sectionDamage = ship.sectionDamage.mapKeys { it.key.name },
             )
 
         /** Rebuild a [Loadout] from its string-keyed form; an unknown category/​blank id is skipped. */
@@ -640,6 +728,20 @@ data class OwnedShipDto(
                 if (inner.isNotEmpty()) slots[category] = inner
             }
             return Loadout(slots)
+        }
+
+        /**
+         * Rebuild a [SectionDamage] from its string-keyed form; an unknown section name is skipped (a
+         * removed/typo'd enum constant degrades gracefully rather than crashing the load). Empty ⇒ pristine.
+         */
+        private fun parseSectionDamage(raw: Map<String, Int>): SectionDamage {
+            if (raw.isEmpty()) return SectionDamages.PRISTINE
+            val result = LinkedHashMap<ShipSection, Int>()
+            for ((name, hp) in raw) {
+                val section = ShipSection.entries.firstOrNull { it.name == name } ?: continue
+                result[section] = hp
+            }
+            return result
         }
     }
 }

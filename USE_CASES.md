@@ -22,6 +22,6 @@ Statuses:
 | 10 | [use-cases/10-scanning-and-transponders.md](use-cases/10-scanning-and-transponders.md) | Active scanning & hidden contacts | done | 2026-06-08 |
 | 11 | [use-cases/11-crew.md](use-cases/11-crew.md) | Crew | done | 2026-06-08 |
 | 12 | [use-cases/12-missions-mining-courier.md](use-cases/12-missions-mining-courier.md) | Missions — mining & courier | done | 2026-06-08 |
-| 13 | [use-cases/13-real-time-combat.md](use-cases/13-real-time-combat.md) | Real-time combat | pending | 2026-06-07 |
+| 13 | [use-cases/13-real-time-combat.md](use-cases/13-real-time-combat.md) | Real-time combat | done | 2026-06-08 |
 | 14 | [use-cases/14-factions-and-reputation.md](use-cases/14-factions-and-reputation.md) | Factions & reputation (post-MVP) | pending | 2026-06-07 |
 | 15 | [use-cases/15-station-building.md](use-cases/15-station-building.md) | Station building (post-MVP stretch) | pending | 2026-06-07 |

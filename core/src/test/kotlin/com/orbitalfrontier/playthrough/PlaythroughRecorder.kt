@@ -1,5 +1,7 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
@@ -40,6 +42,7 @@ class PlaythroughRecorder(
     powerConfig: PowerParams = PowerParams(),
     fuelConfig: FuelParams = FuelParams(),
     missionConfig: MissionParams = MissionParams(),
+    combatConfig: CombatParams = CombatParams(),
     initialState: SimulationState? = null,
 ) {
     init {
@@ -51,6 +54,7 @@ class PlaythroughRecorder(
     private val powerConfigDto = PowerParamsDto.from(powerConfig)
     private val fuelConfigDto = FuelParamsDto.from(fuelConfig)
     private val missionConfigDto = MissionParamsDto.from(missionConfig)
+    private val combatConfigDto = CombatParamsDto.from(combatConfig)
     private val initialStateDto = initialState?.let(StateSnapshotDto::from)
     private val events = mutableListOf<InputEvent>()
     private var tickCount = 0
@@ -94,6 +98,12 @@ class PlaythroughRecorder(
         tick: Int,
         action: ScanAction,
     ): PlaythroughRecorder = record(ScanEvent(tick = tick, action = action))
+
+    /** Convenience: record a [FireEvent] for [action] at [tick] (UC13). */
+    fun recordFireAction(
+        tick: Int,
+        action: FireAction,
+    ): PlaythroughRecorder = record(FireEvent(tick = tick, action = action))
 
     /** Convenience: record a [HireEvent] (a request to hire [units] crew) at [tick] (UC11). */
     fun recordHire(
@@ -166,6 +176,7 @@ class PlaythroughRecorder(
             powerConfig = powerConfigDto,
             fuelConfig = fuelConfigDto,
             missionConfig = missionConfigDto,
+            combatConfig = combatConfigDto,
             initialState = initialStateDto,
             inputEvents = events.toList(),
         )

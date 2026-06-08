@@ -1,10 +1,10 @@
--- Orbital Frontier save schema, version 10 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011).
+-- Orbital Frontier save schema, version 11 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012).
 --
--- This .sq file is ALWAYS the latest schema (currently v10). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v11). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
--- v8 -> v9; 9.sqm: v9 -> v10). Never edit this baseline destructively to make a schema change — bump
--- the version and add a migration instead.
+-- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11). Never edit this baseline destructively to make a
+-- schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -40,6 +40,12 @@
 -- an accepted or resolved offer never re-appears (regenerate-and-filter). The v9 -> v10 migration is
 -- additive: it creates the (empty) table, so a migrated save reads back with no missions. Mission
 -- templates / generation are fixed authored logic, not stored — only live mission instances are rows.
+-- v11 (UC13) adds the player's durable **combat** state: the new `ship_section_damage` table (per-ship
+-- current HP for each damaged section — full-snapshot per ship like `cargo`; an absent section is
+-- pristine, max HP is the derived ShipStats stat and is NOT stored) and `game_state.last_docked_station_id`
+-- (the respawn point on destruction, UC13 AC#5). Transient combat (hostiles, projectiles, combat RNG) is
+-- NOT persisted — it is regenerated from the seeded encounter on load (a mid-combat save reloads with
+-- combat cleared, ADR 0012). The v10 -> v11 migration is additive (new table + new NULLABLE column).
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -60,12 +66,17 @@ CREATE TABLE settings (
 -- non-null value is the [PoiId] of the docked station (UC05 AC#4).
 -- `credits` (UC08) is the player's single-currency wallet, save-wide (not per-ship). DEFAULT 0
 -- matches the v5 -> v6 migration's backfill; the repository coerces a negative/corrupt value to >= 0.
+-- `last_docked_station_id` (UC13) is the player's most-recent dock — the respawn point on destruction
+-- (AC#5). NULLABLE: NULL means "never docked yet" (a fresh game / a migrated v10 save), so on respawn the
+-- model leaves the player in place. Distinct from `docked_station_id` (the CURRENT dock, null in flight):
+-- this one is set on each dock and retained after undocking.
 CREATE TABLE game_state (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     current_sector TEXT NOT NULL,
     active_ship_id INTEGER NOT NULL,
     docked_station_id TEXT,
-    credits INTEGER NOT NULL DEFAULT 0
+    credits INTEGER NOT NULL DEFAULT 0,
+    last_docked_station_id TEXT
 );
 
 -- Owned-ship kinematics + per-ship stats source (UC09: one row per owned ship; `active_ship_id`
@@ -115,6 +126,19 @@ CREATE TABLE cargo (
     resource TEXT NOT NULL,
     units INTEGER NOT NULL,
     PRIMARY KEY (ship_id, resource)
+);
+
+-- Per-ship combat section damage (UC13). One row per (ship, section) the ship has taken damage on,
+-- storing the section's *current* HP; `section` is the ShipSection enum *name* (stable across reordering,
+-- unlike the ordinal). A section with NO row here is pristine (full derived max HP); max HP is a derived
+-- ship stat (ShipStats.sectionHp from type + loadout) and is NOT stored. Keyed by (ship_id, section). Each
+-- ship's rows are rewritten as a full snapshot (delete-then-insert), exactly like cargo. Transient combat
+-- (hostiles/projectiles/RNG) is never persisted — only this durable per-ship damage is (ADR 0012).
+CREATE TABLE ship_section_damage (
+    ship_id INTEGER NOT NULL,
+    section TEXT NOT NULL,
+    current_hp INTEGER NOT NULL,
+    PRIMARY KEY (ship_id, section)
 );
 
 -- Asteroid-field depletion (UC06). One row per (field, resource) the field has been mined from,
@@ -186,7 +210,7 @@ INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
 -- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New
 -- Game). One row otherwise (game_state is single-slot).
 selectGameState:
-SELECT current_sector, active_ship_id, docked_station_id, credits
+SELECT current_sector, active_ship_id, docked_station_id, credits, last_docked_station_id
 FROM game_state
 WHERE id = 0;
 
@@ -197,7 +221,7 @@ SELECT EXISTS(SELECT 1 FROM game_state WHERE id = 0);
 -- Insert-or-update the single-slot save header. INSERT OR REPLACE for the same minSdk-24 rationale
 -- as upsertHandedness; single-row, no foreign keys, so REPLACE is side-effect-free.
 upsertGameState:
-INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits) VALUES (0, ?, ?, ?, ?);
+INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits, last_docked_station_id) VALUES (0, ?, ?, ?, ?, ?);
 
 -- Read every owned ship's row, ordered by id (UC09: the whole fleet; deterministic order).
 selectAllShips:
@@ -243,6 +267,21 @@ DELETE FROM cargo WHERE ship_id = ?;
 -- INSERT (not INSERT OR REPLACE) is sufficient and there is never a primary-key collision.
 insertCargoEntry:
 INSERT INTO cargo(ship_id, resource, units) VALUES (?, ?, ?);
+
+-- Read every ship's combat section damage across the whole fleet, ordered deterministically (UC13).
+selectAllShipSectionDamage:
+SELECT ship_id, section, current_hp FROM ship_section_damage ORDER BY ship_id, section;
+
+-- Clear one ship's section-damage rows. The save path does delete-then-plain-INSERT (a full snapshot
+-- rewrite) rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices lacks — the
+-- same rationale as cargo / ship_upgrade.
+deleteShipSectionDamageForShip:
+DELETE FROM ship_section_damage WHERE ship_id = ?;
+
+-- Insert one ship section-damage row. Always preceded by deleteShipSectionDamageForShip in the same
+-- transaction, so a plain INSERT (not INSERT OR REPLACE) suffices and there is never a PK collision.
+insertShipSectionDamage:
+INSERT INTO ship_section_damage(ship_id, section, current_hp) VALUES (?, ?, ?);
 
 -- Read all field-depletion rows (field id + resource name + remaining units) across every field.
 selectFieldDeposits:

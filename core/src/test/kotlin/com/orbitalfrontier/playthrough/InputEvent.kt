@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
@@ -127,6 +128,26 @@ data class MineEvent(
 data class ScanEvent(
     override val tick: Int,
     val action: ScanAction,
+) : InputEvent()
+
+/**
+ * A fire control sample for one tick (UC13 AC#1) — the discrete [FireAction] the play screen feeds in
+ * when the FIRE action button is held. Carried alongside [MovementEvent] in the same tick-stamped
+ * script, so a recorded session can thrust *and* fire; [com.orbitalfrontier.playthrough.ReplayRunner]
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step] each tick, where it fires the active ship's
+ * ready fixed/forward weapon(s) along hull facing (turrets auto-fire independently, gated only on crew).
+ *
+ * [FireAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"FIRE"` / `"NONE"`. A tick with no
+ * [FireEvent] defaults to [FireAction.NONE] in the runner, so older artifacts (which carry none) replay
+ * unchanged — and a [FireAction.NONE] step on an inactive encounter is a total no-op (the byte-identical
+ * anchor for every pre-UC13 fixture).
+ */
+@Serializable
+@SerialName("fire")
+data class FireEvent(
+    override val tick: Int,
+    val action: FireAction,
 ) : InputEvent()
 
 /**

@@ -192,6 +192,7 @@ class MissionPersistenceTest {
         val v9 = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
             buildRealV9Database(v9)
+            // First the v9 -> v10 step under test (adds the empty mission table, bumps the version).
             OrbitalFrontier.Schema.migrate(v9, 9L, 10L)
 
             val migrated = OrbitalFrontier(v9)
@@ -202,7 +203,13 @@ class MissionPersistenceTest {
             assertEquals("prior data is preserved", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
             assertEquals("the save version is bumped to 10", 10L, queries.selectSaveVersion().executeAsOne())
 
-            // The migrated save loads through the v10 repository with an empty mission log, and a freshly
+            // Continue the chain to the current schema so the now-v11-aware repository (which reads the
+            // ship_section_damage table + game_state.last_docked_station_id, added by v11) can load — the
+            // canonical v10 -> v11 migration assertions live in SaveMigrationTest.
+            OrbitalFrontier.Schema.migrate(v9, 10L, 11L)
+            assertEquals("the chain reaches the current save version", 11L, queries.selectSaveVersion().executeAsOne())
+
+            // The migrated save loads through the repository with an empty mission log, and a freshly
             // saved mission round-trips on top of it (the new table is writable, not just present).
             val gameRepo = SqlDelightGameStateRepository(migrated, NoOpLogger)
             val loaded = gameRepo.loadGameState()

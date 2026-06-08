@@ -1,5 +1,8 @@
 package com.orbitalfrontier.ship
 
+import com.orbitalfrontier.combat.SectionDamage
+import com.orbitalfrontier.combat.SectionDamages
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
@@ -50,6 +53,17 @@ data class OwnedShip(
      * [withLoadout] re-clamp).
      */
     val crew: Int = 0,
+    /**
+     * This ship's persisted **per-section combat damage** (UC13 AC#3) — current HP per
+     * [com.orbitalfrontier.combat.ShipSection], with an **absent** section meaning pristine (full HP),
+     * exactly like [com.orbitalfrontier.world.WorldState.fieldDepletion]. Max HP is the derived stat
+     * [ShipStats.sectionHp] (from `type + loadout`), never stored. Defaulted to the empty (pristine) map
+     * so a freshly-built ship and every pre-UC13 fixture / migrated save reads back undamaged — keeping
+     * record/replay byte-identical. The transient combat hostiles/projectiles are NOT here (they live on
+     * [com.orbitalfrontier.world.WorldState.combat] and are never row-persisted); only this durable
+     * damage and the last docked station survive a save (ADR 0012).
+     */
+    val sectionDamage: SectionDamage = SectionDamages.PRISTINE,
 ) {
     init {
         require(crew >= 0) { "OwnedShip crew must not be negative: $crew" }
@@ -76,8 +90,20 @@ data class OwnedShip(
             cargo = Cargo(clampContents(cargo.contents, newCargoCapacity), newCargoCapacity),
             fuel = Fuel(level = fuel.level.coerceAtMost(newFuelCapacity), capacity = newFuelCapacity),
             crew = crew.coerceAtMost(newCrewCapacity),
+            // Re-clamp section damage to the new fit's derived max HP (UC13): removing HULL_PLATING
+            // shrinks HULL max HP, so a stored current-HP above the new max is coerced down — mirroring
+            // the crew/cargo/fuel re-derivation so a refit can never leave an over-max section.
+            sectionDamage = clampSectionDamage(sectionDamage, type, newLoadout),
         )
     }
+
+    /**
+     * Return this ship with its combat section damage set to [newSectionDamage] (UC13 AC#3) — the
+     * single point [com.orbitalfrontier.combat.Combat] / respawn fold damage back onto the ship,
+     * mirroring [withCrew]. The map is assumed already canonical (absent = pristine); callers build it
+     * via [com.orbitalfrontier.combat.SectionDamages].
+     */
+    fun withSectionDamage(newSectionDamage: SectionDamage): OwnedShip = copy(sectionDamage = newSectionDamage)
 
     /**
      * Return this ship with its crew set to [newCrew], **clamped** to `0..crewCapacity` (capacity
@@ -148,6 +174,28 @@ data class OwnedShip(
                 remaining -= keep
             }
             return clamped
+        }
+
+        /**
+         * Coerce each section's current HP in [damage] down to the new fit's derived max HP (UC13), and
+         * drop any section now at/above full (canonical: absent = pristine). A no-op (returns the same
+         * map) when nothing exceeds its new max — the common case (capacity only shrinks on a deliberate
+         * HULL_PLATING removal).
+         */
+        private fun clampSectionDamage(
+            damage: SectionDamage,
+            type: ShipType,
+            loadout: Loadout,
+        ): SectionDamage {
+            if (damage.isEmpty()) return damage
+            var result = damage
+            for ((section, hp) in damage) {
+                val maxHp = ShipStats.sectionHp(type, loadout, section)
+                if (hp >= maxHp) {
+                    result = SectionDamages.setHp(result, section, maxHp, maxHp) // drops to pristine
+                }
+            }
+            return result
         }
     }
 }

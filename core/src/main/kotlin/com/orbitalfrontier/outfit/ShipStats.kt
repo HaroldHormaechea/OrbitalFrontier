@@ -1,5 +1,9 @@
 package com.orbitalfrontier.outfit
 
+import com.orbitalfrontier.combat.FixedWeapon
+import com.orbitalfrontier.combat.ShipSection
+import com.orbitalfrontier.combat.Turret
+import com.orbitalfrontier.combat.WeaponLoadout
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipType
 
@@ -89,6 +93,66 @@ object ShipStats {
         return base.copy(maxSpeed = newMaxSpeed, maxAcceleration = newMaxAcceleration)
     }
 
+    /**
+     * Derived **max HP** of [section] for a ship of [type] with [loadout] (UC13 AC#3) — the single
+     * place "ship type + fit → section HP" lives, so combat ([com.orbitalfrontier.combat.Combat]) and
+     * replay derive identical section HP and **none of it is stored** (only current damage persists, on
+     * [com.orbitalfrontier.ship.OwnedShip.sectionDamage]). Each section has an authored base; installed
+     * `HULL_PLATING` parts add to the HULL only (more armour ⇒ a tougher hull). [TUNE]
+     */
+    fun sectionHp(
+        type: ShipType,
+        loadout: Loadout,
+        section: ShipSection,
+    ): Int {
+        val base = BASE_SECTION_HP.getValue(section)
+        val bonus = if (section == ShipSection.HULL) loadout.installedCount(SlotCategory.HULL_PLATING) * HULL_PLATING_HP_BONUS else 0
+        return base + bonus
+    }
+
+    /** Every section's derived max HP for `type + loadout` — the map [com.orbitalfrontier.combat.Combat] reads. */
+    fun sectionHpMap(
+        type: ShipType,
+        loadout: Loadout,
+    ): Map<ShipSection, Int> = ShipSection.entries.associateWith { sectionHp(type, loadout, it) }
+
+    /**
+     * Derived **weapon fit** of a ship of [type] with [loadout] (UC13 AC#1/#2) — the single place "ship
+     * type + fit → weapons" lives, so live and replayed firing match and nothing is stored. Every ship
+     * carries a built-in forward gun and one crew-gated auto-aim turret; each installed `WEAPONS`-slot
+     * part adds another fixed weapon. All weapon numbers are authored `[TUNE]` placeholders.
+     */
+    fun weaponLoadout(
+        type: ShipType,
+        loadout: Loadout,
+    ): WeaponLoadout {
+        val fixedCount = 1 + loadout.installedCount(SlotCategory.WEAPONS)
+        return WeaponLoadout(
+            fixed = List(fixedCount) { BASE_FIXED_WEAPON },
+            turrets = listOf(BASE_TURRET),
+        )
+    }
+
     /** Smallest legal fuel capacity, guarding the `Fuel(capacity > 0)` invariant against bad deltas. */
     private const val MIN_FUEL_CAPACITY: Float = 1f
+
+    /** Authored base max HP per ship section (UC13). HULL is the destruction gate, so it is the toughest. [TUNE] */
+    private val BASE_SECTION_HP: Map<ShipSection, Int> =
+        mapOf(
+            ShipSection.HULL to 100,
+            ShipSection.ENGINE to 40,
+            ShipSection.TURRET to 30,
+            ShipSection.WEAPON to 30,
+        )
+
+    /** Extra HULL HP per installed HULL_PLATING part (UC13). [TUNE] */
+    private const val HULL_PLATING_HP_BONUS: Int = 25
+
+    /** The built-in forward weapon every ship carries (UC13 AC#1). [TUNE] */
+    private val BASE_FIXED_WEAPON: FixedWeapon =
+        FixedWeapon(damage = 6, cooldownSeconds = 0.5f, projectileSpeed = 420f, range = 640f)
+
+    /** The built-in auto-aim turret every ship carries, needing 1 crew to operate (UC13 AC#2). [TUNE] */
+    private val BASE_TURRET: Turret =
+        Turret(damage = 4, cooldownSeconds = 0.8f, projectileSpeed = 380f, range = 560f, requiredCrew = 1)
 }

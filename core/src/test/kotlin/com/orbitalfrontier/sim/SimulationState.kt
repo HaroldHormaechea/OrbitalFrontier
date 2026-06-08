@@ -1,5 +1,6 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -54,6 +55,24 @@ data class SimulationState(
      * pre-UC12 fixture constructs and **steps byte-identically** (the byte-identical contract).
      */
     val missions: MissionLog = MissionLog.EMPTY,
+    /**
+     * The live combat encounter (UC13), mirroring the production [com.orbitalfrontier.world.WorldState
+     * .combat]. **Transient** — hostiles/projectiles/combat-RNG are regenerated from the seeded encounter
+     * and never row-persisted (a mid-combat save reloads with combat cleared, ADR 0012), so the snapshot
+     * DTO does not carry it; on decode it reconstructs as [CombatState.NONE]. Defaults to [CombatState.NONE]
+     * so a fresh state, every pre-UC13 fixture, and every replay step that isn't fighting reads back with
+     * no encounter — and the default keeps the no-op [com.orbitalfrontier.combat.Combat.step] returning the
+     * SAME instance, so pre-UC13 fixtures step byte-identically.
+     */
+    val combat: CombatState = CombatState.NONE,
+    /**
+     * The [PoiId] of the station the player most recently docked at (UC13 AC#5) — the respawn point on
+     * destruction, mirroring the production [com.orbitalfrontier.world.WorldState.lastDockedStation].
+     * **Persisted** (unlike [dockedStation], which is null in flight): set on each dock and retained after
+     * undocking, so a ship destroyed mid-flight knows where to respawn. Null until the player's first dock.
+     * Defaults null so every pre-UC13 fixture constructs unchanged.
+     */
+    val lastDockedStation: PoiId? = null,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

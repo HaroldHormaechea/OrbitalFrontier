@@ -12,6 +12,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.combat.Combat
+import com.orbitalfrontier.combat.CombatEvent
+import com.orbitalfrontier.combat.CombatLimitedMovement
+import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.CombatState
+import com.orbitalfrontier.combat.EncounterSpawner
+import com.orbitalfrontier.combat.FireAction
+import com.orbitalfrontier.combat.PlayerCombatInput
+import com.orbitalfrontier.combat.Respawn
+import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
@@ -41,9 +51,11 @@ import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
 import com.orbitalfrontier.render.GateRenderer
+import com.orbitalfrontier.render.HostileRenderer
 import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.ShipRenderer
+import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
@@ -66,9 +78,11 @@ import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
+import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
 import com.orbitalfrontier.world.Scanning
+import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
@@ -132,6 +146,11 @@ class PlayScreen(
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
     private val minimap = MinimapRenderer()
 
+    // Combat visuals (UC13): hostiles + projectiles in world space, and the per-section HUD ship
+    // schematic. Both only read state and draw nothing while combat is inactive.
+    private val hostileRenderer = HostileRenderer()
+    private val shipSchematicRenderer = ShipSchematicRenderer()
+
     // Mining tunables (UC06). Authored defaults; the same params feed the pure [Mining.resolve] each
     // frame so live mining matches the replay harness exactly.
     private val miningParams = MiningParams()
@@ -192,6 +211,19 @@ class PlayScreen(
     // countdown is frame-rate-independent. We accumulate dt and fire one advance per [MISSION_TICK_SECONDS]
     // — the model timer stays the authority; this is just its dt-paced surface (ADR 0011).
     private var missionTickAccumulator = 0f
+
+    // Combat (UC13): the live encounter, seeded from the loaded/initial snapshot (NONE on load — combat
+    // is transient and never persisted, ADR 0012). [Combat.step] folds each tick's result back in;
+    // [lastDockedStation] is the persisted respawn point (set on each dock, retained after undock). The
+    // edge-triggered natural spawner needs the player's PREVIOUS position to detect an outside→inside zone
+    // crossing, so we track it. [combatSpawnTick] is a monotonic counter seeding each spawn so successive
+    // encounters differ deterministically; the combat tick is paced like the courier timer.
+    private var combat: CombatState = initialWorldState.combat
+    private var lastDockedStation: PoiId? = initialWorldState.lastDockedStation
+    private var previousShipPosition: Vec2 = initialWorldState.ship.position
+    private var combatSpawnTick = 0
+    private var combatTickAccumulator = 0f
+    private val combatParams = CombatParams()
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -343,7 +375,16 @@ class PlayScreen(
         // it unchanged, so movement stays byte-identical to the pre-UC09 build.
         val active = fleet.active
         val shipParams = ShipStats.effectiveMovementParams(params, active.type, active.loadout)
-        val effectiveParams = FuelLimitedMovement.effectiveParams(shipParams, fuel, fuelParams)
+        val fuelParamsScaled = FuelLimitedMovement.effectiveParams(shipParams, fuel, fuelParams)
+        // UC13: engine damage scales speed on top of fuel limiting. At a pristine engine (the common
+        // case) [CombatLimitedMovement] returns the same instance, so movement stays byte-identical.
+        val effectiveParams =
+            CombatLimitedMovement.effectiveParams(
+                fuelParamsScaled,
+                active.sectionDamage,
+                ShipStats.sectionHp(active.type, active.loadout, ShipSection.ENGINE),
+                combatParams,
+            )
         val state = physics.readKinematics()
         val next = model.update(state, input, effectiveParams, dt)
         physics.applyKinematics(next)
@@ -383,6 +424,8 @@ class PlayScreen(
             dockRequested = false
             if (available != null) {
                 dockedStation = Docking.resolve(sectorWorld, currentSector, dockedStation, ship.position, DockAction.DOCK)
+                // UC13: remember this as the respawn point on destruction (persisted, retained after undock).
+                lastDockedStation = available.id
                 logger.info(WORLD_TAG, "Docked at station ${available.id.value} (${available.displayName})")
                 // Docking is a key world event — event-driven autosave persists the dock state now.
                 autosave.onEvent("dock")
@@ -494,6 +537,11 @@ class PlayScreen(
             }
         }
 
+        // UC13 combat: edge-triggered natural encounter spawn on the outside→inside zone crossing, then
+        // the paced shared [Combat.step]. Hostiles/projectiles/combat-RNG are transient (regenerated, not
+        // persisted); only the player's section damage + last docked station are durable.
+        runCombat(dt, ship.position)
+
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
@@ -513,6 +561,8 @@ class PlayScreen(
         asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
         shipRenderer.render(worldCamera, ship)
+        // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
+        hostileRenderer.render(worldCamera, combat)
         // UC07: the HUD also shows the fuel tank with a low-fuel cue (red) below the threshold.
         hudRenderer.render(
             ship.speed,
@@ -522,10 +572,21 @@ class PlayScreen(
             fuel.isLow(fuelParams),
             viewportWidth,
             viewportHeight,
+            inCombat = combat.active,
         )
         // The minimap renders every transponder POI (gates + stations) plus any revealed hidden
         // contacts (UC10), keyed by contact kind.
         minimap.render(sector.pois, ship.position, sector.contentExtent, revealedContacts, viewportWidth, viewportHeight)
+        // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
+        if (combat.active) {
+            val active = fleet.active
+            shipSchematicRenderer.render(
+                active.sectionDamage,
+                ShipStats.sectionHpMap(active.type, active.loadout),
+                viewportWidth,
+                viewportHeight,
+            )
+        }
 
         stage.act(dt)
         stage.draw()
@@ -681,6 +742,123 @@ class PlayScreen(
     ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
 
     /**
+     * Run UC13 combat for this frame: an edge-triggered natural-encounter spawn on the outside→inside
+     * crossing of an authored zone (suppressed while docked or already fighting), then the paced shared
+     * [Combat.step]. [playerPosition] is the post-gate ship position this frame; the previous frame's
+     * position drives the edge detection.
+     */
+    private fun runCombat(
+        dt: Float,
+        playerPosition: Vec2,
+    ) {
+        if (!combat.active && dockedStation == null) {
+            for (zone in MvpSectorMap.encounterZones(currentSector)) {
+                val spawned =
+                    EncounterSpawner.naturalSpawn(combat, zone, previousShipPosition, playerPosition, combatSpawnTick, combatParams)
+                if (spawned !== combat) {
+                    combat = spawned
+                    combatSpawnTick++
+                    autosave.onEvent("encounter")
+                    logger.info(WORLD_TAG, "Hostiles ambushed the player in zone ${zone.id} (sector ${currentSector.value})")
+                    break
+                }
+            }
+        }
+        previousShipPosition = playerPosition
+
+        if (!combat.active) {
+            combatTickAccumulator = 0f
+            return
+        }
+        // Pace the tick-based model off accumulated real time (frame-rate-independent), capped per frame
+        // so a long stall can't run an unbounded number of catch-up ticks. The model is the authority;
+        // the replay harness steps it at a fixed dt instead.
+        combatTickAccumulator += dt
+        var ticks = 0
+        while (combat.active && combatTickAccumulator >= COMBAT_DT && ticks < MAX_COMBAT_TICKS_PER_FRAME) {
+            combatTickAccumulator -= COMBAT_DT
+            ticks++
+            stepCombatOnce()
+        }
+    }
+
+    /** One [Combat.step]: build the player's combat input, fold the result back, handle destruction/clear. */
+    private fun stepCombatOnce() {
+        val active = fleet.active
+        val playerInput =
+            PlayerCombatInput(
+                kinematics = physics.readKinematics(),
+                weapons = ShipStats.weaponLoadout(active.type, active.loadout),
+                maxSectionHp = ShipStats.sectionHpMap(active.type, active.loadout),
+                crew = active.crew,
+                sectionDamage = active.sectionDamage,
+            )
+        val fireAction = if (actionCluster.isFirePressed()) FireAction.FIRE else FireAction.NONE
+        val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
+        combat = result.combat
+
+        // Fold the player's new section damage onto the active ship (=== check skips a no-op tick).
+        if (result.sectionDamage !== active.sectionDamage) {
+            fleet = fleet.withActive(active.withSectionDamage(result.sectionDamage))
+        }
+
+        if (result.destroyed) {
+            respawnPlayer()
+            return
+        }
+
+        // Autosave the durable transitions: a destroyed hostile and the cleared encounter (the latter
+        // also when every hostile broke off). Per-hit damage is caught by the periodic autosave.
+        if (result.events.any { it is CombatEvent.HostileDestroyed }) autosave.onEvent("hostile-destroyed")
+        if (!combat.active) {
+            autosave.onEvent("combat-cleared")
+            logger.info(WORLD_TAG, "Combat ended in sector ${currentSector.value}")
+        }
+    }
+
+    /**
+     * Forgiving destruction respawn (UC13 AC#5): relocate the active ship to the last docked station
+     * (its sector + position) with a cargo-loss penalty and full repair via the pure [Respawn], re-seed
+     * the Box2D body, clear the encounter, and autosave. With no last dock (a brand-new game), respawn in
+     * place so the player is never stranded.
+     */
+    private fun respawnPlayer() {
+        val active = fleet.active
+        val (respawnSector, respawnPosition) = resolveRespawnLocation()
+        val result = Respawn.respawn(respawnPosition, cargo, combatParams)
+        cargo = result.cargo
+        fleet =
+            fleet.withActive(
+                active.withSectionDamage(result.sectionDamage).copy(cargo = result.cargo, kinematics = result.kinematics),
+            )
+        physics.resetTo(result.kinematics)
+        combat = result.combat
+        combatTickAccumulator = 0f
+        if (respawnSector != null) currentSector = respawnSector
+        logger.info(
+            WORLD_TAG,
+            "Player ship destroyed; respawned at ${lastDockedStation?.value ?: "current location"} " +
+                "(lost ${result.unitsLost} cargo units)",
+        )
+        autosave.onEvent("respawn")
+    }
+
+    /**
+     * The respawn sector + position: the last docked station's location if it is still in the authored
+     * world, else (null, current position) — respawn in place when there is no recorded dock.
+     */
+    private fun resolveRespawnLocation(): Pair<SectorId?, Vec2> {
+        val stationId = lastDockedStation
+        if (stationId != null) {
+            for (sector in sectorWorld.sectors) {
+                val station = sector.station(stationId)
+                if (station != null) return sector.id to station.position
+            }
+        }
+        return null to physics.readKinematics().position
+    }
+
+    /**
      * The live world snapshot (current sector, the fleet with the active ship's kinematics read back
      * from the Box2D body, dock state, and credits) used by the [AutosaveController] (UC04/UC05 AC#4;
      * UC09 AC#6). Called on the render thread, where touching the body is safe; the returned
@@ -698,6 +876,10 @@ class PlayScreen(
             credits,
             revealedContacts,
             missionLog,
+            // Combat (UC13) is transient — handed through so a snapshot is complete, but the repository
+            // never persists it (a reload starts with no encounter). lastDockedStation IS persisted.
+            combat = combat,
+            lastDockedStation = lastDockedStation,
         )
     }
 
@@ -990,6 +1172,8 @@ class PlayScreen(
         gateRenderer.dispose()
         asteroidFieldRenderer.dispose()
         minimap.dispose()
+        hostileRenderer.dispose()
+        shipSchematicRenderer.dispose()
         physics.dispose()
     }
 
@@ -1019,6 +1203,12 @@ class PlayScreen(
         // frame-rate-independent. The replay harness instead decrements one tick per fixed sim step — the
         // model timer is the shared authority, this constant only paces the device's view of it. [TUNE]
         const val MISSION_TICK_SECONDS = 1f
+
+        // Fixed combat sub-tick (UC13): the device paces [Combat.step] off accumulated dt at this step so
+        // the real-time fight is frame-rate-independent; the replay harness steps the model at a fixed dt
+        // too. [MAX_COMBAT_TICKS_PER_FRAME] caps catch-up ticks after a stall. [TUNE]
+        const val COMBAT_DT = 1f / 30f
+        const val MAX_COMBAT_TICKS_PER_FRAME = 5
         const val BG_R = 0.02f
         const val BG_G = 0.02f
         const val BG_B = 0.05f
