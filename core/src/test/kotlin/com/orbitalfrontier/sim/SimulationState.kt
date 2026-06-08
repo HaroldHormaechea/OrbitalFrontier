@@ -1,6 +1,7 @@
 package com.orbitalfrontier.sim
 
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.MvpSectorMap
@@ -32,6 +33,14 @@ import com.orbitalfrontier.world.SectorId
  * world state (UC06 AC#4/#5), and both are defaulted (empty hold at [Cargo.DEFAULT_CAPACITY]; no
  * depletion) so older recorded playthroughs — and the non-mining UC01/03/05 fixtures — construct and
  * step unchanged.
+ *
+ * UC07 adds [fuel] (the active ship's tank) — mirroring the production
+ * [com.orbitalfrontier.world.WorldState.fuel] so a replayed snapshot maps straight onto the saved
+ * world state (UC07 AC#6). It is defaulted to a full tank ([Fuel.full]) so older recorded playthroughs
+ * — and the UC01/03/05/06 fixtures — construct unchanged; and because [Fuel.speedFactor] is exactly
+ * `1.0f` at a full-enough tank, those fixtures also **step movement byte-identically** (the fuel-
+ * limited speed cap is a no-op until the tank drops below the low-fuel threshold — UC07 composition
+ * guarantee, enforced by [com.orbitalfrontier.ship.FuelLimitedMovement]).
  */
 data class SimulationState(
     val tick: Int = 0,
@@ -40,4 +49,5 @@ data class SimulationState(
     val dockedStation: PoiId? = null,
     val cargo: Cargo = Cargo.empty(),
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
+    val fuel: Fuel = Fuel.full(),
 )

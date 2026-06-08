@@ -1,8 +1,14 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.economy.FuelBurn
+import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.RefuelAction
+import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
+import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -51,6 +57,8 @@ class Simulation(
     private val movementModel: ShipMovementModel = ShipMovementModel(),
     private val world: SectorWorld = MvpSectorMap.build(),
     private val miningParams: MiningParams = MiningParams(),
+    private val powerParams: PowerParams = PowerParams(),
+    private val fuelParams: FuelParams = FuelParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -84,6 +92,18 @@ class Simulation(
      * [MineAction.NONE] is a no-op that returns cargo + depletion unchanged, and a freshly-docked
      * tick skips mining entirely, so the pre-UC06 fixtures (which pass no mine action) step
      * **byte-identically**.
+     *
+     * **Fuel & power (UC07).** [refuelAction] is resolved **first, before the docked-freeze short-
+     * circuit**, via the pure [Refueling.resolve] (so a docked ship can convert hydrogen cargo into
+     * fuel — refuel-while-docked, UC07 AC#5); the resulting fuel + cargo thread forward whether the
+     * ship is frozen or in flight. On the in-flight path the ship then **burns fuel**: the power
+     * model's draw at the current thrust state (`thrusting = !released && magnitude > deadzone`, the
+     * same gate the device loop uses) is consumed via the shared [FuelBurn.step], and the movement
+     * model runs against [FuelLimitedMovement.effectiveParams] — so a low tank scales the speed caps
+     * down (UC07 AC#3) while a full-enough tank leaves [params] untouched (the byte-identical
+     * guarantee for the pre-UC07 fixtures). The post-burn [SimulationState.fuel] threads into the next
+     * snapshot (UC07 AC#6). The default [RefuelAction.NONE] + a full default tank makes every pre-UC07
+     * fixture step its movement **byte-identically**.
      */
     fun step(
         state: SimulationState,
@@ -91,17 +111,32 @@ class Simulation(
         dt: Float,
         dockAction: DockAction = DockAction.NONE,
         mineAction: MineAction = MineAction.NONE,
+        refuelAction: RefuelAction = RefuelAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
+        // Refuel resolves FIRST — before the docked-freeze short-circuit — so a docked ship can
+        // convert hydrogen cargo into fuel (refuel-while-docked, UC07 AC#5). NONE is a no-op that
+        // returns fuel + cargo unchanged, so pre-UC07 fixtures thread the same values through.
+        val refuel = Refueling.resolve(state.fuel, state.cargo, refuelAction, fuelParams)
+
         // Docked and not explicitly undocking ⇒ frozen: short-circuit movement AND gate traversal.
-        // Only the tick advances; position, velocity, heading, sector, dock state, cargo and field
-        // depletion are untouched, so a held-while-docked stretch is bit-for-bit stable (UC05 AC#6).
+        // Only the tick advances (plus any refuel just resolved); position, velocity, heading, sector,
+        // dock state and field depletion are untouched, so a held-while-docked stretch is bit-for-bit
+        // stable (UC05 AC#6) — and burns NO fuel (the station hub, not flight, owns docked time).
         if (state.dockedStation != null && dockAction != DockAction.UNDOCK) {
-            return state.copy(tick = state.tick + 1)
+            return state.copy(tick = state.tick + 1, fuel = refuel.fuel, cargo = refuel.cargo)
         }
 
-        val movedShip = movementModel.update(state.ship, input, params, dt)
+        // In flight: burn fuel for this tick's power draw, then derive the fuel-limited movement params.
+        // "Thrusting" matches the device loop's gate exactly so live and replayed burn agree (UC07 AC#2).
+        val thrusting = !input.released && input.magnitude > params.inputDeadzone
+        val burnedFuel = FuelBurn.step(refuel.fuel, thrusting, powerParams, dt)
+        // Byte-identical at a full-enough tank: effectiveParams returns `params` unchanged (factor 1.0),
+        // so the movement model steps exactly as before; only a low tank scales the speed caps (AC#3).
+        val effectiveParams = FuelLimitedMovement.effectiveParams(params, burnedFuel, fuelParams)
+
+        val movedShip = movementModel.update(state.ship, input, effectiveParams, dt)
         val traversal = GateTraversal.resolve(world, state.currentSector, movedShip.position)
         val nextSector = traversal?.destinationSector ?: state.currentSector
         // Keep velocity & heading; only the position and sector change on a jump (momentum carries).
@@ -110,7 +145,8 @@ class Simulation(
         // range docks; UNDOCK clears the dock; NONE leaves it unchanged (the common pre-UC05 path).
         val nextDocked = Docking.resolve(world, nextSector, state.dockedStation, nextShip.position, dockAction)
 
-        // Mining only while in flight (not docked this tick). A NONE action returns cargo + depletion
+        // Mining only while in flight (not docked this tick). Operates on the post-refuel cargo so a
+        // refuel + mine in the same tick composes correctly; a NONE action returns cargo + depletion
         // unchanged, so non-mining playthroughs thread the same defaults through and step identically.
         val mining =
             if (nextDocked == null) {
@@ -118,13 +154,13 @@ class Simulation(
                     world = world,
                     currentSector = nextSector,
                     shipPosition = nextShip.position,
-                    cargo = state.cargo,
+                    cargo = refuel.cargo,
                     fieldDepletion = state.fieldDepletion,
                     action = mineAction,
                     params = miningParams,
                 )
             } else {
-                MiningResult(state.cargo, state.fieldDepletion, 0)
+                MiningResult(refuel.cargo, state.fieldDepletion, 0)
             }
 
         return SimulationState(
@@ -134,6 +170,7 @@ class Simulation(
             dockedStation = nextDocked,
             cargo = mining.cargo,
             fieldDepletion = mining.fieldDepletion,
+            fuel = burnedFuel,
         )
     }
 }

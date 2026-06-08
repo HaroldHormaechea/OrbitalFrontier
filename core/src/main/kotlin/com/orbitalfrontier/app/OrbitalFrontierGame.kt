@@ -135,6 +135,10 @@ class OrbitalFrontierGame(
                 logger = logger,
                 stationName = station.displayName,
                 onUndock = { returnToFlight() },
+                // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
+                // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
+                onRefuel = { playScreen?.refuel() },
+                fuelStatus = { playScreen?.fuelStatusLine() ?: "" },
             )
         stationHubScreen = hub
         setScreen(hub)

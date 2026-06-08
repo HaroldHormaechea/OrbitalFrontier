@@ -2,6 +2,8 @@ package com.orbitalfrontier.save
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.Fuel
+import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
@@ -45,6 +47,14 @@ class SqlDelightGameStateRepository(
                 cargo = loadCargo(),
                 // Field depletion: absent field = pristine; stored values are REMAINING units (UC06).
                 fieldDepletion = loadFieldDepletion(),
+                // Fuel (UC07): only the level is persisted; capacity is a ship stat reconstructed at
+                // FuelParams.DEFAULT_TANK_CAPACITY. coerceIn guards a corrupt/over-capacity row so the
+                // Fuel(level in 0..capacity) invariant always holds — degrade gracefully, never crash.
+                fuel =
+                    Fuel(
+                        level = row.fuel.toFloat().coerceIn(0f, FuelParams.DEFAULT_TANK_CAPACITY),
+                        capacity = FuelParams.DEFAULT_TANK_CAPACITY,
+                    ),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -66,6 +76,8 @@ class SqlDelightGameStateRepository(
                     vel_y = ship.velocity.y.toDouble(),
                     heading = ship.headingRadians.toDouble(),
                     ang_vel = ship.angularVelocity.toDouble(),
+                    // Fuel level (UC07): same Float -> Double boundary as the kinematics above.
+                    fuel = state.fuel.level.toDouble(),
                 )
                 queries.upsertGameState(
                     current_sector = state.currentSector.value,

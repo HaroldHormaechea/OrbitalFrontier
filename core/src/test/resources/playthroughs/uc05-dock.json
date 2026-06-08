@@ -18,6 +18,16 @@
   "miningConfig": {
     "extractionUnitsPerTick": 2
   },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.5,
+    "thrustDraw": 1.5
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
   "initialState": {
     "tick": 0,
     "posX": 0.0,
@@ -30,7 +40,8 @@
     "dockedStation": null,
     "cargoCapacity": 50,
     "cargo": {},
-    "fieldDepletion": {}
+    "fieldDepletion": {},
+    "fuel": 100.0
   },
   "inputEvents": [
     {

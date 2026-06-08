@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "name": "uc01-thrust-north",
-  "seed": 1,
+  "name": "uc07-low-fuel",
+  "seed": 7,
   "dtSeconds": 0.016666668,
   "tickCount": 90,
   "config": {
@@ -21,7 +21,7 @@
   "powerConfig": {
     "reactorOutput": 2.0,
     "baseModuleDraw": 0.5,
-    "thrustDraw": 1.5
+    "thrustDraw": 9.5
   },
   "fuelConfig": {
     "lowFuelThreshold": 0.2,
@@ -41,7 +41,7 @@
     "cargoCapacity": 50,
     "cargo": {},
     "fieldDepletion": {},
-    "fuel": 100.0
+    "fuel": 24.0
   },
   "inputEvents": [
     {
@@ -519,6 +519,246 @@
     {
       "type": "movement",
       "tick": 59,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 60,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 61,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 62,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 63,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 64,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 65,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 66,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 67,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 68,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 69,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 70,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 71,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 72,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 73,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 74,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 75,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 76,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 77,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 78,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 79,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 80,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 81,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 82,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 83,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 84,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 85,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 86,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 87,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 88,
+      "dirX": 0.0,
+      "dirY": 1.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 89,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,

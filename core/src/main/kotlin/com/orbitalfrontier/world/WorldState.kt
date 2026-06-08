@@ -1,6 +1,7 @@
 package com.orbitalfrontier.world
 
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.ship.ShipKinematics
 
@@ -25,6 +26,11 @@ import com.orbitalfrontier.ship.ShipKinematics
  * call sites and a v3 save migrated to v4 read back as "empty hold, all fields pristine".
  * [fieldDepletion] stores *remaining* units per [AsteroidField] id; an **absent** field is pristine.
  * Cargo capacity is a ship stat reconstructed on load, not persisted (see [Cargo]).
+ *
+ * [fuel] is the active ship's fuel tank (UC07). It defaults to a full tank ([Fuel.full]) so existing
+ * call sites and a v4 save migrated to v5 read back fully fuelled (the migration backfills the new
+ * `ship.fuel` column with a full tank — never stranded). Like cargo capacity, the tank's capacity is
+ * a ship stat reconstructed on load (see [Fuel]); only the level is persisted.
  */
 data class WorldState(
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
@@ -32,4 +38,5 @@ data class WorldState(
     val dockedStation: PoiId? = null,
     val cargo: Cargo = Cargo.empty(),
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
+    val fuel: Fuel = Fuel.full(),
 )
