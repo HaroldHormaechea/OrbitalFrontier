@@ -13,10 +13,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.Fuel
+import com.orbitalfrontier.economy.FuelBurn
+import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.RefuelAction
+import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
+import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HudRenderer
@@ -31,6 +37,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
+import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
@@ -44,6 +51,7 @@ import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.WorldState
+import kotlin.math.roundToInt
 
 /**
  * The single gameplay screen — a flyable ship in the current sector with inter-sector jump gates
@@ -86,6 +94,11 @@ class PlayScreen(
     private val model = ShipMovementModel()
     private val params = ShipMovementParams()
 
+    // Fuel/power tunables (UC07). Authored defaults; the same params feed the shared pure [FuelBurn]
+    // and [FuelLimitedMovement]/[Refueling] here, so live fuel behaviour matches the model/tests.
+    private val powerParams = PowerParams()
+    private val fuelParams = FuelParams()
+
     // Re-seed the Box2D body from the persisted (or default) kinematics — never persist Box2D
     // internals; the kinematics are the save's source of truth on load (UC04 AC#6 / pitfall).
     private val physics = ShipPhysics(spawn = initialWorldState.ship)
@@ -112,6 +125,11 @@ class PlayScreen(
     // [currentWorldState] hands them to the autosave.
     private var cargo: Cargo = initialWorldState.cargo
     private var fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = initialWorldState.fieldDepletion
+
+    // Fuel (UC07): the active ship's tank, seeded from the loaded/initial snapshot. Burned each tick by
+    // the shared [FuelBurn], topped up by [refuel] (station REFUEL), and handed to the autosave via
+    // [currentWorldState]. Low fuel scales the speed caps through [FuelLimitedMovement] (never strands).
+    private var fuel: Fuel = initialWorldState.fuel
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -192,10 +210,21 @@ class PlayScreen(
 
     override fun render(delta: Float) {
         val dt = delta.coerceIn(MIN_DT, MAX_DT)
+        val input = joystick.currentInput()
 
-        // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps.
+        // UC07 fuel burn: the ship draws power every tick (base load even idle, more while thrusting),
+        // and that draw burns fuel via THE shared [FuelBurn.step] (same fn the sim/replay path uses).
+        // "Thrusting" = an active stick past the deadzone, matching the model's own thrust gate.
+        val thrusting = !input.released && input.magnitude > params.inputDeadzone
+        fuel = FuelBurn.step(fuel, thrusting, powerParams, dt)
+
+        // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps. The model
+        // runs against FUEL-LIMITED params (UC07 AC#3): at/above the low-fuel threshold the factor is
+        // exactly 1.0f and [effectiveParams] returns `params` unchanged, so movement stays byte-identical
+        // to a fuel-less build; a low tank scales max forward/reverse speed down toward the floor.
+        val effectiveParams = FuelLimitedMovement.effectiveParams(params, fuel, fuelParams)
         val state = physics.readKinematics()
-        val next = model.update(state, joystick.currentInput(), params, dt)
+        val next = model.update(state, input, effectiveParams, dt)
         physics.applyKinematics(next)
         physics.step(dt)
         val stepped = physics.readKinematics()
@@ -292,7 +321,16 @@ class PlayScreen(
         asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
         shipRenderer.render(worldCamera, ship)
-        hudRenderer.render(ship.speed, ship.headingRadians, viewportWidth, viewportHeight)
+        // UC07: the HUD also shows the fuel tank with a low-fuel cue (red) below the threshold.
+        hudRenderer.render(
+            ship.speed,
+            ship.headingRadians,
+            fuel.level,
+            fuel.capacity,
+            fuel.isLow(fuelParams),
+            viewportWidth,
+            viewportHeight,
+        )
         // The minimap renders every transponder POI (gates + stations), keyed by contact kind.
         minimap.render(sector.pois, ship.position, sector.contentExtent, viewportWidth, viewportHeight)
 
@@ -405,7 +443,35 @@ class PlayScreen(
      * where touching the body is safe; the returned [WorldState] is immutable and handed to the save
      * executor thread.
      */
-    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion)
+    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion, fuel)
+
+    /**
+     * A short fuel readout for the station hub's REFUEL row (UC07 AC#5), e.g. `FUEL 12/100`. Read on
+     * the render thread; cheap, allocates a small String only when the hub asks (not per frame).
+     */
+    fun fuelStatusLine(): String = "FUEL ${fuel.level.roundToInt()}/${fuel.capacity.roundToInt()}"
+
+    /**
+     * Convert hydrogen cargo into fuel via the pure [Refueling.resolve] (UC07 AC#5) — the station hub's
+     * REFUEL button routes here (mirroring [undock]). On a successful transfer it folds the new fuel +
+     * cargo back in, logs one INFO line, and autosaves the event so the refuel is durable; a no-op tap
+     * (no hydrogen / full tank) changes nothing and is not persisted.
+     */
+    fun refuel() {
+        val result = Refueling.resolve(fuel, cargo, RefuelAction.REFUEL, fuelParams)
+        if (result.transferredUnits <= 0) {
+            logger.info(ECONOMY_TAG, "Refuel requested but nothing transferred (no hydrogen, or tank full)")
+            return
+        }
+        fuel = result.fuel
+        cargo = result.cargo
+        logger.info(
+            ECONOMY_TAG,
+            "Refueled ${result.transferredUnits} hydrogen -> fuel; tank ${fuel.level}/${fuel.capacity}",
+        )
+        // Refuelling is a key world event (mirrors mining/dock) — persist it now.
+        autosave.onEvent("refuel")
+    }
 
     /**
      * Return to flight from the station hub (UC05 AC#2/#4). Runs the same pure [Docking.resolve] with
@@ -451,6 +517,9 @@ class PlayScreen(
 
         // Discrete world events (sector jumps) log under the "World" tag (coding-guidelines § logging).
         const val WORLD_TAG = "World"
+
+        // Economy events (refuelling) log under the "Economy" tag (coding-guidelines § logging).
+        const val ECONOMY_TAG = "Economy"
         const val MIN_DT = 1e-4f
         const val MAX_DT = 1f / 30f
         const val MARGIN = 24f

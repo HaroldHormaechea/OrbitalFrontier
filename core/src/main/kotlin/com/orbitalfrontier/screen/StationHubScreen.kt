@@ -18,11 +18,13 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
  *
  * Intentionally a **thin view with no game logic**: it shows the docked station's name and a column
  * of **inert** service entries (TRADE / OUTFIT / MISSIONS — labels with no listeners) that later UCs
- * (economy UC08, upgrades UC09, missions UC12) will wire up, plus a single **active** UNDOCK button.
- * Tapping UNDOCK fires the injected [onUndock] intent; the owner ([com.orbitalfrontier.app.OrbitalFrontierGame])
- * routes that to the play screen, which performs the pure dock-state transition, autosaves, and is
- * shown again. Keeping the dock-state mutation in one place (the play screen) keeps this screen free
- * of world/save coupling (SRP).
+ * (economy UC08, upgrades UC09, missions UC12) will wire up, plus an **active REFUEL** service
+ * (UC07 AC#5) and a single **active** UNDOCK button. Tapping UNDOCK fires the injected [onUndock]
+ * intent and REFUEL fires [onRefuel]; the owner ([com.orbitalfrontier.app.OrbitalFrontierGame]) routes
+ * both to the play screen, which performs the pure transition (dock state / [Refueling.resolve]),
+ * autosaves, and is shown again. Keeping that mutation in one place (the play screen) keeps this screen
+ * free of world/save coupling (SRP); the screen only renders the [fuelStatus] readout and re-reads it
+ * after a refuel tap.
  *
  * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes both screens explicitly, so there is no leaked context when the
@@ -32,9 +34,14 @@ class StationHubScreen(
     private val logger: Logger,
     stationName: String,
     private val onUndock: () -> Unit,
+    private val onRefuel: () -> Unit,
+    private val fuelStatus: () -> String,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
+
+    // Fuel readout (UC07): seeded from the current tank and refreshed in place after each REFUEL tap.
+    private val fuelLabel = Label("", skin.labelStyle)
 
     init {
         val root = Table()
@@ -48,6 +55,25 @@ class StationHubScreen(
         for (service in INERT_SERVICES) {
             root.add(Label("$service  (coming soon)", skin.labelStyle)).padBottom(SERVICE_GAP).row()
         }
+
+        // Active REFUEL service (UC07 AC#5): the play screen owns the pure Refueling.resolve; this row
+        // shows the current tank and a button that fires the intent, then re-reads the readout.
+        fuelLabel.setText(fuelStatus())
+        root.add(fuelLabel).padBottom(SERVICE_GAP).row()
+        val refuelButton = TextButton("REFUEL", skin.settingsButtonStyle)
+        refuelButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    onRefuel()
+                    fuelLabel.setText(fuelStatus())
+                }
+            },
+        )
+        root.add(refuelButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
         // The one active control: leave the station and return to flight.
         val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)
