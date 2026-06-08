@@ -39,6 +39,7 @@ class StationHubScreen(
     private val onOutfit: () -> Unit,
     private val onShipyard: () -> Unit,
     private val onCrew: () -> Unit,
+    private val onMissions: () -> Unit,
     private val onRefuel: () -> Unit,
     private val fuelStatus: () -> String,
 ) : ScreenAdapter() {
@@ -84,10 +85,10 @@ class StationHubScreen(
         // them; the desk shows crew/capacity + turret operability anywhere). Pure Hiring behind it.
         root.add(serviceButton("CREW", onCrew)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
-        // Inert service stubs — no listeners; wired by later UCs (missions).
-        for (service in INERT_SERVICES) {
-            root.add(Label("$service  (coming soon)", skin.labelStyle)).padBottom(SERVICE_GAP).row()
-        }
+        // Active MISSIONS service (UC12 AC#2/#3): opens the station mission board (accept board offers,
+        // turn in active missions). The play screen owns the pure Missions.resolve + MissionGenerator;
+        // this button just fires the intent so the game switches to the MissionBoardScreen.
+        root.add(serviceButton("MISSIONS", onMissions)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
         // Active REFUEL service (UC07 AC#5): the play screen owns the pure Refueling.resolve; this row
         // shows the current tank and a button that fires the intent, then re-reads the readout.
@@ -178,7 +179,6 @@ class StationHubScreen(
 
     private companion object {
         const val TAG = "Screen"
-        val INERT_SERVICES = listOf("MISSIONS")
         const val MARGIN = 32f
         const val TITLE_GAP = 24f
         const val SERVICE_GAP = 12f

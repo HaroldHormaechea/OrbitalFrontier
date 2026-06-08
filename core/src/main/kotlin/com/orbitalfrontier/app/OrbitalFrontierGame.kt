@@ -5,6 +5,7 @@ import com.badlogic.gdx.Game
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
@@ -13,6 +14,7 @@ import com.orbitalfrontier.save.OrbitalFrontier
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
 import com.orbitalfrontier.screen.HireScreen
+import com.orbitalfrontier.screen.MissionBoardScreen
 import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.ShipyardScreen
@@ -56,6 +58,7 @@ class OrbitalFrontierGame(
     private var outfitScreen: OutfitScreen? = null
     private var shipyardScreen: ShipyardScreen? = null
     private var hireScreen: HireScreen? = null
+    private var missionBoardScreen: MissionBoardScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
@@ -160,6 +163,9 @@ class OrbitalFrontierGame(
                 // CREW opens the crew-hire desk for this station (UC11); HIRE taps route back to the play
                 // screen's pure Hiring.resolve.
                 onCrew = { openHireDesk(station) },
+                // MISSIONS opens the station mission board for this station (UC12); ACCEPT / TURN IN taps
+                // route back to the play screen's pure Missions.resolve.
+                onMissions = { openMissionBoard(station) },
                 // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
                 // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
                 onRefuel = { playScreen?.refuel() },
@@ -233,6 +239,27 @@ class OrbitalFrontierGame(
     }
 
     /**
+     * Open the station mission board for [station] (UC12 AC#2/#3), owning it so it can be disposed
+     * (libGDX only hide()s the hub). ACCEPT / TURN IN taps route to [PlayScreen.applyMissionOrder] (pure
+     * [com.orbitalfrontier.mission.Missions]); the board reads the live available offers, active
+     * missions and credits back from the play screen for its rows. BACK returns to the hub.
+     */
+    private fun openMissionBoard(station: Station) {
+        val board =
+            MissionBoardScreen(
+                logger = logger,
+                stationName = station.displayName,
+                availableSupplier = { playScreen?.stationMissionBoard() ?: emptyList() },
+                activeSupplier = { playScreen?.activeMissions() ?: emptyList() },
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                onMissionOrder = { order: MissionOrder -> playScreen?.applyMissionOrder(order) },
+                onBack = { returnToHub() },
+            )
+        missionBoardScreen = board
+        setScreen(board)
+    }
+
+    /**
      * Open the trade desk for [station] (UC08), owning it so it can be disposed (libGDX only hide()s
      * the hub). BUY/SELL taps route to [PlayScreen.trade] (pure [com.orbitalfrontier.economy.Trading]);
      * the desk reads the live credits + cargo back from the play screen for its readouts. BACK returns
@@ -274,6 +301,8 @@ class OrbitalFrontierGame(
         shipyardScreen = null
         hireScreen?.dispose()
         hireScreen = null
+        missionBoardScreen?.dispose()
+        missionBoardScreen = null
     }
 
     override fun dispose() {
@@ -324,6 +353,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose hire screen on shutdown", e)
         }
         hireScreen = null
+        try {
+            missionBoardScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose mission board screen on shutdown", e)
+        }
+        missionBoardScreen = null
 
         try {
             driver?.close()

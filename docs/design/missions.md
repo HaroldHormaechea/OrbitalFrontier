@@ -1,8 +1,40 @@
 # Design Note — Missions
 
-- **Status:** in-progress (MVP types & sources decided; markers/faction-gen detail open)
-- **Last updated:** 2026-06-07
-- **Related:** PROJECT_BRIEF.md → in_scope #2, core_gameplay_loop (Earn); [world-and-sector.md](world-and-sector.md) (stations, asteroids), [economy-and-resources.md](economy-and-resources.md) (rewards, cargo), [upgrades-and-progression.md](upgrades-and-progression.md) (crew rewards), [combat.md](combat.md) (combat missions, later phase), [save-and-persistence.md](save-and-persistence.md) (mission persistence)
+- **Status:** in-progress (MVP mining + courier **implemented in UC12** — see ADR 0011; markers/faction-gen/combat still deferred)
+- **Last updated:** 2026-06-08
+- **Related:** PROJECT_BRIEF.md → in_scope #2, core_gameplay_loop (Earn); [world-and-sector.md](world-and-sector.md) (stations, asteroids), [economy-and-resources.md](economy-and-resources.md) (rewards, cargo), [upgrades-and-progression.md](upgrades-and-progression.md) (crew rewards), [combat.md](combat.md) (combat missions, later phase), [save-and-persistence.md](save-and-persistence.md) (mission persistence), [adr/0011-missions.md](../adr/0011-missions.md) (the MVP decision record)
+
+## MVP implementation (UC12)
+
+The two MVP types and both sources are implemented as a pure, JVM-testable `mission` package
+(ADR 0011). What landed, concretely:
+
+- **Types.** `MINING` (gather a resource quota into the cargo hold, turn it in at any mission-board
+  station) and `COURIER` (deliver a **virtual** parcel — a `pickedUp` flag, never a hold item — from
+  station A to station B before a tick-based deadline). Two handcrafted templates; **Abandon** was
+  dropped from MVP scope and **combat** missions remain a later phase.
+- **Procedural instancing — deterministic.** `MissionGenerator` instances offers as a pure function of
+  the **static authored** world (stations, sectors, asteroid-field deposits) + the authored
+  `MissionParams`. Every procedural choice (resource, quota size, courier destination, deadline, reward
+  jitter) is drawn from an explicit **FNV-1a string-hash → LCG** seeded **only** by stable String
+  primitives (`PoiId.value` / `SectorId.value` / `ResourceType.name`). It never uses
+  `enum`/data-class/identity `hashCode()` — that would be run-dependent and break byte-identical replay.
+  Mining quotas are drawn from (and clamped to) the offering sector's field resources, so a mission is
+  always completable.
+- **Sources.** **Station boards** surface one mining + one courier offer per station (`boardOffers`);
+  the **ship radio** surfaces one mining offer per in-range broadcasting station while in flight
+  (`radioOffers`, range-filtered exactly like active scanning's `contactsInRange`).
+- **Lifecycle.** `Missions.resolve` handles Accept / TurnIn and **automatic courier pickup** on docking
+  at the pickup station (no explicit pickup action). `Missions.advance` decrements the courier
+  `remainingTicks` once per call; at 0 the mission flips to `FAILED` with a fixed credit penalty (the
+  predefined consequence). Mining turn-in consumes the quota from the hold and grants the credit reward.
+- **Persistence — regenerate-and-filter.** Only ACTIVE/terminal missions are stored (save schema v10,
+  table `mission`). Available offers are **not** persisted: on load they are regenerated from the static
+  world and filtered against the persisted accepted/completed/failed ids, so an accepted or resolved
+  offer never re-appears and a completed/failed one never re-offers.
+- **Timer authority.** The courier timer is **tick-based in the model** (the authority shared by live +
+  replay); the device paces one `advance` per fixed real interval so its countdown is frame-rate
+  independent, the replay one per fixed sim step.
 
 ## Summary
 
@@ -71,19 +103,26 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 
 ## Open questions
 
-- **Active-mission markers:** how to surface them on map/HUD (deferred, needs design).
+- **Active-mission markers:** how to surface them on map/HUD (still deferred, post-MVP — the mission
+  log / board is the MVP surface).
 - **Faction/sector-driven generation:** exactly how faction/sector state shapes which
-  missions appear and their rewards.
-- **Failure consequences** per type (reputation hit, credit penalty, cargo loss?).
-- **Radio comms** specifics: range, how offers surface, any tech/upgrade gating.
-- **Reward balancing** across types.
+  missions appear and their rewards. _UC12 instances from static sector/asteroid state only;
+  faction state does not exist yet (UC14)._
+- **Reward balancing + radio cadence:** still placeholders — all live as `[TUNE]` constants in
+  `MissionParams` (pinnable per recorded playthrough), so tuning never affects determinism.
+
+_Resolved in UC12 (see ADR 0011 and "MVP implementation" above):_ failure consequence = fixed credit
+penalty; radio surfacing = range-based (`MissionParams.radioRange`), no upgrade gating; generation =
+deterministic string-hash→LCG from static authored state.
 
 ## Decided
 
 - MVP types = **Mining** + **Station-to-station courier**; **Combat = later MVP phase**.
 - **Procedural instances from handcrafted mission types.**
 - Sources = **ship radio broadcasts** + **station boards (sector/faction-state driven)**.
-- **Available missions are persisted** (no reset on close).
+- **Available missions survive a restart** (no reset on close) — realized via **regenerate-and-filter**
+  (ADR 0011): offers are not stored but are regenerated deterministically and filtered against the
+  persisted accepted/terminal ids, so the offer list is stable across restarts without storing it.
 - **Multiple concurrent missions**; **mission log in MVP**.
 - Rewards can include **credits, items/loot, crew, reputation** (no pilot XP — horizontal
   progression).

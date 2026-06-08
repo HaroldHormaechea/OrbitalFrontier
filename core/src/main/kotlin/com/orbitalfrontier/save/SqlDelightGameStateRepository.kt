@@ -4,6 +4,12 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.mission.Mission
+import com.orbitalfrontier.mission.MissionId
+import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.mission.MissionSource
+import com.orbitalfrontier.mission.MissionStatus
+import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.outfit.Loadout
 import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.outfit.SlotCategory
@@ -114,6 +120,9 @@ class SqlDelightGameStateRepository(
                 credits = header.credits.coerceAtLeast(0),
                 // Revealed hidden contacts (UC10): absent = still hidden; reveal is monotonic.
                 revealedContacts = loadRevealedContacts(),
+                // Missions (UC12): only the accepted / terminal missions are persisted; the available
+                // offers are regenerated from the static authored world on load (regenerate-and-filter).
+                missions = MissionLog(available = emptyList(), accepted = loadMissions()),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -195,6 +204,28 @@ class SqlDelightGameStateRepository(
                 for (contactId in state.revealedContacts) {
                     queries.insertRevealedContact(contact_id = contactId.value)
                 }
+
+                // Missions (UC12): full-snapshot rewrite of the accepted / terminal missions
+                // (delete-then-plain-INSERT, minSdk-24-safe). Available offers are NOT persisted — they
+                // are regenerated from the static authored world on load (regenerate-and-filter, ADR 0011).
+                queries.deleteAllMissions()
+                for (mission in state.missions.accepted) {
+                    queries.insertMission(
+                        id = mission.id.value,
+                        type = mission.type.name,
+                        source = mission.source.name,
+                        status = mission.status.name,
+                        reward_credits = mission.rewardCredits,
+                        reward_resource = mission.rewardResource?.name,
+                        reward_resource_units = mission.rewardResourceUnits.toLong(),
+                        quota_resource = mission.quotaResource?.name,
+                        quota_units = mission.quotaUnits.toLong(),
+                        pickup = mission.pickup?.value,
+                        destination = mission.destination?.value,
+                        remaining_ticks = mission.remainingTicks.toLong(),
+                        picked_up = if (mission.pickedUp) 1L else 0L,
+                    )
+                }
             }
             logger.info(
                 TAG,
@@ -267,6 +298,72 @@ class SqlDelightGameStateRepository(
             ids.add(PoiId(contactId))
         }
         return ids
+    }
+
+    /**
+     * Reconstruct the accepted / terminal missions from the `mission` table (UC12). Each row maps to a
+     * [Mission]; a row whose enum / resource name no longer resolves is **skipped with a WARN** (the
+     * rest still load — "never stranded"), so an evolved catalog never crashes a load. Available offers
+     * are not stored — they are regenerated on load (the caller wraps this list in a [MissionLog]).
+     */
+    private fun loadMissions(): List<Mission> {
+        val missions = ArrayList<Mission>()
+        for (row in queries.selectAllMissions().executeAsList()) {
+            val type = parseMissionType(row.type) ?: continue
+            val source = parseMissionSource(row.source) ?: continue
+            val status = parseMissionStatus(row.status) ?: continue
+
+            // A mining mission's quota resource must resolve; an unknown one is a skip (WARN).
+            val quotaResource =
+                if (type == MissionType.MINING) {
+                    parseResource(row.quota_resource ?: "") ?: continue
+                } else {
+                    row.quota_resource?.let { parseResource(it) }
+                }
+            // The optional reward resource is best-effort: an unknown one degrades to "no resource bonus".
+            val rewardResource = row.reward_resource?.let { parseResource(it) }
+
+            missions +=
+                Mission(
+                    id = MissionId(row.id),
+                    type = type,
+                    source = source,
+                    status = status,
+                    // coerceAtLeast(0) guards a corrupt/negative row against the Mission(>= 0) invariants.
+                    rewardCredits = row.reward_credits.coerceAtLeast(0),
+                    rewardResource = rewardResource,
+                    rewardResourceUnits = row.reward_resource_units.toInt().coerceAtLeast(0),
+                    quotaResource = quotaResource,
+                    quotaUnits = row.quota_units.toInt().coerceAtLeast(0),
+                    // Unknown station ids are kept harmlessly (they resolve to nothing when looked up).
+                    pickup = row.pickup?.let { PoiId(it) },
+                    destination = row.destination?.let { PoiId(it) },
+                    remainingTicks = row.remaining_ticks.toInt().coerceAtLeast(0),
+                    pickedUp = row.picked_up != 0L,
+                )
+        }
+        return missions
+    }
+
+    /** Map a persisted mission-type name to its [MissionType], or null (logged) if unknown. */
+    private fun parseMissionType(name: String): MissionType? {
+        val type = MissionType.entries.firstOrNull { it.name == name }
+        if (type == null) logger.warn(TAG, "Skipping mission with unknown type '$name' (enum changed?)")
+        return type
+    }
+
+    /** Map a persisted mission-source name to its [MissionSource], or null (logged) if unknown. */
+    private fun parseMissionSource(name: String): MissionSource? {
+        val source = MissionSource.entries.firstOrNull { it.name == name }
+        if (source == null) logger.warn(TAG, "Skipping mission with unknown source '$name' (enum changed?)")
+        return source
+    }
+
+    /** Map a persisted mission-status name to its [MissionStatus], or null (logged) if unknown. */
+    private fun parseMissionStatus(name: String): MissionStatus? {
+        val status = MissionStatus.entries.firstOrNull { it.name == name }
+        if (status == null) logger.warn(TAG, "Skipping mission with unknown status '$name' (enum changed?)")
+        return status
     }
 
     /** Resolve a persisted ship-type slug to a [ShipType]; an unknown slug degrades to the starter (WARN). */

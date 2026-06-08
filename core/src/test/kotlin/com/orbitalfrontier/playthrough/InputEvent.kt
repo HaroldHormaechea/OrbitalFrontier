@@ -5,6 +5,8 @@ import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.mission.MissionId
+import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.SlotCategory
 import com.orbitalfrontier.outfit.UpgradeId
@@ -304,6 +306,62 @@ data class FleetEvent(
                 FleetOrder.None -> FleetEvent(tick, FleetOrderKind.NONE)
                 is FleetOrder.BuyShip -> FleetEvent(tick, FleetOrderKind.BUY_SHIP, shipType = order.typeId.value)
                 is FleetOrder.SwitchActive -> FleetEvent(tick, FleetOrderKind.SWITCH_ACTIVE, shipId = order.shipId.value)
+            }
+    }
+}
+
+/** Which [MissionOrder] kind a [MissionEvent] carries — the serialized discriminator for the order. */
+enum class MissionOrderKind {
+    /** No mission action (maps to [MissionOrder.None]). */
+    NONE,
+
+    /** Accept a surfaced offer (maps to [MissionOrder.Accept]); [MissionEvent.missionId] is set. */
+    ACCEPT,
+
+    /** Turn in an active mission (maps to [MissionOrder.TurnIn]); [MissionEvent.missionId] is set. */
+    TURN_IN,
+}
+
+/**
+ * A mission control sample for one tick (UC12 AC#3/#7) — one Accept / TurnIn the station mission board
+ * (while docked) or the ship radio (while in flight) feeds in. Carried alongside the other per-tick
+ * events; [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs a [MissionOrder] from it and
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step], where a board Accept / TurnIn is resolved
+ * inside the docked-freeze branch and a radio Accept on the in-flight path (so each only has an effect
+ * in the right context — the resolver no-ops an order it cannot satisfy).
+ *
+ * Flat serializable fields keep the domain [MissionOrder] (a non-serializable sealed hierarchy)
+ * annotation-free: [kind] is the discriminator and [missionId] is the [MissionId] value an ACCEPT /
+ * TURN_IN targets. A tick with no [MissionEvent] reconstructs as [MissionOrder.None] in the runner, so
+ * older artifacts (which carry none) replay unchanged.
+ */
+@Serializable
+@SerialName("mission")
+data class MissionEvent(
+    override val tick: Int,
+    val kind: MissionOrderKind,
+    val missionId: String? = null,
+) : InputEvent() {
+    /** Reconstruct the domain [MissionOrder] this event recorded. */
+    fun toMissionOrder(): MissionOrder =
+        when (kind) {
+            MissionOrderKind.NONE -> MissionOrder.None
+            MissionOrderKind.ACCEPT ->
+                MissionOrder.Accept(MissionId(requireNotNull(missionId) { "ACCEPT requires a missionId" }))
+            MissionOrderKind.TURN_IN ->
+                MissionOrder.TurnIn(MissionId(requireNotNull(missionId) { "TURN_IN requires a missionId" }))
+        }
+
+    companion object {
+        /** Snapshot a [MissionOrder] into its serializable event form at [tick]. */
+        fun from(
+            tick: Int,
+            order: MissionOrder,
+        ): MissionEvent =
+            when (order) {
+                MissionOrder.None -> MissionEvent(tick, MissionOrderKind.NONE)
+                is MissionOrder.Accept -> MissionEvent(tick, MissionOrderKind.ACCEPT, missionId = order.id.value)
+                is MissionOrder.TurnIn -> MissionEvent(tick, MissionOrderKind.TURN_IN, missionId = order.id.value)
             }
     }
 }
