@@ -1,9 +1,11 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.MineAction
 
 /**
  * Accumulates a playthrough recording — the seed, fixed timestep, pinned config, optional initial
@@ -24,6 +26,7 @@ class PlaythroughRecorder(
     private val seed: Long,
     private val dtSeconds: Float,
     config: ShipMovementParams = ShipMovementParams(),
+    miningConfig: MiningParams = MiningParams(),
     initialState: SimulationState? = null,
 ) {
     init {
@@ -31,6 +34,7 @@ class PlaythroughRecorder(
     }
 
     private val configDto = MovementParamsDto.from(config)
+    private val miningConfigDto = MiningParamsDto.from(miningConfig)
     private val initialStateDto = initialState?.let(StateSnapshotDto::from)
     private val events = mutableListOf<InputEvent>()
     private var tickCount = 0
@@ -63,6 +67,12 @@ class PlaythroughRecorder(
         action: DockAction,
     ): PlaythroughRecorder = record(DockActionEvent(tick = tick, action = action))
 
+    /** Convenience: record a [MineEvent] for [action] at [tick] (UC06). */
+    fun recordMineAction(
+        tick: Int,
+        action: MineAction,
+    ): PlaythroughRecorder = record(MineEvent(tick = tick, action = action))
+
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {
         newEvents.forEach(::record)
@@ -92,6 +102,7 @@ class PlaythroughRecorder(
             dtSeconds = dtSeconds,
             tickCount = tickCount,
             config = configDto,
+            miningConfig = miningConfigDto,
             initialState = initialStateDto,
             inputEvents = events.toList(),
         )

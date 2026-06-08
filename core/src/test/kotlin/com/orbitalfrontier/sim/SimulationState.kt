@@ -1,5 +1,7 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
@@ -23,10 +25,19 @@ import com.orbitalfrontier.world.SectorId
  * [dockedStation] mirrors the production [com.orbitalfrontier.world.WorldState.dockedStation] so a
  * replayed snapshot maps straight onto the saved world state (UC05 AC#4). While it is non-null the
  * [Simulation] freezes the ship (no movement, no gate traversal) — see [Simulation.step].
+ *
+ * UC06 adds [cargo] (the active ship's hold) and [fieldDepletion] (remaining deposits per asteroid
+ * field, keyed by [PoiId]; an **absent** field is pristine). Both mirror the production
+ * [com.orbitalfrontier.world.WorldState] fields so a replayed snapshot maps straight onto the saved
+ * world state (UC06 AC#4/#5), and both are defaulted (empty hold at [Cargo.DEFAULT_CAPACITY]; no
+ * depletion) so older recorded playthroughs — and the non-mining UC01/03/05 fixtures — construct and
+ * step unchanged.
  */
 data class SimulationState(
     val tick: Int = 0,
     val ship: ShipKinematics = ShipKinematics(),
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
     val dockedStation: PoiId? = null,
+    val cargo: Cargo = Cargo.empty(),
+    val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
 )

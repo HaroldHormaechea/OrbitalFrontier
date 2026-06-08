@@ -1,5 +1,6 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
 import com.orbitalfrontier.ship.MovementInput
@@ -8,6 +9,9 @@ import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
+import com.orbitalfrontier.world.MineAction
+import com.orbitalfrontier.world.Mining
+import com.orbitalfrontier.world.MiningResult
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
 
@@ -46,6 +50,7 @@ class Simulation(
     private val params: ShipMovementParams = ShipMovementParams(),
     private val movementModel: ShipMovementModel = ShipMovementModel(),
     private val world: SectorWorld = MvpSectorMap.build(),
+    private val miningParams: MiningParams = MiningParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -71,18 +76,27 @@ class Simulation(
      * resulting sector/position: a [DockAction.DOCK] with a station in range docks the ship (so the
      * *next* tick it is frozen). The default [DockAction.NONE] leaves the dock state unchanged, so
      * the pre-UC05 fixtures (which pass no action) step identically.
+     *
+     * **Mining (UC06).** After movement/gate/dock resolution, while the ship is **in flight** (it did
+     * not dock this tick) the player's [mineAction] is resolved against the post-movement
+     * sector/position via the pure [Mining.resolve], threading the resulting [SimulationState.cargo]
+     * and [SimulationState.fieldDepletion] into the next snapshot (UC06 AC#2/#4/#5). The default
+     * [MineAction.NONE] is a no-op that returns cargo + depletion unchanged, and a freshly-docked
+     * tick skips mining entirely, so the pre-UC06 fixtures (which pass no mine action) step
+     * **byte-identically**.
      */
     fun step(
         state: SimulationState,
         input: MovementInput,
         dt: Float,
         dockAction: DockAction = DockAction.NONE,
+        mineAction: MineAction = MineAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
         // Docked and not explicitly undocking ⇒ frozen: short-circuit movement AND gate traversal.
-        // Only the tick advances; position, velocity, heading, sector and dock state are untouched,
-        // so a held-while-docked stretch is bit-for-bit stable (UC05 AC#6 "no bounce").
+        // Only the tick advances; position, velocity, heading, sector, dock state, cargo and field
+        // depletion are untouched, so a held-while-docked stretch is bit-for-bit stable (UC05 AC#6).
         if (state.dockedStation != null && dockAction != DockAction.UNDOCK) {
             return state.copy(tick = state.tick + 1)
         }
@@ -96,11 +110,30 @@ class Simulation(
         // range docks; UNDOCK clears the dock; NONE leaves it unchanged (the common pre-UC05 path).
         val nextDocked = Docking.resolve(world, nextSector, state.dockedStation, nextShip.position, dockAction)
 
+        // Mining only while in flight (not docked this tick). A NONE action returns cargo + depletion
+        // unchanged, so non-mining playthroughs thread the same defaults through and step identically.
+        val mining =
+            if (nextDocked == null) {
+                Mining.resolve(
+                    world = world,
+                    currentSector = nextSector,
+                    shipPosition = nextShip.position,
+                    cargo = state.cargo,
+                    fieldDepletion = state.fieldDepletion,
+                    action = mineAction,
+                    params = miningParams,
+                )
+            } else {
+                MiningResult(state.cargo, state.fieldDepletion, 0)
+            }
+
         return SimulationState(
             tick = state.tick + 1,
             ship = nextShip,
             currentSector = nextSector,
             dockedStation = nextDocked,
+            cargo = mining.cargo,
+            fieldDepletion = mining.fieldDepletion,
         )
     }
 }

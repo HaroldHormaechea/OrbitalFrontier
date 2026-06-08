@@ -3,6 +3,7 @@ package com.orbitalfrontier.playthrough
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.MineAction
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -76,4 +77,22 @@ data class MovementEvent(
 data class DockActionEvent(
     override val tick: Int,
     val action: DockAction,
+) : InputEvent()
+
+/**
+ * A mine control sample for one tick (UC06 AC#2) — the discrete [MineAction] the play screen feeds
+ * in while the context mine button is held. Carried alongside [MovementEvent] in the same tick-
+ * stamped script, so a recorded session can thrust *and* mine; [com.orbitalfrontier.playthrough.ReplayRunner]
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step] each tick.
+ *
+ * [MineAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"MINE"` / `"NONE"`. A tick with
+ * no [MineEvent] defaults to [MineAction.NONE] in the runner, so older artifacts (which carry none)
+ * replay unchanged.
+ */
+@Serializable
+@SerialName("mine")
+data class MineEvent(
+    override val tick: Int,
+    val action: MineAction,
 ) : InputEvent()
