@@ -20,7 +20,7 @@ Statuses:
 | 08 | [use-cases/08-credits-and-trading.md](use-cases/08-credits-and-trading.md) | Credits & inter-station trading | done | 2026-06-08 |
 | 09 | [use-cases/09-outfitting-upgrades-junkyards-ships.md](use-cases/09-outfitting-upgrades-junkyards-ships.md) | Ship outfitting, upgrades, junkyards & multiple ships | done | 2026-06-08 |
 | 10 | [use-cases/10-scanning-and-transponders.md](use-cases/10-scanning-and-transponders.md) | Active scanning & hidden contacts | done | 2026-06-08 |
-| 11 | [use-cases/11-crew.md](use-cases/11-crew.md) | Crew | pending | 2026-06-07 |
+| 11 | [use-cases/11-crew.md](use-cases/11-crew.md) | Crew | in-progress | 2026-06-08 |
 | 12 | [use-cases/12-missions-mining-courier.md](use-cases/12-missions-mining-courier.md) | Missions — mining & courier | pending | 2026-06-07 |
 | 13 | [use-cases/13-real-time-combat.md](use-cases/13-real-time-combat.md) | Real-time combat | pending | 2026-06-07 |
 | 14 | [use-cases/14-factions-and-reputation.md](use-cases/14-factions-and-reputation.md) | Factions & reputation (post-MVP) | pending | 2026-06-07 |

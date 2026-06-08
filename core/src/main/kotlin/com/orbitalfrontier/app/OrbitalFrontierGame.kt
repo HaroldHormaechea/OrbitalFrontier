@@ -2,6 +2,7 @@ package com.orbitalfrontier.app
 
 import app.cash.sqldelight.db.SqlDriver
 import com.badlogic.gdx.Game
+import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.platform.Logger
@@ -11,6 +12,7 @@ import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.OrbitalFrontier
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
+import com.orbitalfrontier.screen.HireScreen
 import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.ShipyardScreen
@@ -53,6 +55,7 @@ class OrbitalFrontierGame(
     private var tradeScreen: TradeScreen? = null
     private var outfitScreen: OutfitScreen? = null
     private var shipyardScreen: ShipyardScreen? = null
+    private var hireScreen: HireScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
@@ -154,6 +157,9 @@ class OrbitalFrontierGame(
                 // taps back to the play screen's pure resolvers.
                 onOutfit = { openOutfitDesk(station) },
                 onShipyard = { openShipyard(station) },
+                // CREW opens the crew-hire desk for this station (UC11); HIRE taps route back to the play
+                // screen's pure Hiring.resolve.
+                onCrew = { openHireDesk(station) },
                 // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
                 // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
                 onRefuel = { playScreen?.refuel() },
@@ -205,6 +211,28 @@ class OrbitalFrontierGame(
     }
 
     /**
+     * Open the crew-hire desk for [station] (UC11 AC#2), owning it so it can be disposed (libGDX only
+     * hide()s the hub). HIRE taps route to [PlayScreen.hire] (pure [com.orbitalfrontier.crew.Hiring]);
+     * the desk reads the live credits + active-ship crew/capacity + turret operability back from the
+     * play screen for its readouts. BACK returns to the hub.
+     */
+    private fun openHireDesk(station: Station) {
+        val desk =
+            HireScreen(
+                logger = logger,
+                stationName = station.displayName,
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                crewSupplier = { playScreen?.activeCrew() ?: 0 },
+                crewCapacitySupplier = { playScreen?.activeCrewCapacity() ?: 0 },
+                turretOperableSupplier = { playScreen?.turretsOperable() ?: false },
+                onHire = { order: HireOrder -> playScreen?.hire(order) },
+                onBack = { returnToHub() },
+            )
+        hireScreen = desk
+        setScreen(desk)
+    }
+
+    /**
      * Open the trade desk for [station] (UC08), owning it so it can be disposed (libGDX only hide()s
      * the hub). BUY/SELL taps route to [PlayScreen.trade] (pure [com.orbitalfrontier.economy.Trading]);
      * the desk reads the live credits + cargo back from the play screen for its readouts. BACK returns
@@ -244,6 +272,8 @@ class OrbitalFrontierGame(
         outfitScreen = null
         shipyardScreen?.dispose()
         shipyardScreen = null
+        hireScreen?.dispose()
+        hireScreen = null
     }
 
     override fun dispose() {
@@ -288,6 +318,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose shipyard screen on shutdown", e)
         }
         shipyardScreen = null
+        try {
+            hireScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose hire screen on shutdown", e)
+        }
+        hireScreen = null
 
         try {
             driver?.close()

@@ -66,6 +66,7 @@ class SqlDelightGameStateRepository(
                         val loadout = upgradesByShip[row.id] ?: Loadout.EMPTY
                         val cargoCapacity = ShipStats.cargoCapacity(type, loadout)
                         val fuelCapacity = ShipStats.fuelCapacity(type, loadout)
+                        val crewCapacity = ShipStats.crewCapacity(type, loadout)
                         OwnedShip(
                             id = ShipId(row.id),
                             type = type,
@@ -83,6 +84,9 @@ class SqlDelightGameStateRepository(
                             // invariant always holds — degrade gracefully, never crash.
                             fuel = Fuel(level = row.fuel.toFloat().coerceIn(0f, fuelCapacity), capacity = fuelCapacity),
                             loadout = loadout,
+                            // Crew (UC11): a persisted count; capacity is derived (above). coerceIn guards a
+                            // corrupt/over-capacity row so the OwnedShip(0 <= crew <= capacity) invariant holds.
+                            crew = row.crew.toInt().coerceIn(0, crewCapacity),
                         )
                     }
                     .sortedBy { it.id.value }
@@ -142,6 +146,8 @@ class SqlDelightGameStateRepository(
                         // Fuel level (UC07): same Float -> Double boundary as the kinematics above.
                         fuel = ship.fuel.level.toDouble(),
                         ship_type = ship.type.id.value,
+                        // Crew count (UC11): a persisted per-ship count; capacity is not stored (derived).
+                        crew = ship.crew.toLong(),
                     )
 
                     // Cargo: full-snapshot rewrite of this ship's rows (delete-then-plain-INSERT,

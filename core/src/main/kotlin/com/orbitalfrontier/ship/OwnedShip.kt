@@ -19,16 +19,20 @@ value class ShipId(val value: Long)
 
 /**
  * One ship the player owns (UC09 AC#5) — its [type], spatial [kinematics], cargo [Cargo], fuel
- * [Fuel], and installed [Loadout]. Each owned ship keeps **its own** cargo/fuel/loadout, so switching
- * the active ship swaps the whole fit-out, not just the hull (AC#5).
+ * [Fuel], installed [Loadout], and [crew] aboard (UC11 AC#1). Each owned ship keeps **its own**
+ * cargo/fuel/loadout/crew, so switching the active ship swaps the whole fit-out, not just the hull
+ * (AC#5).
  *
  * Pure, immutable value (no engine types) so the fleet model is fully JVM-testable (UC09 AC#7).
  *
  * **Capacity is a derived stat, re-derived in exactly one place.** [withLoadout] is the single point
  * that rebuilds [cargo] and [fuel] capacities from `type + loadout` via [ShipStats] after a fit
  * change — so an install/remove can never leave a stale capacity, and contents/level are preserved
- * (clamped down only if a capacity shrank). Other mutations (`copy(kinematics = …)`, fuel burn, cargo
- * load) keep the same loadout and so the same capacity, and intentionally bypass re-derivation.
+ * (clamped down only if a capacity shrank). It likewise re-clamps [crew] to the new crew capacity, so
+ * removing a crew-quarters part that shrinks capacity can never leave more crew aboard than berths.
+ * Other mutations (`copy(kinematics = …)`, fuel burn, cargo load) keep the same loadout and so the
+ * same capacity, and intentionally bypass re-derivation. Crew itself is a persisted **count** —
+ * capacity ([ShipStats.crewCapacity]) is derived, never stored (UC11 AC#1).
  */
 data class OwnedShip(
     val id: ShipId,
@@ -37,13 +41,28 @@ data class OwnedShip(
     val cargo: Cargo,
     val fuel: Fuel,
     val loadout: Loadout = Loadout.EMPTY,
+    /**
+     * The crew aboard this ship (UC11 AC#1). A per-ship persisted **count** (capacity is the derived
+     * stat [ShipStats.crewCapacity], re-derived from `type + loadout`, never stored). Defaulted to 0
+     * so a freshly-built ship starts uncrewed and every pre-UC11 fixture / migrated save reads back as
+     * 0 crew with no hire order — keeping record/replay byte-identical. Invariant: never negative
+     * (the [init] guard) and never above the current crew capacity (held by [withCrew] and the
+     * [withLoadout] re-clamp).
+     */
+    val crew: Int = 0,
 ) {
+    init {
+        require(crew >= 0) { "OwnedShip crew must not be negative: $crew" }
+    }
+
     /**
      * Return this ship fitted with [newLoadout], re-deriving [cargo] and [fuel] **capacities** from
      * `type + newLoadout` via [ShipStats] (the single re-derivation point, UC09 AC#2). Cargo contents
      * and fuel level are preserved; if a capacity shrank below what is currently held/filled, contents
      * are clamped to fit (deterministically, in [ResourceType] order) and the fuel level is coerced
-     * down to the new capacity — so the [Cargo]/[Fuel] invariants always hold.
+     * down to the new capacity — so the [Cargo]/[Fuel] invariants always hold. [crew] is likewise
+     * coerced down to the new crew capacity (UC11 AC#1) so a shrunk crew-quarters fit never strands
+     * more crew than berths.
      */
     fun withLoadout(
         newLoadout: Loadout,
@@ -51,12 +70,26 @@ data class OwnedShip(
     ): OwnedShip {
         val newCargoCapacity = ShipStats.cargoCapacity(type, newLoadout, catalog)
         val newFuelCapacity = ShipStats.fuelCapacity(type, newLoadout, catalog)
+        val newCrewCapacity = ShipStats.crewCapacity(type, newLoadout, catalog)
         return copy(
             loadout = newLoadout,
             cargo = Cargo(clampContents(cargo.contents, newCargoCapacity), newCargoCapacity),
             fuel = Fuel(level = fuel.level.coerceAtMost(newFuelCapacity), capacity = newFuelCapacity),
+            crew = crew.coerceAtMost(newCrewCapacity),
         )
     }
+
+    /**
+     * Return this ship with its crew set to [newCrew], **clamped** to `0..crewCapacity` (capacity
+     * derived from `type + loadout` via [ShipStats]) so the crew invariant always holds — an
+     * over-capacity or negative request is coerced into range rather than rejected. The single point
+     * crew is mutated; the hire path ([com.orbitalfrontier.crew.Hiring]) computes the new count and
+     * folds it in here.
+     */
+    fun withCrew(
+        newCrew: Int,
+        catalog: UpgradeCatalog = UpgradeCatalog.MVP,
+    ): OwnedShip = copy(crew = newCrew.coerceIn(0, ShipStats.crewCapacity(type, loadout, catalog)))
 
     companion object {
         /** The id of the starter ship — the one a new game and every migrated save begin with. */
