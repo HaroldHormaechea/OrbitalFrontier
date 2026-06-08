@@ -26,6 +26,13 @@ import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.mission.Mission
+import com.orbitalfrontier.mission.MissionGenerator
+import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.mission.MissionOrder
+import com.orbitalfrontier.mission.MissionParams
+import com.orbitalfrontier.mission.MissionStatus
+import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
@@ -167,6 +174,25 @@ class PlayScreen(
     // contacts draw while hidden ones stay invisible. Save-wide (a contact id is globally unique).
     private var revealedContacts: Set<PoiId> = initialWorldState.revealedContacts
 
+    // Missions (UC12): the player's mission log, seeded from the loaded/initial snapshot. The HELD field
+    // carries only the persisted ACCEPTED/terminal missions (its `available` stays empty); the available
+    // BOARD/RADIO offers are recomputed on demand from the deterministic [MissionGenerator], filtered
+    // against the accepted ids (regenerate-and-filter). Accept/turn-in fold the pure [Missions.resolve]
+    // result back in (docked board branch + in-flight radio accept); [currentWorldState] hands the log
+    // to the autosave (which persists only the accepted missions).
+    private var missionLog: MissionLog =
+        MissionLog(available = emptyList(), accepted = initialWorldState.missions.accepted)
+
+    // Mission tunables (UC12). Authored defaults; the same params feed the generator and the pure
+    // [Missions.resolve]/[Missions.advance] here, so live mission behaviour matches the replay harness.
+    private val missionParams = MissionParams()
+
+    // Courier timer drive (UC12): the model timer is TICK-based ([Missions.advance] decrements one
+    // `remainingTicks` per call); the device paces those calls off accumulated real time so the
+    // countdown is frame-rate-independent. We accumulate dt and fire one advance per [MISSION_TICK_SECONDS]
+    // — the model timer stays the authority; this is just its dt-paced surface (ADR 0011).
+    private var missionTickAccumulator = 0f
+
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
     private val joystick = MovementJoystick(skin)
@@ -197,6 +223,16 @@ class PlayScreen(
     private val scanButton = TextButton("SCAN", skin.settingsButtonStyle)
     private val scanPanel = Table()
     private var scanRequested = false
+
+    // Radio context control (UC12): a "RADIO: <offer>" prompt above an ACCEPT button, shown only while
+    // an un-taken ship-radio mission broadcast is in range (range-based, mirroring the dock/mine context
+    // panels). Like DOCK, ACCEPT is edge-triggered: the tap sets a one-shot flag consumed on the next
+    // frame, so the accept commits inside the deterministic per-frame flow. The offer accepted is the
+    // first surfaced this frame (the panel only shows when one is available).
+    private val radioPrompt = Label("", skin.labelStyle)
+    private val radioButton = TextButton("ACCEPT", skin.settingsButtonStyle)
+    private val radioPanel = Table()
+    private var radioAcceptRequested = false
 
     private var handedness = initialHandedness
 
@@ -255,6 +291,25 @@ class PlayScreen(
         scanPanel.add(scanButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
         scanPanel.pack()
 
+        // Radio panel mirrors the dock panel (UC12): a prompt above an edge-triggered ACCEPT button,
+        // shown only while a radio mission offer is in range. Hidden (and so untouchable) otherwise.
+        radioButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    // Edge-triggered intent; the accept commits on the next frame's render (post-step).
+                    radioAcceptRequested = true
+                }
+            },
+        )
+        radioPanel.add(radioPrompt).padBottom(DOCK_PROMPT_GAP).row()
+        radioPanel.add(radioButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
+        radioPanel.pack()
+        radioPanel.isVisible = false
+
         actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
@@ -262,6 +317,7 @@ class PlayScreen(
         stage.addActor(dockPanel)
         stage.addActor(minePanel)
         stage.addActor(scanPanel)
+        stage.addActor(radioPanel)
     }
 
     override fun show() {
@@ -394,6 +450,50 @@ class PlayScreen(
             }
         }
 
+        // UC12 radio broadcasts: surface range-based mission offers while in flight (mirrors the
+        // dock/mine context panels and the pure [MissionGenerator.radioOffers], which itself mirrors
+        // [Scanning.contactsInRange]). Recompute the in-range, un-taken offers each frame; an
+        // edge-triggered ACCEPT takes the first via the same pure [Missions.resolve] the sim uses.
+        val radioOffers =
+            if (dockedStation == null) {
+                MissionGenerator.radioOffers(sectorWorld, currentSector, ship.position, missionParams)
+                    .filter { it.id !in missionLog.takenIds }
+            } else {
+                emptyList()
+            }
+        updateRadioPanel(radioOffers.firstOrNull())
+        if (radioAcceptRequested) {
+            radioAcceptRequested = false
+            val offer = radioOffers.firstOrNull()
+            if (offer != null) {
+                val result =
+                    Missions.resolve(missionLog, radioOffers, MissionOrder.Accept(offer.id), null, cargo, credits, missionParams)
+                if (result.changed) {
+                    missionLog = result.log
+                    credits = result.credits
+                    cargo = result.cargo
+                    autosave.onEvent("mission-accept")
+                    logger.info(WORLD_TAG, "Accepted radio mission ${offer.id.value} in sector ${currentSector.value}")
+                }
+            }
+        }
+
+        // UC12 courier timers: decrement the tick-based model timer at a frame-rate-independent cadence
+        // (one [Missions.advance] per MISSION_TICK_SECONDS of accumulated dt). advance() returns the same
+        // instances when no courier is active, so this is free pre-UC12 and when only mining missions are
+        // held; a courier expiry (terminal transition) folds the new log + penalised credits and autosaves.
+        missionTickAccumulator += dt
+        while (missionTickAccumulator >= MISSION_TICK_SECONDS) {
+            missionTickAccumulator -= MISSION_TICK_SECONDS
+            val advanced = Missions.advance(missionLog, credits, cargo, missionParams)
+            missionLog = advanced.log
+            credits = advanced.credits
+            if (advanced.changed) {
+                autosave.onEvent("mission-expired")
+                logger.info(WORLD_TAG, "A courier mission timed out in sector ${currentSector.value}")
+            }
+        }
+
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
@@ -464,6 +564,7 @@ class PlayScreen(
         positionDockPanel()
         positionMinePanel()
         positionScanPanel()
+        positionRadioPanel()
     }
 
     /** Centre the dock context panel near the top of the screen. */
@@ -499,6 +600,20 @@ class PlayScreen(
             (stage.viewport.worldWidth - scanPanel.width) / 2f,
             stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height -
                 MINE_PANEL_GAP - scanPanel.height,
+        )
+    }
+
+    /**
+     * Centre the radio context panel just below the scan panel (UC12), so it never overlaps the
+     * dock/mine/scan slots on the rare frame several are active at once. Like the dock panel it is only
+     * visible while a radio offer is in range (see [updateRadioPanel]).
+     */
+    private fun positionRadioPanel() {
+        radioPanel.pack()
+        radioPanel.setPosition(
+            (stage.viewport.worldWidth - radioPanel.width) / 2f,
+            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height -
+                MINE_PANEL_GAP - scanPanel.height - MINE_PANEL_GAP - radioPanel.height,
         )
     }
 
@@ -540,6 +655,25 @@ class PlayScreen(
         }
     }
 
+    /**
+     * Show or hide the radio context control for the frame's in-range mission broadcast (UC12): visible
+     * with a "RADIO: <reward>cr" prompt when [offer] is non-null, hidden otherwise. Re-centres after a
+     * text change so the panel stays centred as its width varies. The text is rebuilt only while an offer
+     * is in range (not the common out-of-range path), keeping the 60 FPS budget.
+     */
+    private fun updateRadioPanel(offer: Mission?) {
+        if (offer == null) {
+            if (radioPanel.isVisible) radioPanel.isVisible = false
+            return
+        }
+        radioPanel.isVisible = true
+        val prompt = "RADIO: ${offer.rewardCredits}cr mining"
+        if (!radioPrompt.textEquals(prompt)) {
+            radioPrompt.setText(prompt)
+            positionRadioPanel()
+        }
+    }
+
     private fun sideX(
         side: ScreenSide,
         screenWidth: Float,
@@ -556,7 +690,15 @@ class PlayScreen(
      */
     fun currentWorldState(): WorldState {
         val active = fleet.active.copy(kinematics = physics.readKinematics(), cargo = cargo, fuel = fuel)
-        return WorldState(currentSector, fleet.withActive(active), dockedStation, fieldDepletion, credits, revealedContacts)
+        return WorldState(
+            currentSector,
+            fleet.withActive(active),
+            dockedStation,
+            fieldDepletion,
+            credits,
+            revealedContacts,
+            missionLog,
+        )
     }
 
     /** The player's current credit balance (UC08) — read by the station trade desk for its readout. */
@@ -782,6 +924,50 @@ class PlayScreen(
     }
 
     /**
+     * The mission-board offers for the docked station (UC12 AC#2), already filtered against the accepted
+     * / terminal mission ids — what the [com.orbitalfrontier.screen.MissionBoardScreen] lists as
+     * ACCEPTable. Empty when not docked (the board is only reachable while docked). Regenerated
+     * deterministically from the static authored world on each call (regenerate-and-filter, ADR 0011).
+     */
+    fun stationMissionBoard(): List<Mission> {
+        val station = dockedStation ?: return emptyList()
+        return MissionGenerator.boardOffers(sectorWorld, station, missionParams)
+            .filter { it.id !in missionLog.takenIds }
+    }
+
+    /** The player's ACTIVE missions (UC12 AC#3) — what the mission board lists as TURN-IN-able. */
+    fun activeMissions(): List<Mission> = missionLog.accepted.filter { it.status == MissionStatus.ACTIVE }
+
+    /**
+     * Execute one mission [order] against the docked station via the pure [Missions.resolve] (UC12
+     * AC#3/#4) — the mission analogue of [trade]/[hire]. The
+     * [com.orbitalfrontier.screen.MissionBoardScreen] routes ACCEPT / TURN IN taps here. Resolves against
+     * the docked station's board offers ([stationMissionBoard]) and the docked station id (so courier
+     * pickup/turn-in and mining turn-in gate correctly), plus the live cargo and credits. When not docked
+     * it no-ops (the board is unreachable anyway).
+     *
+     * On a real change it folds the new mission log + credits + cargo back in (a mining turn-in consumes
+     * the quota and grants credits; an accept moves the offer to ACTIVE), logs one INFO line, and autosaves
+     * so the change is durable; a no-op tap (offer gone, quota not held, wrong station) is not persisted.
+     */
+    fun applyMissionOrder(order: MissionOrder) {
+        val offers = stationMissionBoard()
+        val result = Missions.resolve(missionLog, offers, order, dockedStation, cargo, credits, missionParams)
+        if (!result.changed) {
+            logger.info(
+                ECONOMY_TAG,
+                "Mission order requested but nothing changed (offer gone, quota not held, or wrong station)",
+            )
+            return
+        }
+        missionLog = result.log
+        credits = result.credits
+        cargo = result.cargo
+        logger.info(ECONOMY_TAG, "Mission order applied; active=${activeMissions().size}, credits=$credits")
+        autosave.onEvent("mission")
+    }
+
+    /**
      * Android pause/exit lifecycle (forwarded by [com.badlogic.gdx.Game]). Enqueue a final autosave
      * and block until it is durably written before the app is backgrounded (UC04 AC#2).
      */
@@ -827,6 +1013,12 @@ class PlayScreen(
 
         // Vertical gap between the dock panel and the mine panel stacked below it.
         const val MINE_PANEL_GAP = 16f
+
+        // Real seconds per courier model tick on the device (UC12). The model timer is tick-based; the
+        // device fires one [Missions.advance] per this many accumulated dt seconds so the countdown is
+        // frame-rate-independent. The replay harness instead decrements one tick per fixed sim step — the
+        // model timer is the shared authority, this constant only paces the device's view of it. [TUNE]
+        const val MISSION_TICK_SECONDS = 1f
         const val BG_R = 0.02f
         const val BG_G = 0.02f
         const val BG_B = 0.05f
