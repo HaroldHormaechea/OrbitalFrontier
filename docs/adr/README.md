@@ -25,6 +25,7 @@ still wins on any conflict — keep them in sync.
 | [0012](0012-real-time-combat.md) | Real-time combat: transient encounter state, durable per-ship damage, additive v11 persistence | Accepted |
 | [0013](0013-factions-and-reputation.md) | Factions & reputation: action-driven standing, separate gate filter, additive v12 persistence | Accepted |
 | [0014](0014-owned-stations.md) | Player-owned stations: player state in WorldState, station-build capability flag, additive v13 persistence | Accepted |
+| [0015](0015-ui-scale-and-universal-object-glyphs.md) | UI ×2 scale knob (UI/HUD only) + universal in-world object glyphs (exhaustive POI glyph resolver) | Accepted |
 
 ## Adding an ADR
 
