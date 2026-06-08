@@ -57,6 +57,8 @@ import com.orbitalfrontier.world.GateTraversal
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.PoiId
+import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.Scanning
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
@@ -155,6 +157,13 @@ class PlayScreen(
     // (Stage B) mutate it.
     private var fleet: Fleet = initialWorldState.fleet
 
+    // Revealed hidden contacts (UC10): the ids of no-transponder contacts the player has uncovered by
+    // active scanning, seeded from the loaded/initial snapshot. A SCAN tap folds the pure
+    // [Scanning.resolve] result back in (union-only — revealed contacts never re-hide, AC#4);
+    // [currentWorldState] hands the set to the autosave, and it is passed to the minimap so revealed
+    // contacts draw while hidden ones stay invisible. Save-wide (a contact id is globally unique).
+    private var revealedContacts: Set<PoiId> = initialWorldState.revealedContacts
+
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
     private val joystick = MovementJoystick(skin)
@@ -177,6 +186,14 @@ class PlayScreen(
     private val minePrompt = Label("", skin.labelStyle)
     private val mineButton = TextButton("MINE", skin.settingsButtonStyle)
     private val minePanel = Table()
+
+    // Scan control (UC10): unlike dock/mine (proximity-gated context buttons), an active scan is a
+    // player ability available anytime in flight, so the SCAN button is persistent (not range-gated).
+    // A one-shot [scanRequested] flag set by the tap is consumed on the next frame, so the reveal
+    // commits inside the deterministic per-frame flow (after the step), mirroring the DOCK button.
+    private val scanButton = TextButton("SCAN", skin.settingsButtonStyle)
+    private val scanPanel = Table()
+    private var scanRequested = false
 
     private var handedness = initialHandedness
 
@@ -218,12 +235,30 @@ class PlayScreen(
         minePanel.pack()
         minePanel.isVisible = false
 
+        // Scan button (UC10): edge-triggered like DOCK (the reveal commits on the next frame), but
+        // persistent — an active scan is not proximity-gated, so the panel stays visible in flight.
+        scanButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    // Edge-triggered intent; the scan commits on the next frame's render (post-step).
+                    scanRequested = true
+                }
+            },
+        )
+        scanPanel.add(scanButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
+        scanPanel.pack()
+
         actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
         stage.addActor(settingsOverlay.actor)
         stage.addActor(dockPanel)
         stage.addActor(minePanel)
+        stage.addActor(scanPanel)
     }
 
     override fun show() {
@@ -329,6 +364,33 @@ class PlayScreen(
             }
         }
 
+        // UC10 active scan: same pure [Scanning] the replay harness uses. An edge-triggered SCAN tap
+        // reveals every hidden contact in the current sector within the active ship's sensor range
+        // (ShipStats.scanRange — its type + sensor loadout, so a SCANNER_I upgrade widens it). The
+        // resolver only ever unions (revealed contacts never re-hide, AC#4), and returns the SAME set
+        // instance when nothing new is found, so a fruitless scan costs no allocation or autosave.
+        // Gated to in-flight (skipped while docked, like mining); the play screen runs in flight, so
+        // this is normally a pass-through guard.
+        if (scanRequested) {
+            scanRequested = false
+            if (dockedStation == null) {
+                val scanRange = ShipStats.scanRange(active.type, active.loadout)
+                val updated =
+                    Scanning.resolve(sectorWorld, currentSector, ship.position, scanRange, revealedContacts, ScanAction.SCAN)
+                if (updated !== revealedContacts) {
+                    val newlyRevealed = updated.size - revealedContacts.size
+                    revealedContacts = updated
+                    // A scan that reveals something is a key world event (UC10 AC#4) — persist it now.
+                    autosave.onEvent("scan")
+                    logger.info(
+                        WORLD_TAG,
+                        "Scan revealed $newlyRevealed hidden contact(s) in sector ${currentSector.value}; " +
+                            "known=${revealedContacts.size}",
+                    )
+                }
+            }
+        }
+
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
@@ -358,8 +420,9 @@ class PlayScreen(
             viewportWidth,
             viewportHeight,
         )
-        // The minimap renders every transponder POI (gates + stations), keyed by contact kind.
-        minimap.render(sector.pois, ship.position, sector.contentExtent, viewportWidth, viewportHeight)
+        // The minimap renders every transponder POI (gates + stations) plus any revealed hidden
+        // contacts (UC10), keyed by contact kind.
+        minimap.render(sector.pois, ship.position, sector.contentExtent, revealedContacts, viewportWidth, viewportHeight)
 
         stage.act(dt)
         stage.draw()
@@ -397,6 +460,7 @@ class PlayScreen(
 
         positionDockPanel()
         positionMinePanel()
+        positionScanPanel()
     }
 
     /** Centre the dock context panel near the top of the screen. */
@@ -417,6 +481,21 @@ class PlayScreen(
         minePanel.setPosition(
             (stage.viewport.worldWidth - minePanel.width) / 2f,
             stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height,
+        )
+    }
+
+    /**
+     * Centre the persistent SCAN panel below the dock/mine context slots (UC10), so it never overlaps
+     * the dock/mine prompts on the rare frame a station or field is also in range. Its slot is reserved
+     * whether or not those context panels are currently visible, keeping the SCAN button at a stable
+     * position in flight.
+     */
+    private fun positionScanPanel() {
+        scanPanel.pack()
+        scanPanel.setPosition(
+            (stage.viewport.worldWidth - scanPanel.width) / 2f,
+            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height -
+                MINE_PANEL_GAP - scanPanel.height,
         )
     }
 
@@ -474,7 +553,7 @@ class PlayScreen(
      */
     fun currentWorldState(): WorldState {
         val active = fleet.active.copy(kinematics = physics.readKinematics(), cargo = cargo, fuel = fuel)
-        return WorldState(currentSector, fleet.withActive(active), dockedStation, fieldDepletion, credits)
+        return WorldState(currentSector, fleet.withActive(active), dockedStation, fieldDepletion, credits, revealedContacts)
     }
 
     /** The player's current credit balance (UC08) — read by the station trade desk for its readout. */

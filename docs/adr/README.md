@@ -19,6 +19,7 @@ still wins on any conflict — keep them in sync.
 | [0006](0006-determinism-and-playthrough-harness.md) | Determinism and the playthrough record/replay harness | Accepted |
 | [0007](0007-trading-prices.md) | Trading model & fixed authored prices (reconstructed, not row-persisted) | Accepted |
 | [0008](0008-fleet-and-outfitting-persistence.md) | Fleet & outfitting: derived stats, junkyard-as-kind, additive v7 persistence | Accepted |
+| [0009](0009-scanning-and-hidden-contacts.md) | Active scanning & hidden contacts: shared Contact capability + additive v8 persistence | Accepted |
 
 ## Adding an ADR
 

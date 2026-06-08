@@ -19,6 +19,7 @@ import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
+import com.orbitalfrontier.world.ScanAction
 
 /**
  * Reproducible test playthrough fixtures, built from the [PlaythroughRecorder] (UC02 AC#4/#7).
@@ -52,6 +53,12 @@ object PlaythroughFixtures {
      * engine upgrade (active ship's max speed rises), buy a second ship, and switch the active ship.
      */
     const val UC09_OUTFIT: String = "uc09-outfit"
+
+    /**
+     * UC10 scanning playthrough name: in flight at the sector-centre scan point, run a single active
+     * scan that reveals the in-range hidden derelict while the out-of-range ghost stays hidden.
+     */
+    const val UC10_SCAN: String = "uc10-scan"
 
     /**
      * Starting credit balance the UC09 outfit fixture seeds — comfortably above the engine-tune-i
@@ -96,6 +103,7 @@ object PlaythroughFixtures {
             UC07_LOW_FUEL to ::uc07LowFuel,
             UC08_TRADE to ::uc08Trade,
             UC09_OUTFIT to ::uc09Outfit,
+            UC10_SCAN to ::uc10Scan,
         )
 
     /**
@@ -367,6 +375,44 @@ object PlaythroughFixtures {
         recorder.recordFleet(2, FleetOrder.SwitchActive(ShipId(1)))
         // One trailing held tick: docked + no order ⇒ everything stays put.
         recorder.extendToTick(3)
+        return recorder.build()
+    }
+
+    /**
+     * UC10 scanning scenario (AC#3/#4/#6): the ship starts **in flight** (not docked) at rest at
+     * [MvpSectorMap.SCAN_POINT] — the Alpha sector centre, the canonical scan reference point the three
+     * hidden contacts are spaced against — with a single starter ship (base sensor range 500 wu). At
+     * tick 0 it runs a single active [ScanAction.SCAN]: that reveals `alpha-derelict` (d=300, inside the
+     * base range) but **not** `alpha-smuggler` (d=600, only the SCANNER_I-upgraded range reaches it) and
+     * **not** `alpha-ghost` (d=800, outside even the upgraded range). The two trailing held ticks carry
+     * no scan event, so the revealed set stays put — proving reveal is monotonic (a revealed contact
+     * does not re-hide, AC#4).
+     *
+     * The scan point sits far from every gate/station/field, so the at-rest ship never jumps, docks, or
+     * mines — the run isolates scanning. Geometry is read from the production [MvpSectorMap], so the
+     * fixture tracks the real map; [Uc10ScanReplayTest] asserts the derelict becomes known, the ghost
+     * stays hidden, and the replay is deterministic.
+     */
+    fun uc10Scan(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC10_SCAN,
+                seed = 10L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // In flight (dockedStation null), at rest at the sector-centre scan point; a single
+                        // starter ship (currentSector defaults to MvpSectorMap.START_SECTOR / alpha).
+                        fleet =
+                            singleShipFleet(
+                                kinematics = ShipKinematics(position = MvpSectorMap.SCAN_POINT),
+                            ),
+                    ),
+            )
+        // Tick 0: a single active scan reveals the in-range derelict; the trailing held ticks (1..2)
+        // carry no scan event, proving the revealed set persists (monotonic, AC#4).
+        recorder.recordScanAction(0, ScanAction.SCAN)
+        recorder.extendToTick(2)
         return recorder.build()
     }
 }

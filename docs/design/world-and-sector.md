@@ -98,6 +98,32 @@ extent.
   interfere with the joystick/action cluster). The game owns both screens and disposes each
   explicitly (libGDX `setScreen` only hides the previous screen) to avoid leaking GL resources.
 
+**Active scanning & hidden contacts (implemented UC10).** Hidden contacts are a POI type
+(`world.HiddenContact`) that is a `Contact` (it has a `contactKind`, default `SHIP`) but **not** a
+`Transponder` — so the minimap, which draws every `Transponder` unconditionally, draws a hidden
+contact only once it has been revealed. The `Contact` capability was extracted as the shared
+super-interface of `Transponder` so the minimap's one `when(contactKind)` marker switch serves both
+(a revealed hidden contact draws as a small triangle, distinct from the gate dot / station square) —
+the same Open/Closed seam, extended by one `ContactKind` value (ADR 0009).
+
+- **Scan — explicit action + sensor range (never automatic).** An active scan is a player ability
+  available in flight (a persistent **SCAN** button, not proximity-gated like DOCK/MINE). Tapping it
+  reveals every hidden contact in the current sector within the active ship's **sensor range**
+  (`outfit.ShipStats.scanRange(type, loadout)` — starter base 500 wu, +150 wu with the UC09
+  `SCANNER_I` upgrade = 650 wu). The decision is pure and JVM-testable (`world.Scanning`:
+  `contactsInRange(...)` for the in-range query, `resolve(...)` for the reveal), the scanning analogue
+  of `Docking`/`Mining`, run identically by device and the replay harness (ADR 0005/0006).
+- **Reveal is monotonic and persists.** `WorldState.revealedContacts: Set<PoiId>` (save-wide — a
+  contact id is globally unique across the sector graph) holds the revealed ids; `Scanning.resolve`
+  only ever **unions** newly-in-range contacts, so a revealed contact **never re-hides**, even on
+  leaving range (the chosen MVP behaviour). It is part of the save (`revealed_contact` table, schema
+  v8; additive migration `7.sqm`, ADR 0002/0003/0009), so scanning a contact and reloading keeps it
+  known. Deferred: scan time/cooldown (an instantaneous one-shot reveal for the MVP).
+- **Authored MVP contacts.** Alpha hosts three hidden contacts spaced against the sector centre
+  (the canonical scan point, `MvpSectorMap.SCAN_POINT`): `alpha-derelict` at 300 wu (revealed by a
+  base scan), `alpha-smuggler` at 600 wu (revealed only with `SCANNER_I`), and `alpha-ghost` at
+  800 wu (outside even the upgraded range — the scan-doesn't-reveal-everything case).
+
 **Encounters:**
 - **Natural/ambient** — encounters that simply exist in the living world (traffic,
   patrols, pirates roaming), in the spirit of Starsector / X4.

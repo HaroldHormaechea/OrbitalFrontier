@@ -33,6 +33,9 @@ data class Sector(
     /** The asteroid fields in this sector (a view over [pois], authored order); empty if it has none. */
     val asteroidFields: List<AsteroidField> get() = pois.filterIsInstance<AsteroidField>()
 
+    /** The hidden contacts in this sector (a view over [pois], authored order); empty if it has none (UC10). */
+    val hiddenContacts: List<HiddenContact> get() = pois.filterIsInstance<HiddenContact>()
+
     /** The gate with [gateId] in this sector, or null if there is none. */
     fun gate(gateId: PoiId): JumpGate? = gates.firstOrNull { it.id == gateId }
 

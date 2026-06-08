@@ -7,8 +7,10 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.world.Contact
 import com.orbitalfrontier.world.ContactKind
 import com.orbitalfrontier.world.Poi
+import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.Transponder
 
 /**
@@ -21,10 +23,12 @@ import com.orbitalfrontier.world.Transponder
  * outside the extent are clamped to the panel edge so the ship is always visible (the sector is
  * unbounded, AC#2). Reads state only — no simulation here (coding-guidelines § simulation vs render).
  *
- * The minimap renders against the [Transponder] capability, not concrete POI types (the Open/Closed
- * seam, coding-guidelines § O): it filters the sector's POIs to those that broadcast and draws each
- * by its [ContactKind] — a station as a filled square, a gate as the existing dot. A future
- * broadcasting POI kind shows up by extending this marker switch, with no change to the world model.
+ * The minimap renders against the [Contact] capability, not concrete POI types (the Open/Closed
+ * seam, coding-guidelines § O): it filters the sector's POIs to those that are contacts and draws each
+ * by its [ContactKind] — a station as a filled square, a gate as the existing dot, a scanned hidden
+ * contact as a small triangle. A [Transponder] (gate/station) is always drawn; a hidden contact
+ * (UC10) is drawn only once its id is in [revealedContacts]. A new contact kind shows up by extending
+ * this marker switch, with no change to the world model.
  */
 class MinimapRenderer(
     private val sizePx: Float = DEFAULT_SIZE,
@@ -37,6 +41,7 @@ class MinimapRenderer(
         pois: List<Poi>,
         shipPosition: Vec2,
         contentExtent: Float,
+        revealedContacts: Set<PoiId>,
         viewportWidth: Float,
         viewportHeight: Float,
     ) {
@@ -60,10 +65,13 @@ class MinimapRenderer(
         shapeRenderer.rect(originX, originY, sizePx, sizePx)
         shapeRenderer.end()
 
-        // Transponder markers (one per broadcasting POI, styled by contact kind) + ship marker.
+        // Contact markers (one per visible contact, styled by contact kind) + ship marker. A
+        // Transponder (gate/station) is always visible; a hidden contact (UC10) is drawn only once its
+        // id is in revealedContacts.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         for (poi in pois) {
-            if (poi !is Transponder) continue
+            if (poi !is Contact) continue
+            if (poi !is Transponder && poi.id !in revealedContacts) continue
             val (x, y) = clampToPanel(centerX, centerY, half, poi.position, scale)
             when (poi.contactKind) {
                 ContactKind.GATE -> {
@@ -75,6 +83,12 @@ class MinimapRenderer(
                     // Filled square centred on the marker position, distinct from the gate dot.
                     val r = STATION_MARKER_RADIUS
                     shapeRenderer.rect(x - r, y - r, r * 2f, r * 2f)
+                }
+                ContactKind.SHIP -> {
+                    shapeRenderer.color = CONTACT_COLOR
+                    // An upward triangle centred on the marker, distinct from the gate dot/station square.
+                    val r = CONTACT_MARKER_RADIUS
+                    shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
                 }
             }
         }
@@ -115,11 +129,15 @@ class MinimapRenderer(
         const val PADDING = 12f
         const val GATE_MARKER_RADIUS = 4f
         const val STATION_MARKER_RADIUS = 4f
+        const val CONTACT_MARKER_RADIUS = 4f
         const val SHIP_MARKER_RADIUS = 3f
         val PANEL_COLOR = Color(0.05f, 0.07f, 0.12f, 0.55f)
         val BORDER_COLOR = Color(0.4f, 0.5f, 0.65f, 0.9f)
         val GATE_COLOR = Color(0.4f, 0.85f, 1f, 1f)
         val STATION_COLOR = Color(0.5f, 1f, 0.6f, 1f)
+
+        // Revealed hidden contacts (UC10): a hostile-leaning red, distinct from gates/stations/ship.
+        val CONTACT_COLOR = Color(1f, 0.4f, 0.4f, 1f)
         val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
     }
 }

@@ -32,6 +32,14 @@ object MvpSectorMap {
     /** The canonical sector a new game / a fresh simulation starts in. */
     val START_SECTOR: SectorId = SectorId("alpha")
 
+    /**
+     * Canonical active-scan reference point in [START_SECTOR] (the sector centre, origin) that Alpha's
+     * three hidden contacts are spaced against (UC10): `alpha-derelict` at 300 wu (inside base range),
+     * `alpha-smuggler` at 600 wu (inside the SCANNER_I-upgraded range only), and `alpha-ghost` at
+     * 800 wu (outside even the upgraded range). The recorded scan playthrough scans from here.
+     */
+    val SCAN_POINT: Vec2 = Vec2(0f, 0f)
+
     /** Soft content radius (world-units) of each MVP sector; ~30 s to cross at max speed. [TUNE] */
     const val CONTENT_EXTENT_WORLD_UNITS: Float = 1800f
 
@@ -88,6 +96,19 @@ object MvpSectorMap {
                                     ResourceType.COPPER to 10,
                                 ),
                             ),
+                            // Three no-transponder hidden contacts (UC10), authored at deliberately-spaced
+                            // distances from the canonical SCAN_POINT (the sector centre, origin) so a scan
+                            // exercises every reveal boundary against the starter ship's sensor range:
+                            //   * alpha-derelict @ (300, 0)  — d = 300 wu: inside the base range (500), so a
+                            //     scan on the un-upgraded starter reveals it (UC10 AC#2/#3).
+                            //   * alpha-smuggler @ (-600, 0) — d = 600 wu: outside base (500) but inside the
+                            //     SCANNER_I-upgraded range (650), so only an upgraded scan reveals it — the
+                            //     sensor-upgrade payoff (UC10 AC#3).
+                            //   * alpha-ghost    @ (0, -800) — d = 800 wu: outside even the upgraded range
+                            //     (650), so no scan from the scan point ever reveals it (UC10 AC#6).
+                            hiddenContact("alpha-derelict", Vec2(300f, 0f)),
+                            hiddenContact("alpha-smuggler", Vec2(-600f, 0f)),
+                            hiddenContact("alpha-ghost", Vec2(0f, -800f)),
                         ),
                 ),
                 Sector(
@@ -257,5 +278,15 @@ object MvpSectorMap {
             position = position,
             miningRadius = ASTEROID_MINING_RADIUS,
             deposits = deposits,
+        )
+
+    /** A no-transponder [HiddenContact] (UC10) at [position], registering as a running ship once scanned. */
+    private fun hiddenContact(
+        id: String,
+        position: Vec2,
+    ): HiddenContact =
+        HiddenContact(
+            id = PoiId(id),
+            position = position,
         )
 }

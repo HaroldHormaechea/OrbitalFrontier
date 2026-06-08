@@ -1,0 +1,17 @@
+-- Migration v7 -> v8 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v7 (UC09) held meta + settings + the save header (game_state, with credits + active_ship_id) +
+-- per-ship kinematics/type/cargo/upgrades + field_deposit, for a fleet of owned ships. v8 (UC10) adds
+-- active scanning: hidden (no-transponder) contacts the player uncovers persist as revealed. This
+-- migration is purely additive: it creates the new `revealed_contact` table (empty), so a migrated
+-- save reads back with nothing revealed (every hidden contact still hidden until scanned).
+--
+-- All prior meta/settings/game_state/ship/ship_upgrade/cargo/field_deposit data is left untouched.
+-- CREATE TABLE is supported by the bundled SQLite on minSdk-24 devices (it long predates 24), so this
+-- is minSdk-safe — same rationale as the prior additive migrations.
+
+CREATE TABLE revealed_contact (
+    contact_id TEXT NOT NULL PRIMARY KEY
+);
+
+UPDATE meta SET save_version = 8 WHERE id = 0;

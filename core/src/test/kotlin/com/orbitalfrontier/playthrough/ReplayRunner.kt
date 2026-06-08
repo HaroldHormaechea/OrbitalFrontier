@@ -12,6 +12,7 @@ import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
+import com.orbitalfrontier.world.ScanAction
 
 /**
  * Executes a [Playthrough] headlessly on the JVM and returns the resulting state (UC02 AC#5/#6).
@@ -81,6 +82,7 @@ class ReplayRunner {
             val tradeOrder = tradeOrderFor(tickEvents)
             val outfitOrder = outfitOrderFor(tickEvents)
             val fleetOrder = fleetOrderFor(tickEvents)
+            val scanAction = scanActionFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -92,6 +94,7 @@ class ReplayRunner {
                     tradeOrder,
                     outfitOrder,
                     fleetOrder,
+                    scanAction,
                 )
             perTick?.add(state)
         }
@@ -126,6 +129,14 @@ class ReplayRunner {
      */
     private fun mineActionFor(events: List<InputEvent>): MineAction =
         events.filterIsInstance<MineEvent>().lastOrNull()?.action ?: MineAction.NONE
+
+    /**
+     * Reduce a tick's events to the [ScanAction] the sim steps with (UC10). When several scan samples
+     * share a tick the latest wins; a tick with no [ScanEvent] steps with [ScanAction.NONE], so
+     * non-scanning artifacts (UC01..UC09) replay exactly as before.
+     */
+    private fun scanActionFor(events: List<InputEvent>): ScanAction =
+        events.filterIsInstance<ScanEvent>().lastOrNull()?.action ?: ScanAction.NONE
 
     /**
      * Reduce a tick's events to the [RefuelAction] the sim steps with (UC07). When several refuel

@@ -13,6 +13,7 @@ import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
+import com.orbitalfrontier.world.ScanAction
 
 /**
  * Accumulates a playthrough recording — the seed, fixed timestep, pinned config, optional initial
@@ -83,6 +84,12 @@ class PlaythroughRecorder(
         tick: Int,
         action: MineAction,
     ): PlaythroughRecorder = record(MineEvent(tick = tick, action = action))
+
+    /** Convenience: record a [ScanEvent] for [action] at [tick] (UC10). */
+    fun recordScanAction(
+        tick: Int,
+        action: ScanAction,
+    ): PlaythroughRecorder = record(ScanEvent(tick = tick, action = action))
 
     /** Convenience: record a [RefuelEvent] for [action] at [tick] (UC07). */
     fun recordRefuelAction(

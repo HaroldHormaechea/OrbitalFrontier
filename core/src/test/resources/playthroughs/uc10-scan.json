@@ -1,9 +1,9 @@
 {
   "formatVersion": 1,
-  "name": "uc08-trade",
-  "seed": 8,
+  "name": "uc10-scan",
+  "seed": 10,
   "dtSeconds": 0.016666668,
-  "tickCount": 4,
+  "tickCount": 3,
   "config": {
     "maxSpeed": 120.0,
     "maxAcceleration": 80.0,
@@ -37,14 +37,12 @@
     "headingRadians": 0.0,
     "angularVelocity": 0.0,
     "currentSector": "alpha",
-    "dockedStation": "alpha-station",
+    "dockedStation": null,
     "cargoCapacity": 50,
-    "cargo": {
-      "TITANIUM": 6
-    },
+    "cargo": {},
     "fieldDepletion": {},
     "fuel": 100.0,
-    "credits": 500,
+    "credits": 0,
     "ownedShips": [
       {
         "id": 0,
@@ -56,9 +54,7 @@
         "headingRadians": 0.0,
         "angularVelocity": 0.0,
         "cargoCapacity": 50,
-        "cargo": {
-          "TITANIUM": 6
-        },
+        "cargo": {},
         "fuelLevel": 100.0,
         "fuelCapacity": 100.0,
         "loadout": {}
@@ -69,11 +65,9 @@
   },
   "inputEvents": [
     {
-      "type": "trade",
+      "type": "scan",
       "tick": 0,
-      "kind": "SELL",
-      "resource": "TITANIUM",
-      "units": 6
+      "action": "SCAN"
     }
   ]
 }
