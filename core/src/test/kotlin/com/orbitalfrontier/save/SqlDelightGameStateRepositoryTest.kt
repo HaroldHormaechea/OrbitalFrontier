@@ -298,6 +298,45 @@ class SqlDelightGameStateRepositoryTest {
         assertEquals(ShipRoster.SWIFT.id, fleet.ship(ShipId(1))!!.type.id)
     }
 
+    // --- UC11 AC#4: per-ship crew counts round-trip (including across a multi-ship fleet) ---
+
+    @Test
+    fun `crew counts round-trip exactly across a multi-ship fleet`() {
+        // Ship 0: a starter (crew capacity 2) crewed to a full 2. Ship 1: a Swift (capacity 2) with a
+        // single crew aboard. withCrew is the single crew-mutation point (clamped to 0..capacity).
+        val ship0 = OwnedShip.fresh(ShipId(0), ShipRoster.STARTER, Vec2(1f, 2f)).withCrew(2)
+        val ship1 = OwnedShip.fresh(ShipId(1), ShipRoster.SWIFT, Vec2(3f, 4f)).withCrew(1)
+        assertEquals("precondition: ship0 crewed to 2", 2, ship0.crew)
+        assertEquals("precondition: ship1 crewed to 1", 1, ship1.crew)
+
+        val state =
+            WorldState(
+                currentSector = SectorId("beta"),
+                fleet = Fleet(listOf(ship0, ship1), ShipId(0)),
+                credits = 100L,
+            )
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        // EXACT equality covers each ship's crew count alongside its kinematics/type/cargo/fuel/loadout.
+        assertEquals(state, reloaded)
+        assertEquals("ship0's full crew survives", 2, reloaded!!.fleet.ship(ShipId(0))!!.crew)
+        assertEquals("ship1's partial crew survives", 1, reloaded.fleet.ship(ShipId(1))!!.crew)
+    }
+
+    @Test
+    fun `a fresh uncrewed ship round-trips as zero crew`() {
+        val state = sampleState() // a single starter ship, crew defaults to 0
+        assertEquals("precondition: the sample ship is uncrewed", 0, state.fleet.active.crew)
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals(state, reloaded)
+        assertEquals("an uncrewed ship reloads with zero crew", 0, reloaded!!.fleet.active.crew)
+    }
+
     // --- AC#3: transactional, corruption-safe write (graceful degradation) ---
 
     @Test
