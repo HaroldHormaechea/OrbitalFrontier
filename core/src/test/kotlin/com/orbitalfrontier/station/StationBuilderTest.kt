@@ -101,7 +101,8 @@ class StationBuilderTest {
         val result =
             StationBuilder.resolve(
                 registry = StationRegistry.EMPTY,
-                credits = 1499L, // one credit short of the 1500 commerce-hub price
+                // one credit short of the 1500 commerce-hub price
+                credits = 1499L,
                 cargo = hold,
                 buildsStations = true,
                 sector = sector,
@@ -143,7 +144,8 @@ class StationBuilderTest {
                 registry = StationRegistry.EMPTY,
                 credits = 5000L,
                 cargo = hold,
-                buildsStations = false, // the docked station does not offer station building
+                // the docked station does not offer station building
+                buildsStations = false,
                 sector = sector,
                 order = StationBuildOrder.FoundStation(commerceHub),
             )
@@ -175,7 +177,8 @@ class StationBuilderTest {
         val hold = fullHold()
         val result =
             StationBuilder.resolve(
-                registry = StationRegistry.EMPTY, // owns nothing
+                // owns nothing
+                registry = StationRegistry.EMPTY,
                 credits = 5000L,
                 cargo = hold,
                 buildsStations = true,

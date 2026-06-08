@@ -15,8 +15,7 @@ import org.junit.Test
 class StationRegistryTest {
     private val sector = SectorId("alpha")
 
-    private fun station(id: Long): OwnedStation =
-        OwnedStation.founded(StationId(id), sector, StationModuleCatalog.COMMERCE_HUB)
+    private fun station(id: Long): OwnedStation = OwnedStation.founded(StationId(id), sector, StationModuleCatalog.COMMERCE_HUB)
 
     @Test
     fun `EMPTY owns nothing`() {

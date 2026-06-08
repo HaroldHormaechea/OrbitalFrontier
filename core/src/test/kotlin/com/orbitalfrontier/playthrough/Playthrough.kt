@@ -635,8 +635,7 @@ data class StationsDto(
     val stations: List<OwnedStationDto> = emptyList(),
 ) {
     /** Reconstruct the domain [StationRegistry] (sorted by id, as the domain invariant requires). */
-    fun toStationRegistry(): StationRegistry =
-        StationRegistry(stations.map { it.toOwnedStation() }.sortedBy { it.id.value })
+    fun toStationRegistry(): StationRegistry = StationRegistry(stations.map { it.toOwnedStation() }.sortedBy { it.id.value })
 
     companion object {
         /** The empty registry — a fresh game and every pre-UC15 / migrated save. */
