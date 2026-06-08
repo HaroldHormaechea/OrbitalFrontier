@@ -9,6 +9,11 @@ import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.mission.MissionGenerator
+import com.orbitalfrontier.mission.MissionOrder
+import com.orbitalfrontier.mission.MissionParams
+import com.orbitalfrontier.mission.MissionResult
+import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
@@ -73,6 +78,7 @@ class Simulation(
     private val miningParams: MiningParams = MiningParams(),
     private val powerParams: PowerParams = PowerParams(),
     private val fuelParams: FuelParams = FuelParams(),
+    private val missionParams: MissionParams = MissionParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -149,6 +155,7 @@ class Simulation(
         fleetOrder: FleetOrder = FleetOrder.None,
         scanAction: ScanAction = ScanAction.NONE,
         hireOrder: HireOrder = HireOrder.None,
+        missionOrder: MissionOrder = MissionOrder.None,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -214,10 +221,43 @@ class Simulation(
             val fleetAfterHire =
                 if (hire.changed) fleetResult.fleet.withActive(postFleetActive.withCrew(hire.crew)) else fleetResult.fleet
 
+            // Missions (UC12) — the LAST docked step (refuel -> trade -> outfit -> fleet -> hire ->
+            // mission). The docked station's board offers are regenerated from the static authored world
+            // (regenerate-and-filter, ADR 0011), and Missions.resolve handles a board Accept, automatic
+            // courier pickup on docking at the pickup station, and a TurnIn (mining quota at any board /
+            // courier delivery at the destination) against the post-hire wallet + the active ship's cargo;
+            // Missions.advance then decrements any active courier timer for this tick. Both no-op (returning
+            // the SAME log / credits / cargo instances) on an empty log + None order, so a held-while-docked
+            // stretch stays bit-for-bit stable and pre-UC12 fixtures step byte-identically.
+            val dockedStationId = state.dockedStation
+            val dockedActive = fleetAfterHire.active
+            val boardOffers = MissionGenerator.boardOffers(world, dockedStationId, missionParams)
+            val missionResolve =
+                Missions.resolve(
+                    log = state.missions,
+                    offers = boardOffers,
+                    order = missionOrder,
+                    dockedStation = dockedStationId,
+                    cargo = dockedActive.cargo,
+                    credits = hire.credits,
+                    params = missionParams,
+                )
+            val missionAdvance =
+                Missions.advance(missionResolve.log, missionResolve.credits, missionResolve.cargo, missionParams)
+            // Fold the post-mission cargo back onto the active ship only when it actually changed (a mining
+            // turn-in consumes the quota / a resource bonus lands); otherwise keep the same instance.
+            val fleetAfterMission =
+                if (missionAdvance.cargo !== dockedActive.cargo) {
+                    fleetAfterHire.withActive(dockedActive.copy(cargo = missionAdvance.cargo))
+                } else {
+                    fleetAfterHire
+                }
+
             return state.copy(
                 tick = state.tick + 1,
-                fleet = fleetAfterHire,
-                credits = hire.credits,
+                fleet = fleetAfterMission,
+                credits = missionAdvance.credits,
+                missions = missionAdvance.log,
             )
         }
 
@@ -283,9 +323,37 @@ class Simulation(
                 state.revealedContacts
             }
 
+        // Missions (UC12) in flight: a radio Accept is resolved against the in-range radio broadcast
+        // offers, regenerated from the static authored world (regenerate-and-filter, ADR 0011); a TurnIn /
+        // board Accept no-ops in flight (no docked station, no board here). A freshly-docked tick skips the
+        // radio resolve — like mining/scanning — but the courier timer still advances. Missions.advance
+        // then decrements any active courier timer this tick. Both no-op (returning the SAME log / credits /
+        // cargo instances) on an empty log + None order, so pre-UC12 fixtures thread the same defaults
+        // through and step byte-identically.
+        val missionResolve =
+            if (nextDocked == null) {
+                val radioOffers = MissionGenerator.radioOffers(world, nextSector, nextShip.position, missionParams)
+                Missions.resolve(
+                    log = state.missions,
+                    offers = radioOffers,
+                    order = missionOrder,
+                    dockedStation = null,
+                    cargo = mining.cargo,
+                    credits = state.credits,
+                    params = missionParams,
+                )
+            } else {
+                MissionResult(state.missions, state.credits, mining.cargo, false)
+            }
+        val missionAdvance =
+            Missions.advance(missionResolve.log, missionResolve.credits, missionResolve.cargo, missionParams)
+
         // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
         // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
-        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = mining.cargo, fuel = burnedFuel)
+        // UC12: the cargo is the post-mission cargo (a radio Accept never touches cargo, so this is the
+        // same mining.cargo instance unless a mission consumed/added units — same-instance keeps it
+        // byte-identical on a no-op tick).
+        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = missionAdvance.cargo, fuel = burnedFuel)
         return state.copy(
             tick = state.tick + 1,
             fleet = state.fleet.withActive(updatedActive),
@@ -293,11 +361,13 @@ class Simulation(
             dockedStation = nextDocked,
             fieldDepletion = mining.fieldDepletion,
             // In flight there is no station market, so trading is a no-op; the wallet threads through
-            // unchanged (UC08 AC#1 — credits persist tick to tick). Trades happen only while docked.
-            credits = state.credits,
+            // unchanged unless a courier just expired this tick (its penalty is deducted by advance).
+            credits = missionAdvance.credits,
             // Revealed hidden contacts after this tick's scan (UC10): grown by a SCAN, otherwise the
             // prior set threaded through unchanged (monotonic).
             revealedContacts = revealedContacts,
+            // The mission log after this tick's resolve + advance (UC12); the SAME instance on a no-op tick.
+            missions = missionAdvance.log,
         )
     }
 }

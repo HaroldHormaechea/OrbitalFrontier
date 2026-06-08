@@ -5,6 +5,8 @@ import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
+import com.orbitalfrontier.mission.MissionOrder
+import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.FleetOrder
@@ -37,6 +39,7 @@ class PlaythroughRecorder(
     miningConfig: MiningParams = MiningParams(),
     powerConfig: PowerParams = PowerParams(),
     fuelConfig: FuelParams = FuelParams(),
+    missionConfig: MissionParams = MissionParams(),
     initialState: SimulationState? = null,
 ) {
     init {
@@ -47,6 +50,7 @@ class PlaythroughRecorder(
     private val miningConfigDto = MiningParamsDto.from(miningConfig)
     private val powerConfigDto = PowerParamsDto.from(powerConfig)
     private val fuelConfigDto = FuelParamsDto.from(fuelConfig)
+    private val missionConfigDto = MissionParamsDto.from(missionConfig)
     private val initialStateDto = initialState?.let(StateSnapshotDto::from)
     private val events = mutableListOf<InputEvent>()
     private var tickCount = 0
@@ -123,6 +127,12 @@ class PlaythroughRecorder(
         order: FleetOrder,
     ): PlaythroughRecorder = record(FleetEvent.from(tick, order))
 
+    /** Convenience: record a [MissionEvent] for [order] at [tick] (UC12). */
+    fun recordMission(
+        tick: Int,
+        order: MissionOrder,
+    ): PlaythroughRecorder = record(MissionEvent.from(tick, order))
+
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {
         newEvents.forEach(::record)
@@ -155,6 +165,7 @@ class PlaythroughRecorder(
             miningConfig = miningConfigDto,
             powerConfig = powerConfigDto,
             fuelConfig = fuelConfigDto,
+            missionConfig = missionConfigDto,
             initialState = initialStateDto,
             inputEvents = events.toList(),
         )

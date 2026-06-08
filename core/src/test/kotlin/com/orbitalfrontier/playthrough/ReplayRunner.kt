@@ -4,6 +4,7 @@ import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.platform.SeededRng
 import com.orbitalfrontier.platform.TickTimeSource
@@ -63,6 +64,7 @@ class ReplayRunner {
                 miningParams = playthrough.miningConfig.toMiningParams(),
                 powerParams = playthrough.powerConfig.toPowerParams(),
                 fuelParams = playthrough.fuelConfig.toFuelParams(),
+                missionParams = playthrough.missionConfig.toMissionParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()
@@ -85,6 +87,7 @@ class ReplayRunner {
             val fleetOrder = fleetOrderFor(tickEvents)
             val scanAction = scanActionFor(tickEvents)
             val hireOrder = hireOrderFor(tickEvents)
+            val missionOrder = missionOrderFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -98,6 +101,7 @@ class ReplayRunner {
                     fleetOrder,
                     scanAction,
                     hireOrder,
+                    missionOrder,
                 )
             perTick?.add(state)
         }
@@ -189,4 +193,14 @@ class ReplayRunner {
      */
     private fun fleetOrderFor(events: List<InputEvent>): FleetOrder =
         events.filterIsInstance<FleetEvent>().lastOrNull()?.toFleetOrder() ?: FleetOrder.None
+
+    /**
+     * Reduce a tick's events to the [MissionOrder] the sim steps with (UC12). When several mission
+     * samples share a tick the latest wins; a tick with no [MissionEvent] steps with [MissionOrder.None],
+     * so non-mission artifacts (UC01..UC11) replay exactly as before. A [MissionEvent] maps to the
+     * matching [MissionOrder.Accept]/[MissionOrder.TurnIn] carrying its mission id (the resolver no-ops an
+     * order it cannot satisfy in the current context — board vs. radio, docked vs. in flight).
+     */
+    private fun missionOrderFor(events: List<InputEvent>): MissionOrder =
+        events.filterIsInstance<MissionEvent>().lastOrNull()?.toMissionOrder() ?: MissionOrder.None
 }

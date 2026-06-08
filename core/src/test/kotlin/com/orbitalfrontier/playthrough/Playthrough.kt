@@ -6,6 +6,13 @@ import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.mission.Mission
+import com.orbitalfrontier.mission.MissionId
+import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.mission.MissionParams
+import com.orbitalfrontier.mission.MissionSource
+import com.orbitalfrontier.mission.MissionStatus
+import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.outfit.Loadout
 import com.orbitalfrontier.outfit.SlotCategory
 import com.orbitalfrontier.outfit.UpgradeId
@@ -45,6 +52,8 @@ import kotlinx.serialization.Serializable
  *   rationale as [config]; defaulted so older artifacts (recorded before fuel/power) decode unchanged.
  * @property fuelConfig the pinned [FuelParams] snapshot the run was recorded under (UC07), same
  *   rationale as [config]; defaulted so older artifacts (recorded before fuel/power) decode unchanged.
+ * @property missionConfig the pinned [MissionParams] snapshot the run was recorded under (UC12), same
+ *   rationale as [config]; defaulted so older artifacts (recorded before missions) decode unchanged.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -60,6 +69,7 @@ data class Playthrough(
     val miningConfig: MiningParamsDto = MiningParamsDto.DEFAULT,
     val powerConfig: PowerParamsDto = PowerParamsDto.DEFAULT,
     val fuelConfig: FuelParamsDto = FuelParamsDto.DEFAULT,
+    val missionConfig: MissionParamsDto = MissionParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -219,6 +229,72 @@ data class FuelParamsDto(
 }
 
 /**
+ * Serializable mirror of [MissionParams] (UC12 config snapshot).
+ *
+ * [MissionParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live
+ * in exactly one place. Pinning the mission tuning per artifact (mirroring [MiningParamsDto]) means a
+ * later balancing change to the reward formulae, quota ranges, courier timer or radio range cannot
+ * silently invalidate an old recorded playthrough — the offers it generates and the rewards it grants
+ * are reproduced exactly. Defaulted on [Playthrough] so older artifacts (recorded before missions)
+ * decode unchanged.
+ */
+@Serializable
+data class MissionParamsDto(
+    val boardMiningQuotaMin: Int,
+    val boardMiningQuotaMax: Int,
+    val radioMiningQuotaMin: Int,
+    val radioMiningQuotaMax: Int,
+    val miningRewardBase: Long,
+    val miningRewardPerUnit: Long,
+    val courierRewardBase: Long,
+    val courierRewardSpan: Int,
+    val courierTickLimitMin: Int,
+    val courierTickLimitMax: Int,
+    val courierFailurePenalty: Long,
+    val radioRange: Float,
+) {
+    /** Reconstruct the domain [MissionParams] (its `init` re-validates the values). */
+    fun toMissionParams(): MissionParams =
+        MissionParams(
+            boardMiningQuotaMin = boardMiningQuotaMin,
+            boardMiningQuotaMax = boardMiningQuotaMax,
+            radioMiningQuotaMin = radioMiningQuotaMin,
+            radioMiningQuotaMax = radioMiningQuotaMax,
+            miningRewardBase = miningRewardBase,
+            miningRewardPerUnit = miningRewardPerUnit,
+            courierRewardBase = courierRewardBase,
+            courierRewardSpan = courierRewardSpan,
+            courierTickLimitMin = courierTickLimitMin,
+            courierTickLimitMax = courierTickLimitMax,
+            courierFailurePenalty = courierFailurePenalty,
+            radioRange = radioRange,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: MissionParams): MissionParamsDto =
+            MissionParamsDto(
+                boardMiningQuotaMin = params.boardMiningQuotaMin,
+                boardMiningQuotaMax = params.boardMiningQuotaMax,
+                radioMiningQuotaMin = params.radioMiningQuotaMin,
+                radioMiningQuotaMax = params.radioMiningQuotaMax,
+                miningRewardBase = params.miningRewardBase,
+                miningRewardPerUnit = params.miningRewardPerUnit,
+                courierRewardBase = params.courierRewardBase,
+                courierRewardSpan = params.courierRewardSpan,
+                courierTickLimitMin = params.courierTickLimitMin,
+                courierTickLimitMax = params.courierTickLimitMax,
+                courierFailurePenalty = params.courierFailurePenalty,
+                radioRange = params.radioRange,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: MissionParamsDto = from(MissionParams())
+    }
+}
+
+/**
  * Serializable mirror of [SimulationState] (UC02 AC#3 optional initial state; AC#6 snapshots).
  *
  * Mirrors the snapshot as flat scalar fields so the domain types ([SimulationState],
@@ -298,6 +374,13 @@ data class StateSnapshotDto(
      * byte-identically.
      */
     val revealedContacts: List<String> = emptyList(),
+    /**
+     * The player's mission log (UC12) — its accepted / terminal missions, plus any surfaced offers. In
+     * the pure simulation only [MissionLog.accepted] ever grows; [MissionLog.available] is recomputed
+     * transiently and is normally empty here. Defaulted to an **empty** log so older artifacts (recorded
+     * before missions existed) decode with no missions and the pre-UC12 fixtures replay byte-identically.
+     */
+    val missions: MissionLogDto = MissionLogDto.EMPTY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -312,6 +395,7 @@ data class StateSnapshotDto(
                     .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
             credits = credits,
             revealedContacts = revealedContacts.map(::PoiId).toSet(),
+            missions = missions.toMissionLog(),
         )
 
     /**
@@ -371,6 +455,100 @@ data class StateSnapshotDto(
                 activeShipId = state.fleet.activeShipId.value,
                 // Sorted slug list: stable/diffable on disk; the domain side is an order-insensitive Set.
                 revealedContacts = state.revealedContacts.map { it.value }.sorted(),
+                missions = MissionLogDto.from(state.missions),
+            )
+    }
+}
+
+/**
+ * Serializable mirror of [MissionLog] (UC12 AC#3/#5). Splits into the transient [available] offers and
+ * the persisted [accepted] / terminal missions, mirroring the domain split; on disk each is a list of
+ * [MissionDto]. Both default empty so a snapshot with no missions encodes minimally and an older
+ * artifact decodes to [MissionLog.EMPTY].
+ */
+@Serializable
+data class MissionLogDto(
+    val available: List<MissionDto> = emptyList(),
+    val accepted: List<MissionDto> = emptyList(),
+) {
+    /** Reconstruct the domain [MissionLog]. */
+    fun toMissionLog(): MissionLog =
+        MissionLog(
+            available = available.map { it.toMission() },
+            accepted = accepted.map { it.toMission() },
+        )
+
+    companion object {
+        /** An empty mission log DTO — the snapshot default. */
+        val EMPTY: MissionLogDto = MissionLogDto()
+
+        /** Snapshot [log] into its serializable form. */
+        fun from(log: MissionLog): MissionLogDto =
+            MissionLogDto(
+                available = log.available.map(MissionDto::from),
+                accepted = log.accepted.map(MissionDto::from),
+            )
+    }
+}
+
+/**
+ * Serializable mirror of one [Mission] (UC12). Flat string-keyed fields keep the domain [Mission]
+ * annotation-free: enums ([MissionType]/[MissionSource]/[MissionStatus]) and the [ResourceType] reward /
+ * quota are stored by their stable **name** (not ordinal), and [PoiId]s by their slug, so the on-disk
+ * form is diffable and survives enum reordering. The optional type-specific fields mirror [Mission]'s
+ * nullable mining / courier params one-for-one.
+ */
+@Serializable
+data class MissionDto(
+    val id: String,
+    val type: String,
+    val source: String,
+    val status: String,
+    val rewardCredits: Long,
+    val rewardResource: String? = null,
+    val rewardResourceUnits: Int = 0,
+    val quotaResource: String? = null,
+    val quotaUnits: Int = 0,
+    val pickup: String? = null,
+    val destination: String? = null,
+    val remainingTicks: Int = 0,
+    val pickedUp: Boolean = false,
+) {
+    /** Reconstruct the domain [Mission]. */
+    fun toMission(): Mission =
+        Mission(
+            id = MissionId(id),
+            type = MissionType.valueOf(type),
+            source = MissionSource.valueOf(source),
+            status = MissionStatus.valueOf(status),
+            rewardCredits = rewardCredits,
+            rewardResource = rewardResource?.let { ResourceType.valueOf(it) },
+            rewardResourceUnits = rewardResourceUnits,
+            quotaResource = quotaResource?.let { ResourceType.valueOf(it) },
+            quotaUnits = quotaUnits,
+            pickup = pickup?.let(::PoiId),
+            destination = destination?.let(::PoiId),
+            remainingTicks = remainingTicks,
+            pickedUp = pickedUp,
+        )
+
+    companion object {
+        /** Snapshot [mission] into its serializable form. */
+        fun from(mission: Mission): MissionDto =
+            MissionDto(
+                id = mission.id.value,
+                type = mission.type.name,
+                source = mission.source.name,
+                status = mission.status.name,
+                rewardCredits = mission.rewardCredits,
+                rewardResource = mission.rewardResource?.name,
+                rewardResourceUnits = mission.rewardResourceUnits,
+                quotaResource = mission.quotaResource?.name,
+                quotaUnits = mission.quotaUnits,
+                pickup = mission.pickup?.value,
+                destination = mission.destination?.value,
+                remainingTicks = mission.remainingTicks,
+                pickedUp = mission.pickedUp,
             )
     }
 }
