@@ -1,8 +1,8 @@
 # Design Note — Upgrades & Progression
 
-- **Status:** in-progress (model decided; per-ship slot layouts & stat deltas open)
-- **Last updated:** 2026-06-07
-- **Related:** PROJECT_BRIEF.md → in_scope #3, core_gameplay_loop (Improve); [economy-and-resources.md](economy-and-resources.md) (credits, ships, cargo, junkyards), [ship-and-controls.md](ship-and-controls.md) (movement params, turrets, crew), [world-and-sector.md](world-and-sector.md) (scanner/comms, junkyard POIs), [combat.md](combat.md) (weapon/defense upgrades), [save-and-persistence.md](save-and-persistence.md) (loadout state)
+- **Status:** implemented for MVP (UC09 — model + slots + multi-ship shipped; balancing values still [TUNE])
+- **Last updated:** 2026-06-08
+- **Related:** PROJECT_BRIEF.md → in_scope #3, core_gameplay_loop (Improve); **[ADR 0008](../adr/0008-fleet-and-outfitting-persistence.md)** (fleet/outfitting model + persistence); [economy-and-resources.md](economy-and-resources.md) (credits, ships, cargo, junkyards), [ship-and-controls.md](ship-and-controls.md) (movement params, turrets, crew), [world-and-sector.md](world-and-sector.md) (scanner/comms, junkyard stations), [combat.md](combat.md) (weapon/defense upgrades), [save-and-persistence.md](save-and-persistence.md) (loadout state)
 
 ## Summary
 
@@ -52,10 +52,16 @@ tree. Slot counts per category vary by ship.
 at stations**; what's available and the price is gated by **credits** and (post-MVP)
 **reputation/faction state**. There is **no unlock/research progression** for now.
 
-**Selling & refitting — junkyards (NEW POI type).** Installed/used upgrades can be
-**removed and sold only at junkyard-type locations** (not back to a normal dealer).
-Junkyards are where **refits** happen, so no separate respec system is required. _(Likely
-also a place to buy cheaper used parts — TBD.)_
+**Selling & refitting — junkyards (a station _kind_, not a new POI type).** Installed/used
+upgrades can be **removed and sold only at junkyard-type stations** (not back to a normal
+dealer). Junkyards are where **refits** happen, so no separate respec system is required.
+**Implemented (UC09):** a junkyard is a `StationKind.JUNKYARD` capability on an ordinary
+dockable `Station` — **not** a new `Poi` subtype — so docking/minimap/hub work unchanged
+(see [ADR 0008](../adr/0008-fleet-and-outfitting-persistence.md), which supersedes the
+earlier "NEW POI type" wording). Selling a used part refunds a fraction of its catalog
+price (`Outfitting.USED_PART_REFUND_FRACTION`, a [TUNE] value). The MVP junkyard sits in
+Gamma Verge and also stocks a couple of tier-I parts so a refit can happen on the spot;
+buying _cheaper used_ parts is still TBD.
 
 ## Player-facing behavior
 
@@ -79,11 +85,15 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 
 ## Open questions
 
-- Exact **stat deltas** per upgrade (define as we build).
-- **Per-ship slot layouts** and the **MVP ship roster** (which roles ship first).
+- **Balancing only (all [TUNE]):** exact **stat deltas** and **prices** per upgrade, the **per-ship
+  slot counts**, and the **ship-purchase prices**. The structures shipped in UC09; the numbers are
+  placeholders to tune.
 - **Crew upgrade** mechanics (deferred).
-- **Junkyard** specifics: locations, used-part pricing, buy-used option.
-- **Reputation gating** detail (post-MVP).
+- **Junkyard** used-part **buy-used** option and used-part pricing curve (only the sell/refit side
+  shipped; the refund fraction is a [TUNE] value).
+- **Reputation gating** detail (post-MVP, UC14 — cash-only for now).
+- Active-ship **switching while ships are parked apart**: the MVP presents the switched-to ship at the
+  docked station (no idle-ship storage / travel model yet).
 
 ## Decided
 
@@ -94,6 +104,13 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **No tech/unlock tree** — acquisition is **cash- and reputation-based**.
 - **Free slots; no respec** — refit at **junkyards**.
 - **Used upgrades sold only at junkyards** (not back to dealers).
+- **(UC09, ADR 0008)** Stats are **derived** (`ship type baseline + Σ loadout deltas`), never stored —
+  capacity is reconstructed on load, so a fit change or retune can never strand a save.
+- **(UC09)** A **junkyard is a station _kind_**, not a new POI type (supersedes the wording above).
+- **(UC09)** The player owns a **fleet**; the **active ship** is switched while docked and each ship
+  keeps its own loadout/cargo/fuel. In the MVP a fleet only **grows** (no removal/trade-in/storage).
+- **(UC09)** Loadout slots are **gap-tolerant** (a mid-list removal leaves a real gap; indices are
+  never compacted) and persisted per `(ship, slot_category, slot_index)`.
 
 ## References
 

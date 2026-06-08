@@ -1,27 +1,28 @@
--- Orbital Frontier save schema, version 6 (ADR 0002 / ADR 0003).
+-- Orbital Frontier save schema, version 7 (ADR 0002 / ADR 0003 / ADR 0008).
 --
--- This .sq file is ALWAYS the latest schema (currently v6). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v7). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
--- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6). Never edit this baseline destructively to make
--- a schema change — bump the version and add a migration instead.
+-- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7). Never edit this baseline
+-- destructively to make a schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
 -- player's ship kinematics (`ship`). v3 (UC05) adds the player's dock state to the header
--- (`game_state.docked_station_id`): the [PoiId] of the station the ship is docked at, or NULL when
--- in flight. v4 (UC06) adds the player's `cargo` (per-ship resource units) and asteroid-field
--- `field_deposit` (remaining units per field) so mined resources and field depletion persist.
--- v5 (UC07) adds the active ship's `ship.fuel` level so fuel/power state persists; the v4 -> v5
--- migration backfills it with a full tank (DEFAULT 100 == FuelParams.DEFAULT_TANK_CAPACITY) so a
--- migrated save is never stranded.
--- v6 (UC08) adds the player's `game_state.credits` wallet (save-wide single currency); the v5 -> v6
--- migration backfills it with DEFAULT 0 so a migrated save reads back broke (a *new game* seeds a
--- starting balance in code, not via the column default). Station prices are NOT persisted — they are
--- fixed authored map data reconstructed from MvpSectorMap on load (ADR 0007).
--- All save-header singletons live in `game_state`; the `ship` table is keyed by id so
--- UC09 can grow to multiple owned ships additively (the active ship is the one
--- `game_state.active_ship_id` points at). Box2D internals are never persisted — only the pure
--- kinematics the model re-seeds the body from on load (UC04 pitfall).
+-- (`game_state.docked_station_id`). v4 (UC06) adds the player's `cargo` (per-ship resource units)
+-- and asteroid-field `field_deposit` (remaining units per field). v5 (UC07) adds the active ship's
+-- `ship.fuel` level. v6 (UC08) adds the player's `game_state.credits` wallet (save-wide single
+-- currency).
+-- v7 (UC09) generalizes the single ship into a **fleet**: `ship` gains a `ship_type` column (the
+-- ShipTypeId slug, DEFAULT 'starter' matching ShipRoster.STARTER_TYPE_ID) and there is a new
+-- `ship_upgrade` table holding each ship's installed upgrades per (slot_category, slot_index). The
+-- player can now own multiple ships (multiple `ship` rows, each with its own cargo + upgrades);
+-- `game_state.active_ship_id` selects the active one. The v6 -> v7 migration is additive: it adds the
+-- column (backfilled to 'starter') and the table (empty) so a migrated save reads back as one starter
+-- ship with no upgrades. Station markets / outfit markets / upgrade & ship catalogs are NOT persisted
+-- — they are fixed authored data reconstructed from MvpSectorMap / UpgradeCatalog / ShipRoster on load
+-- (ADR 0007 / ADR 0008). Cargo & fuel *capacities* are derived ship stats reconstructed from
+-- type + loadout on load (ShipStats), never stored. Box2D internals are never persisted — only the
+-- pure kinematics the model re-seeds the body from on load (UC04 pitfall).
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -36,14 +37,12 @@ CREATE TABLE settings (
 );
 
 -- Single-row save "header": which sector the player is in, which owned ship is active, which
--- station (if any) the ship is docked at, and the player's credit balance. Future save-wide
+-- station (if any) the active ship is docked at, and the player's credit balance. Future save-wide
 -- singletons (current mission, …) land here additively as later UCs arrive.
--- `docked_station_id` is NULLABLE: NULL means the ship is in flight (the common case); a non-null
--- value is the [PoiId] of the docked station (UC05 AC#4). Nullable so the v2 -> v3 migration can add
--- it without a backfill — an existing v2 save reads back as in flight.
+-- `docked_station_id` is NULLABLE: NULL means the active ship is in flight (the common case); a
+-- non-null value is the [PoiId] of the docked station (UC05 AC#4).
 -- `credits` (UC08) is the player's single-currency wallet, save-wide (not per-ship). DEFAULT 0
--- matches the v5 -> v6 migration's backfill so a migrated save reads back broke; a new game seeds a
--- starting balance in code. The repository coerces a negative/corrupt value to >= 0 on load.
+-- matches the v5 -> v6 migration's backfill; the repository coerces a negative/corrupt value to >= 0.
 CREATE TABLE game_state (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     current_sector TEXT NOT NULL,
@@ -52,13 +51,14 @@ CREATE TABLE game_state (
     credits INTEGER NOT NULL DEFAULT 0
 );
 
--- Owned-ship kinematics. One row today (the active ship); UC09 adds more rows (and, later, a
--- ship_slot child table) without touching this baseline. Stored as REAL (SQLite has no Float);
--- the repository owns the single Float<->Double conversion so a round-trip is exact (UC04 AC#8).
--- `fuel` (UC07) is the active ship's fuel level in fuel units. DEFAULT 100 ==
--- FuelParams.DEFAULT_TANK_CAPACITY, matching the v4 -> v5 migration's backfill so a migrated save
--- starts with a full tank (never stranded). Capacity is NOT stored — it is a ship stat the
--- repository reconstructs from FuelParams.DEFAULT_TANK_CAPACITY on load (like cargo capacity).
+-- Owned-ship kinematics + per-ship stats source (UC09: one row per owned ship; `active_ship_id`
+-- selects the active one). Stored as REAL (SQLite has no Float); the repository owns the single
+-- Float<->Double conversion so a round-trip is exact (UC04 AC#8).
+-- `fuel` (UC07) is the ship's fuel level in fuel units; capacity is NOT stored — it is a derived
+-- ship stat (ShipStats.fuelCapacity(type, loadout)) reconstructed on load.
+-- `ship_type` (UC09) is the ShipTypeId slug (ShipRoster). DEFAULT 'starter' matches the v6 -> v7
+-- migration's backfill so a migrated ship reads back as the starter type. An unknown slug degrades
+-- to the starter type with a WARN on load (never stranded).
 CREATE TABLE ship (
     id INTEGER NOT NULL PRIMARY KEY,
     pos_x REAL NOT NULL,
@@ -67,14 +67,27 @@ CREATE TABLE ship (
     vel_y REAL NOT NULL,
     heading REAL NOT NULL,
     ang_vel REAL NOT NULL,
-    fuel REAL NOT NULL DEFAULT 100
+    fuel REAL NOT NULL DEFAULT 100,
+    ship_type TEXT NOT NULL DEFAULT 'starter'
+);
+
+-- Per-ship installed upgrades (UC09). One row per filled (ship, slot): `slot_category` is the
+-- SlotCategory enum *name*, `slot_index` the slot position within that category (gaps are allowed —
+-- an absent (category, index) is an empty slot), `upgrade_id` the UpgradeId slug (resolved against
+-- UpgradeCatalog on load; an unknown id is skipped with a WARN). Keyed by (ship_id, slot_category,
+-- slot_index). A ship's rows are rewritten as a full snapshot (delete-then-insert) on each save.
+CREATE TABLE ship_upgrade (
+    ship_id INTEGER NOT NULL,
+    slot_category TEXT NOT NULL,
+    slot_index INTEGER NOT NULL,
+    upgrade_id TEXT NOT NULL,
+    PRIMARY KEY (ship_id, slot_category, slot_index)
 );
 
 -- Per-ship cargo (UC06). One row per (ship, resource) the ship is carrying a non-zero amount of;
 -- `resource` is the ResourceType enum *name* (stable across enum reordering, unlike its ordinal).
--- Keyed by (ship_id, resource) so each resource appears at most once per ship. Capacity is NOT
--- stored — it is a ship stat the repository reconstructs from Cargo.DEFAULT_CAPACITY on load. The
--- active ship's rows are rewritten as a full snapshot (delete-then-insert) on each save.
+-- Keyed by (ship_id, resource). Capacity is NOT stored — it is a derived ship stat reconstructed from
+-- type + loadout on load. Each ship's rows are rewritten as a full snapshot (delete-then-insert).
 CREATE TABLE cargo (
     ship_id INTEGER NOT NULL,
     resource TEXT NOT NULL,
@@ -113,14 +126,13 @@ SELECT handedness FROM settings WHERE id = 0;
 upsertHandedness:
 INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
 
--- Read the full save header joined to its active ship's kinematics. Returns no rows when there is
--- no save yet (-> New Game). One row otherwise (game_state is single-slot).
+-- Read the save header (UC09: header only — ships are read separately via selectAllShips so the
+-- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New
+-- Game). One row otherwise (game_state is single-slot).
 selectGameState:
-SELECT game_state.current_sector, game_state.docked_station_id, game_state.credits,
-       ship.pos_x, ship.pos_y, ship.vel_x, ship.vel_y, ship.heading, ship.ang_vel, ship.fuel
+SELECT current_sector, active_ship_id, docked_station_id, credits
 FROM game_state
-JOIN ship ON ship.id = game_state.active_ship_id
-WHERE game_state.id = 0;
+WHERE id = 0;
 
 -- True once a save header exists (Continue available); false on a fresh / migrated-empty DB.
 hasGameState:
@@ -131,13 +143,40 @@ SELECT EXISTS(SELECT 1 FROM game_state WHERE id = 0);
 upsertGameState:
 INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits) VALUES (0, ?, ?, ?, ?);
 
--- Insert-or-update one ship row's kinematics + fuel by id (active ship id today; more rows under UC09).
+-- Read every owned ship's row, ordered by id (UC09: the whole fleet; deterministic order).
+selectAllShips:
+SELECT id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type FROM ship ORDER BY id;
+
+-- Insert-or-update one ship row's kinematics + fuel + type by id. INSERT OR REPLACE for the same
+-- minSdk-24 rationale as upsertHandedness; addressed by primary key, so REPLACE is side-effect-free.
 upsertShip:
-INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Read every ship's installed upgrades across the whole fleet, ordered deterministically (UC09).
+selectAllShipUpgrades:
+SELECT ship_id, slot_category, slot_index, upgrade_id FROM ship_upgrade ORDER BY ship_id, slot_category, slot_index;
+
+-- Read one ship's installed upgrades (UC09), deterministically ordered.
+selectShipUpgrades:
+SELECT slot_category, slot_index, upgrade_id FROM ship_upgrade WHERE ship_id = ? ORDER BY slot_category, slot_index;
+
+-- Clear one ship's upgrade rows. The save path does delete-then-plain-INSERT (a full snapshot
+-- rewrite) rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices lacks.
+deleteShipUpgradesForShip:
+DELETE FROM ship_upgrade WHERE ship_id = ?;
+
+-- Insert one ship-upgrade row. Always preceded by deleteShipUpgradesForShip in the same transaction,
+-- so a plain INSERT (not INSERT OR REPLACE) suffices and there is never a primary-key collision.
+insertShipUpgrade:
+INSERT INTO ship_upgrade(ship_id, slot_category, slot_index, upgrade_id) VALUES (?, ?, ?, ?);
 
 -- Read all cargo rows for one ship (resource name + units). Empty when the hold is empty.
 selectCargo:
 SELECT resource, units FROM cargo WHERE ship_id = ?;
+
+-- Read every ship's cargo across the whole fleet, ordered deterministically (UC09).
+selectAllCargo:
+SELECT ship_id, resource, units FROM cargo ORDER BY ship_id, resource;
 
 -- Clear a ship's cargo rows. The save path does delete-then-plain-INSERT (a full snapshot rewrite)
 -- rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices does not support.

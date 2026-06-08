@@ -6,9 +6,17 @@ import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.outfit.Loadout
+import com.orbitalfrontier.outfit.SlotCategory
+import com.orbitalfrontier.outfit.UpgradeId
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.ship.Fleet
+import com.orbitalfrontier.ship.OwnedShip
+import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
+import com.orbitalfrontier.ship.ShipRoster
+import com.orbitalfrontier.ship.ShipTypeId
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
@@ -268,35 +276,72 @@ data class StateSnapshotDto(
      * per-ship), so they ride here directly rather than on a ship sub-snapshot.
      */
     val credits: Long = 0L,
+    /**
+     * The fleet of owned ships (UC09 AC#5/#6) — one entry per [com.orbitalfrontier.ship.OwnedShip].
+     * Defaulted **empty** so older artifacts (recorded before the fleet existed) decode via the legacy
+     * path in [toFleet]: the flat ship fields above reconstruct the **one** starter ship, so the
+     * pre-UC09 fixtures replay byte-identically. When non-empty it is **authoritative** — the flat ship
+     * fields are ignored and the fleet is rebuilt from these entries.
+     */
+    val ownedShips: List<OwnedShipDto> = emptyList(),
+    /**
+     * Which owned ship is active (UC09 AC#5) — [com.orbitalfrontier.ship.ShipId.value]. Defaulted to
+     * the starter ship id (0). Used only when [ownedShips] is non-empty; the legacy single-ship path
+     * always reconstructs the one starter ship as active.
+     */
+    val activeShipId: Long = 0L,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
         SimulationState(
             tick = tick,
-            ship =
-                ShipKinematics(
-                    position = Vec2(posX, posY),
-                    velocity = Vec2(velX, velY),
-                    headingRadians = headingRadians,
-                    angularVelocity = angularVelocity,
-                ),
+            fleet = toFleet(),
             currentSector = SectorId(currentSector),
             dockedStation = dockedStation?.let(::PoiId),
-            cargo = Cargo(cargo.mapKeys { ResourceType.valueOf(it.key) }, cargoCapacity),
             fieldDepletion =
                 fieldDepletion
                     .mapKeys { (fieldId, _) -> PoiId(fieldId) }
                     .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
-            // Capacity is a ship stat, reconstructed (like Cargo.capacity); only the level is stored.
-            fuel = Fuel(level = fuel, capacity = FuelParams.DEFAULT_TANK_CAPACITY),
             credits = credits,
         )
+
+    /**
+     * Rebuild the [Fleet]. When [ownedShips] is non-empty it is authoritative — one [OwnedShip] per
+     * entry, sorted by id, with [activeShipId] selected (falling back to the first ship if it points
+     * at no owned ship). When empty (older artifacts) the **flat** ship fields reconstruct the single
+     * starter ship — its fuel capacity reconstructed from [FuelParams.DEFAULT_TANK_CAPACITY] like cargo
+     * capacity — so the pre-UC09 fixtures replay byte-identically.
+     */
+    private fun toFleet(): Fleet {
+        if (ownedShips.isEmpty()) {
+            val ship =
+                OwnedShip(
+                    id = OwnedShip.STARTER_SHIP_ID,
+                    type = ShipRoster.STARTER,
+                    kinematics =
+                        ShipKinematics(
+                            position = Vec2(posX, posY),
+                            velocity = Vec2(velX, velY),
+                            headingRadians = headingRadians,
+                            angularVelocity = angularVelocity,
+                        ),
+                    cargo = Cargo(cargo.mapKeys { ResourceType.valueOf(it.key) }, cargoCapacity),
+                    fuel = Fuel(level = fuel, capacity = FuelParams.DEFAULT_TANK_CAPACITY),
+                    loadout = Loadout.EMPTY,
+                )
+            return Fleet(listOf(ship), OwnedShip.STARTER_SHIP_ID)
+        }
+        val ships = ownedShips.map { it.toOwnedShip() }.sortedBy { it.id.value }
+        val activeId = ShipId(activeShipId)
+        return Fleet(ships, if (ships.any { it.id == activeId }) activeId else ships.first().id)
+    }
 
     companion object {
         /** Snapshot [state] into its serializable form. */
         fun from(state: SimulationState): StateSnapshotDto =
             StateSnapshotDto(
                 tick = state.tick,
+                // The flat ship fields mirror the ACTIVE ship — retained for back-compat + human-diff.
                 posX = state.ship.position.x,
                 posY = state.ship.position.y,
                 velX = state.ship.velocity.x,
@@ -313,6 +358,90 @@ data class StateSnapshotDto(
                         .mapValues { (_, deposits) -> deposits.mapKeys { it.key.name } },
                 fuel = state.fuel.level,
                 credits = state.credits,
+                ownedShips = state.fleet.ships.map(OwnedShipDto::from),
+                activeShipId = state.fleet.activeShipId.value,
             )
+    }
+}
+
+/**
+ * Serializable mirror of one [OwnedShip] in the fleet (UC09 AC#5/#6).
+ *
+ * Mirrors the ship as flat scalar fields + string-keyed maps so the domain types stay annotation-free,
+ * matching [StateSnapshotDto]. Self-contained: it stores both cargo and fuel **capacities** (not just
+ * contents/level) so a recorded snapshot reconstructs the exact ship regardless of later catalog/​type
+ * retuning — a recorded capacity already equals what [com.orbitalfrontier.outfit.ShipStats] derived at
+ * record time, so the replay assertion holds. [shipType] is the [ShipTypeId] slug (resolved via
+ * [ShipRoster]; an unknown slug degrades to the starter type); [loadout] is `category-name → (slot
+ * index → upgrade-id slug)`.
+ */
+@Serializable
+data class OwnedShipDto(
+    val id: Long,
+    val shipType: String,
+    val posX: Float,
+    val posY: Float,
+    val velX: Float,
+    val velY: Float,
+    val headingRadians: Float,
+    val angularVelocity: Float,
+    val cargoCapacity: Int,
+    val cargo: Map<String, Int> = emptyMap(),
+    val fuelLevel: Float,
+    val fuelCapacity: Float,
+    val loadout: Map<String, Map<Int, String>> = emptyMap(),
+) {
+    /** Reconstruct the domain [OwnedShip]. */
+    fun toOwnedShip(): OwnedShip =
+        OwnedShip(
+            id = ShipId(id),
+            type = ShipRoster.byId(ShipTypeId(shipType)) ?: ShipRoster.STARTER,
+            kinematics =
+                ShipKinematics(
+                    position = Vec2(posX, posY),
+                    velocity = Vec2(velX, velY),
+                    headingRadians = headingRadians,
+                    angularVelocity = angularVelocity,
+                ),
+            cargo = Cargo(cargo.mapKeys { ResourceType.valueOf(it.key) }, cargoCapacity),
+            fuel = Fuel(level = fuelLevel, capacity = fuelCapacity),
+            loadout = parseLoadout(loadout),
+        )
+
+    companion object {
+        /** Snapshot [ship] into its serializable form. */
+        fun from(ship: OwnedShip): OwnedShipDto =
+            OwnedShipDto(
+                id = ship.id.value,
+                shipType = ship.type.id.value,
+                posX = ship.kinematics.position.x,
+                posY = ship.kinematics.position.y,
+                velX = ship.kinematics.velocity.x,
+                velY = ship.kinematics.velocity.y,
+                headingRadians = ship.kinematics.headingRadians,
+                angularVelocity = ship.kinematics.angularVelocity,
+                cargoCapacity = ship.cargo.capacity,
+                cargo = ship.cargo.contents.mapKeys { it.key.name },
+                fuelLevel = ship.fuel.level,
+                fuelCapacity = ship.fuel.capacity,
+                loadout =
+                    ship.loadout.slots
+                        .mapKeys { (category, _) -> category.name }
+                        .mapValues { (_, slots) -> slots.mapValues { (_, upgradeId) -> upgradeId.value } },
+            )
+
+        /** Rebuild a [Loadout] from its string-keyed form; an unknown category/​blank id is skipped. */
+        private fun parseLoadout(raw: Map<String, Map<Int, String>>): Loadout {
+            val slots = LinkedHashMap<SlotCategory, Map<Int, UpgradeId>>()
+            for ((categoryName, indexed) in raw) {
+                val category = SlotCategory.entries.firstOrNull { it.name == categoryName } ?: continue
+                val inner = LinkedHashMap<Int, UpgradeId>()
+                for ((slotIndex, upgradeId) in indexed) {
+                    if (upgradeId.isNotBlank()) inner[slotIndex] = UpgradeId(upgradeId)
+                }
+                if (inner.isNotEmpty()) slots[category] = inner
+            }
+            return Loadout(slots)
+        }
     }
 }

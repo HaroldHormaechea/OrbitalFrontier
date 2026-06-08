@@ -11,13 +11,16 @@ import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.OrbitalFrontier
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
+import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
+import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.TradeScreen
-import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
+import com.orbitalfrontier.world.StationKind
 import com.orbitalfrontier.world.WorldState
 
 /**
@@ -48,6 +51,8 @@ class OrbitalFrontierGame(
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
     private var tradeScreen: TradeScreen? = null
+    private var outfitScreen: OutfitScreen? = null
+    private var shipyardScreen: ShipyardScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
@@ -72,9 +77,10 @@ class OrbitalFrontierGame(
                 loaded
             } else {
                 logger.info(TAG, "New Game: no save present; seeding defaults (credits=$STARTING_CREDITS)")
-                // New game seeds a starting wallet (UC08). A *migrated* save keeps its own balance (the
-                // v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
-                WorldState(currentSector = MvpSectorMap.START_SECTOR, ship = ShipKinematics(), credits = STARTING_CREDITS)
+                // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
+                // (UC09 — WorldState defaults to Fleet.starter()). A *migrated* save keeps its own
+                // balance (the v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
+                WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS)
             }
 
         // Resolve the initial dock state (UC05 AC#4). A saved dock station that no longer resolves to a
@@ -144,6 +150,10 @@ class OrbitalFrontierGame(
                 // TRADE opens the station trade desk for this station (UC08); the desk routes BUY/SELL
                 // taps back to the play screen's pure Trading.resolve.
                 onTrade = { openTradeDesk(station) },
+                // OUTFIT / SHIPS open the outfitting desk and shipyard for this station (UC09); both route
+                // taps back to the play screen's pure resolvers.
+                onOutfit = { openOutfitDesk(station) },
+                onShipyard = { openShipyard(station) },
                 // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
                 // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
                 onRefuel = { playScreen?.refuel() },
@@ -151,6 +161,47 @@ class OrbitalFrontierGame(
             )
         stationHubScreen = hub
         setScreen(hub)
+    }
+
+    /**
+     * Open the outfitting desk for [station] (UC09 AC#2/#3/#4). INSTALL / REMOVE taps route to
+     * [PlayScreen.outfit] (pure [com.orbitalfrontier.outfit.Outfitting]); the desk reads the live fleet
+     * + credits back for its readouts. BACK returns to the hub.
+     */
+    private fun openOutfitDesk(station: Station) {
+        val desk =
+            OutfitScreen(
+                logger = logger,
+                stationName = station.displayName,
+                outfitMarket = station.outfitMarket,
+                isJunkyard = station.kind == StationKind.JUNKYARD,
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                fleetSupplier = { playScreen?.fleetSnapshot() ?: Fleet.starter() },
+                onOutfit = { order -> playScreen?.outfit(order) },
+                onBack = { returnToHub() },
+            )
+        outfitScreen = desk
+        setScreen(desk)
+    }
+
+    /**
+     * Open the shipyard / ship-switch screen for [station] (UC09 AC#5). BUY / SWITCH taps route to
+     * [PlayScreen.fleetCommand] (pure [com.orbitalfrontier.ship.FleetResolver]); the screen reads the
+     * live fleet + credits back for its readouts. BACK returns to the hub.
+     */
+    private fun openShipyard(station: Station) {
+        val desk =
+            ShipyardScreen(
+                logger = logger,
+                stationName = station.displayName,
+                shipyard = station.shipyard,
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                fleetSupplier = { playScreen?.fleetSnapshot() ?: Fleet.starter() },
+                onFleet = { order -> playScreen?.fleetCommand(order) },
+                onBack = { returnToHub() },
+            )
+        shipyardScreen = desk
+        setScreen(desk)
     }
 
     /**
@@ -183,12 +234,16 @@ class OrbitalFrontierGame(
         stationHubScreen = null
     }
 
-    /** Return from the trade desk to the station hub, then dispose the (now hidden) desk to free GL. */
+    /** Return from a sub-desk (trade / outfit / shipyard) to the station hub, disposing the hidden desk(s). */
     private fun returnToHub() {
         stationHubScreen?.let { setScreen(it) }
-        // setScreen above already hid the desk; dispose it now that it is no longer the active screen.
+        // setScreen above already hid the active desk; dispose every sub-desk now that none is active.
         tradeScreen?.dispose()
         tradeScreen = null
+        outfitScreen?.dispose()
+        outfitScreen = null
+        shipyardScreen?.dispose()
+        shipyardScreen = null
     }
 
     override fun dispose() {
@@ -221,6 +276,18 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose trade screen on shutdown", e)
         }
         tradeScreen = null
+        try {
+            outfitScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose outfit screen on shutdown", e)
+        }
+        outfitScreen = null
+        try {
+            shipyardScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose shipyard screen on shutdown", e)
+        }
+        shipyardScreen = null
 
         try {
             driver?.close()

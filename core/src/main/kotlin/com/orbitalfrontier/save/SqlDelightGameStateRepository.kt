@@ -3,10 +3,20 @@ package com.orbitalfrontier.save
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
-import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.outfit.Loadout
+import com.orbitalfrontier.outfit.ShipStats
+import com.orbitalfrontier.outfit.SlotCategory
+import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.outfit.UpgradeId
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.ship.Fleet
+import com.orbitalfrontier.ship.OwnedShip
+import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.ship.ShipRoster
+import com.orbitalfrontier.ship.ShipType
+import com.orbitalfrontier.ship.ShipTypeId
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
@@ -18,10 +28,18 @@ import com.orbitalfrontier.world.WorldState
  * coding-guidelines § "Error handling").
  *
  * This class owns the single **Float ↔ Double** conversion at the persistence boundary: the model's
- * kinematics are `Float`, SQLite stores `REAL` (mapped to `Double`). `Float -> Double` is a
- * widening conversion and `Double -> Float` of that same value returns the original `Float` bit-for-
- * bit, so a save → reload round-trip is exact (UC04 AC#8). No engine/Box2D types are persisted —
- * only the pure [ShipKinematics] the body is re-seeded from on load (UC04 pitfall).
+ * kinematics are `Float`, SQLite stores `REAL` (mapped to `Double`). `Float -> Double` is widening
+ * and `Double -> Float` of that same value returns the original `Float` bit-for-bit, so a save →
+ * reload round-trip is exact (UC04 AC#8). No engine/Box2D types are persisted — only the pure
+ * [ShipKinematics] the body is re-seeded from on load (UC04 pitfall).
+ *
+ * **UC09 — the whole fleet.** A save holds **multiple ships** (one `ship` row each, each with its own
+ * cargo + `ship_upgrade` rows); load reconstructs every [OwnedShip], rebuilds its [Loadout] from its
+ * upgrade rows, **re-derives** cargo/fuel capacities from `type + loadout` via [ShipStats] (so a save
+ * never pins a stale capacity), and assembles a [Fleet] with `game_state.active_ship_id` selecting the
+ * active one. Save writes every ship's kinematics/type/cargo/upgrades in one transaction. Unknown
+ * ship type / upgrade id / resource name degrade gracefully (skip + WARN), never crashing the load —
+ * "never stranded". In the MVP a fleet only grows, so ship rows are only ever added, never deleted.
  */
 class SqlDelightGameStateRepository(
     private val database: OrbitalFrontier,
@@ -31,34 +49,65 @@ class SqlDelightGameStateRepository(
 
     override fun loadGameState(): WorldState? {
         return try {
-            val row = queries.selectGameState().executeAsOneOrNull() ?: return null
+            val header = queries.selectGameState().executeAsOneOrNull() ?: return null
+            val shipRows = queries.selectAllShips().executeAsList()
+            if (shipRows.isEmpty()) {
+                logger.error(TAG, "Save header present but no ship rows; treating as no save (New Game)")
+                return null
+            }
+
+            val cargoByShip = loadCargoByShip()
+            val upgradesByShip = loadUpgradesByShip()
+
+            val ships =
+                shipRows
+                    .map { row ->
+                        val type = resolveShipType(row.ship_type)
+                        val loadout = upgradesByShip[row.id] ?: Loadout.EMPTY
+                        val cargoCapacity = ShipStats.cargoCapacity(type, loadout)
+                        val fuelCapacity = ShipStats.fuelCapacity(type, loadout)
+                        OwnedShip(
+                            id = ShipId(row.id),
+                            type = type,
+                            kinematics =
+                                ShipKinematics(
+                                    position = Vec2(row.pos_x.toFloat(), row.pos_y.toFloat()),
+                                    velocity = Vec2(row.vel_x.toFloat(), row.vel_y.toFloat()),
+                                    headingRadians = row.heading.toFloat(),
+                                    angularVelocity = row.ang_vel.toFloat(),
+                                ),
+                            // Cargo/fuel capacities are derived ship stats, not save data — re-derived
+                            // above from type + loadout; only the contents/level are persisted.
+                            cargo = Cargo(cargoByShip[row.id].orEmpty(), cargoCapacity),
+                            // coerceIn guards a corrupt/over-capacity row so the Fuel(level in 0..capacity)
+                            // invariant always holds — degrade gracefully, never crash.
+                            fuel = Fuel(level = row.fuel.toFloat().coerceIn(0f, fuelCapacity), capacity = fuelCapacity),
+                            loadout = loadout,
+                        )
+                    }
+                    .sortedBy { it.id.value }
+
+            val activeId = ShipId(header.active_ship_id)
+            val fleet =
+                if (ships.any { it.id == activeId }) {
+                    Fleet(ships, activeId)
+                } else {
+                    logger.warn(
+                        TAG,
+                        "active_ship_id ${header.active_ship_id} not among owned ships; defaulting to first",
+                    )
+                    Fleet(ships, ships.first().id)
+                }
+
             WorldState(
-                currentSector = SectorId(row.current_sector),
-                ship =
-                    ShipKinematics(
-                        position = Vec2(row.pos_x.toFloat(), row.pos_y.toFloat()),
-                        velocity = Vec2(row.vel_x.toFloat(), row.vel_y.toFloat()),
-                        headingRadians = row.heading.toFloat(),
-                        angularVelocity = row.ang_vel.toFloat(),
-                    ),
-                // Null column (a v2 save migrated to v3, or a save written while in flight) -> not docked.
-                dockedStation = row.docked_station_id?.let { PoiId(it) },
-                // Cargo: capacity is a ship stat, NOT persisted — reconstructed at DEFAULT_CAPACITY (UC06).
-                cargo = loadCargo(),
+                currentSector = SectorId(header.current_sector),
+                fleet = fleet,
+                // Null column (a v2 save migrated up, or a save written while in flight) -> not docked.
+                dockedStation = header.docked_station_id?.let { PoiId(it) },
                 // Field depletion: absent field = pristine; stored values are REMAINING units (UC06).
                 fieldDepletion = loadFieldDepletion(),
-                // Fuel (UC07): only the level is persisted; capacity is a ship stat reconstructed at
-                // FuelParams.DEFAULT_TANK_CAPACITY. coerceIn guards a corrupt/over-capacity row so the
-                // Fuel(level in 0..capacity) invariant always holds — degrade gracefully, never crash.
-                fuel =
-                    Fuel(
-                        level = row.fuel.toFloat().coerceIn(0f, FuelParams.DEFAULT_TANK_CAPACITY),
-                        capacity = FuelParams.DEFAULT_TANK_CAPACITY,
-                    ),
-                // Credits (UC08): the player's wallet. coerceAtLeast(0) guards a corrupt/negative row so
-                // the balance is never negative — degrade gracefully, never crash. A v5 save migrated to
-                // v6 reads back 0 (the migration's backfill).
-                credits = row.credits.coerceAtLeast(0),
+                // Credits (UC08): coerceAtLeast(0) guards a corrupt/negative row — never negative.
+                credits = header.credits.coerceAtLeast(0),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -68,44 +117,61 @@ class SqlDelightGameStateRepository(
 
     override fun saveGameState(state: WorldState) {
         try {
-            // Ship row + save header written atomically: a failure rolls back both, so the previous
+            // Header + every ship row written atomically: a failure rolls back all, so the previous
             // good save is never left half-overwritten (UC04 AC#3).
             queries.transaction {
-                val ship = state.ship
-                queries.upsertShip(
-                    id = ACTIVE_SHIP_ID,
-                    pos_x = ship.position.x.toDouble(),
-                    pos_y = ship.position.y.toDouble(),
-                    vel_x = ship.velocity.x.toDouble(),
-                    vel_y = ship.velocity.y.toDouble(),
-                    heading = ship.headingRadians.toDouble(),
-                    ang_vel = ship.angularVelocity.toDouble(),
-                    // Fuel level (UC07): same Float -> Double boundary as the kinematics above.
-                    fuel = state.fuel.level.toDouble(),
-                )
                 queries.upsertGameState(
                     current_sector = state.currentSector.value,
-                    active_ship_id = ACTIVE_SHIP_ID,
+                    active_ship_id = state.fleet.activeShipId.value,
                     docked_station_id = state.dockedStation?.value,
-                    // Credits (UC08): the player's wallet, persisted in the same atomic header write.
                     credits = state.credits,
                 )
 
-                // Cargo: full-snapshot rewrite of the active ship's rows (delete-then-plain-INSERT,
-                // minSdk-24-safe). Only non-zero amounts are stored; capacity is not persisted (UC06).
-                queries.deleteCargoForShip(ACTIVE_SHIP_ID)
-                for ((resource, units) in state.cargo.contents) {
-                    if (units > 0) {
-                        queries.insertCargoEntry(
-                            ship_id = ACTIVE_SHIP_ID,
-                            resource = resource.name,
-                            units = units.toLong(),
-                        )
+                for (ship in state.fleet.ships) {
+                    val kin = ship.kinematics
+                    queries.upsertShip(
+                        id = ship.id.value,
+                        pos_x = kin.position.x.toDouble(),
+                        pos_y = kin.position.y.toDouble(),
+                        vel_x = kin.velocity.x.toDouble(),
+                        vel_y = kin.velocity.y.toDouble(),
+                        heading = kin.headingRadians.toDouble(),
+                        ang_vel = kin.angularVelocity.toDouble(),
+                        // Fuel level (UC07): same Float -> Double boundary as the kinematics above.
+                        fuel = ship.fuel.level.toDouble(),
+                        ship_type = ship.type.id.value,
+                    )
+
+                    // Cargo: full-snapshot rewrite of this ship's rows (delete-then-plain-INSERT,
+                    // minSdk-24-safe). Only non-zero amounts are stored; capacity is not persisted.
+                    queries.deleteCargoForShip(ship.id.value)
+                    for ((resource, units) in ship.cargo.contents) {
+                        if (units > 0) {
+                            queries.insertCargoEntry(
+                                ship_id = ship.id.value,
+                                resource = resource.name,
+                                units = units.toLong(),
+                            )
+                        }
+                    }
+
+                    // Installed upgrades (UC09): full-snapshot rewrite per ship (delete-then-INSERT). A
+                    // gap-tolerant loadout persists exactly the filled (category, slot_index) rows.
+                    queries.deleteShipUpgradesForShip(ship.id.value)
+                    for ((category, slots) in ship.loadout.slots) {
+                        for ((slotIndex, upgradeId) in slots) {
+                            queries.insertShipUpgrade(
+                                ship_id = ship.id.value,
+                                slot_category = category.name,
+                                slot_index = slotIndex.toLong(),
+                                upgrade_id = upgradeId.value,
+                            )
+                        }
                     }
                 }
 
                 // Field depletion: upsert every (field, resource) remaining amount (full snapshot).
-                // Depletion is monotonic so we never delete; an untouched field simply has no rows (UC06).
+                // Depletion is monotonic so we never delete; an untouched field has no rows (UC06).
                 for ((fieldId, remaining) in state.fieldDepletion) {
                     for ((resource, units) in remaining) {
                         queries.upsertFieldDeposit(
@@ -118,8 +184,8 @@ class SqlDelightGameStateRepository(
             }
             logger.info(
                 TAG,
-                "Saved game state: sector=${state.currentSector.value}, " +
-                    "pos=(${state.ship.position.x}, ${state.ship.position.y})",
+                "Saved game state: sector=${state.currentSector.value}, ships=${state.fleet.ships.size}, " +
+                    "active=${state.fleet.activeShipId.value}",
             )
         } catch (e: Exception) {
             // Graceful degradation: keep the last good save, log, do not crash the app.
@@ -136,25 +202,36 @@ class SqlDelightGameStateRepository(
         }
     }
 
-    /**
-     * Reconstruct the active ship's [Cargo] from its persisted rows. Capacity is a ship stat, so it
-     * is re-seeded from [Cargo.DEFAULT_CAPACITY] (later, the ship's cargo-hold upgrade) rather than
-     * read from the save. An unrecognised resource name (e.g. after an enum rename) is skipped with a
-     * WARN rather than failing the whole load — "never stranded" (coding-guidelines § error-handling).
-     */
-    private fun loadCargo(): Cargo {
-        val contents = LinkedHashMap<ResourceType, Int>()
-        for (entry in queries.selectCargo(ACTIVE_SHIP_ID).executeAsList()) {
+    /** Group every ship's persisted cargo rows by ship id (resource name -> units; unknown names skipped). */
+    private fun loadCargoByShip(): Map<Long, Map<ResourceType, Int>> {
+        val byShip = LinkedHashMap<Long, LinkedHashMap<ResourceType, Int>>()
+        for (entry in queries.selectAllCargo().executeAsList()) {
             val resource = parseResource(entry.resource) ?: continue
-            contents[resource] = entry.units.toInt()
+            byShip.getOrPut(entry.ship_id) { LinkedHashMap() }[resource] = entry.units.toInt()
         }
-        return Cargo(contents, Cargo.DEFAULT_CAPACITY)
+        return byShip
+    }
+
+    /**
+     * Group every ship's persisted upgrade rows by ship id into a [Loadout] each. An unknown
+     * slot-category name or an [UpgradeId] the [UpgradeCatalog] no longer knows is skipped with a WARN
+     * (the rest of the loadout still loads — "never stranded").
+     */
+    private fun loadUpgradesByShip(): Map<Long, Loadout> {
+        val slotsByShip = LinkedHashMap<Long, LinkedHashMap<SlotCategory, LinkedHashMap<Int, UpgradeId>>>()
+        for (entry in queries.selectAllShipUpgrades().executeAsList()) {
+            val category = parseSlotCategory(entry.slot_category) ?: continue
+            val upgradeId = parseUpgrade(entry.upgrade_id) ?: continue
+            slotsByShip
+                .getOrPut(entry.ship_id) { LinkedHashMap() }
+                .getOrPut(category) { LinkedHashMap() }[entry.slot_index.toInt()] = upgradeId
+        }
+        return slotsByShip.mapValues { (_, slots) -> Loadout(slots) }
     }
 
     /**
      * Reconstruct the per-field remaining-deposit map from `field_deposit`. Grouped by field id; a
-     * field with no rows is simply absent (pristine). Unrecognised resource names are skipped with a
-     * WARN, as in [loadCargo].
+     * field with no rows is simply absent (pristine). Unrecognised resource names are skipped (WARN).
      */
     private fun loadFieldDepletion(): Map<PoiId, Map<ResourceType, Int>> {
         val byField = LinkedHashMap<PoiId, LinkedHashMap<ResourceType, Int>>()
@@ -163,6 +240,34 @@ class SqlDelightGameStateRepository(
             byField.getOrPut(PoiId(entry.field_id)) { LinkedHashMap() }[resource] = entry.remaining_units.toInt()
         }
         return byField
+    }
+
+    /** Resolve a persisted ship-type slug to a [ShipType]; an unknown slug degrades to the starter (WARN). */
+    private fun resolveShipType(slug: String): ShipType {
+        if (slug.isNotBlank()) {
+            ShipRoster.byId(ShipTypeId(slug))?.let { return it }
+        }
+        logger.warn(TAG, "Skipping unknown persisted ship_type '$slug'; using starter type")
+        return ShipRoster.STARTER
+    }
+
+    /** Map a persisted slot-category name to its [SlotCategory], or null (logged) if unknown. */
+    private fun parseSlotCategory(name: String): SlotCategory? {
+        val category = SlotCategory.entries.firstOrNull { it.name == name }
+        if (category == null) {
+            logger.warn(TAG, "Skipping unknown persisted slot_category '$name' (enum changed?)")
+        }
+        return category
+    }
+
+    /** Map a persisted upgrade id to a catalogued [UpgradeId], or null (logged) if not catalogued. */
+    private fun parseUpgrade(id: String): UpgradeId? {
+        if (id.isNotBlank()) {
+            val upgradeId = UpgradeId(id)
+            if (UpgradeCatalog.MVP.upgrade(upgradeId) != null) return upgradeId
+        }
+        logger.warn(TAG, "Skipping unknown persisted upgrade_id '$id' (catalog changed?)")
+        return null
     }
 
     /** Map a persisted resource name to its [ResourceType], or null (logged) if it is unknown. */
@@ -176,11 +281,5 @@ class SqlDelightGameStateRepository(
 
     private companion object {
         const val TAG = "Save"
-
-        /**
-         * Id of the active ship row. One owned ship today; UC09 grows to multiple rows keyed by id,
-         * with `game_state.active_ship_id` selecting the active one (the seam is already in place).
-         */
-        const val ACTIVE_SHIP_ID = 0L
     }
 }

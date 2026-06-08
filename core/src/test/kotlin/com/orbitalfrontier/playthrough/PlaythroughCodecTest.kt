@@ -4,6 +4,7 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
+import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.SectorId
 import org.junit.Assert.assertEquals
@@ -30,12 +31,15 @@ class PlaythroughCodecTest {
                 initialState =
                     SimulationState(
                         tick = 0,
-                        ship =
-                            com.orbitalfrontier.ship.ShipKinematics(
-                                position = Vec2(1f, 2f),
-                                velocity = Vec2(-3f, 4f),
-                                headingRadians = 0.5f,
-                                angularVelocity = -0.25f,
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = Vec2(1f, 2f),
+                                        velocity = Vec2(-3f, 4f),
+                                        headingRadians = 0.5f,
+                                        angularVelocity = -0.25f,
+                                    ),
                             ),
                     ),
             )
@@ -110,7 +114,7 @@ class PlaythroughCodecTest {
         val state =
             SimulationState(
                 tick = 5,
-                ship = ShipKinematics(position = Vec2(7f, 8f)),
+                fleet = singleShipFleet(kinematics = ShipKinematics(position = Vec2(7f, 8f))),
                 currentSector = SectorId("gamma"),
             )
 

@@ -1,0 +1,89 @@
+{
+  "formatVersion": 1,
+  "name": "uc09-outfit",
+  "seed": 9,
+  "dtSeconds": 0.016666668,
+  "tickCount": 4,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.5,
+    "thrustDraw": 1.5
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 0.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": 0.0,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": "alpha-station",
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 5000,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 0.0,
+        "posY": 0.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": 0.0,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {}
+      }
+    ],
+    "activeShipId": 0
+  },
+  "inputEvents": [
+    {
+      "type": "outfit",
+      "tick": 0,
+      "kind": "BUY_INSTALL",
+      "upgradeId": "engine-tune-i",
+      "slotCategory": null,
+      "slotIndex": null
+    },
+    {
+      "type": "fleet",
+      "tick": 1,
+      "kind": "BUY_SHIP",
+      "shipType": "swift",
+      "shipId": null
+    },
+    {
+      "type": "fleet",
+      "tick": 2,
+      "kind": "SWITCH_ACTIVE",
+      "shipType": null,
+      "shipId": 1
+    }
+  ]
+}

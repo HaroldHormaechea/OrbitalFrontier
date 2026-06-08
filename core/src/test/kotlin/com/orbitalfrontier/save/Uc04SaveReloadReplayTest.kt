@@ -41,7 +41,7 @@ class Uc04SaveReloadReplayTest {
     }
 
     /** The production game-state value the save layer persists, derived from a replayed snapshot. */
-    private fun worldStateFrom(state: SimulationState): WorldState = WorldState(currentSector = state.currentSector, ship = state.ship)
+    private fun worldStateFrom(state: SimulationState): WorldState = WorldState(currentSector = state.currentSector, fleet = state.fleet)
 
     @Test
     fun `a replayed jump playthrough saves and reloads to an exactly-equal world state`() {

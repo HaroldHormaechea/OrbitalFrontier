@@ -36,6 +36,8 @@ class StationHubScreen(
     stationName: String,
     private val onUndock: () -> Unit,
     private val onTrade: () -> Unit,
+    private val onOutfit: () -> Unit,
+    private val onShipyard: () -> Unit,
     private val onRefuel: () -> Unit,
     private val fuelStatus: () -> String,
 ) : ScreenAdapter() {
@@ -69,7 +71,15 @@ class StationHubScreen(
         )
         root.add(tradeButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
-        // Inert service stubs — no listeners; wired by later UCs (upgrades/missions).
+        // Active OUTFIT service (UC09 AC#2/#3/#4): opens the outfitting desk (buy/install upgrades; at a
+        // junkyard, also remove/sell used parts). The play screen owns the pure Outfitting resolver.
+        root.add(serviceButton("OUTFIT", onOutfit)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Active SHIPS service (UC09 AC#5): opens the shipyard / ship-switch screen (buy a ship where a
+        // shipyard exists; switch the active ship anywhere while docked). Pure FleetResolver behind it.
+        root.add(serviceButton("SHIPS", onShipyard)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Inert service stubs — no listeners; wired by later UCs (missions).
         for (service in INERT_SERVICES) {
             root.add(Label("$service  (coming soon)", skin.labelStyle)).padBottom(SERVICE_GAP).row()
         }
@@ -111,6 +121,26 @@ class StationHubScreen(
         stage.addActor(root)
     }
 
+    /** A labelled service button that fires [onTap] when clicked (UC09 hub services). */
+    private fun serviceButton(
+        label: String,
+        onTap: () -> Unit,
+    ): TextButton {
+        val button = TextButton(label, skin.settingsButtonStyle)
+        button.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    onTap()
+                }
+            },
+        )
+        return button
+    }
+
     override fun show() {
         Gdx.input.inputProcessor = stage
         logger.info(TAG, "StationHubScreen shown")
@@ -143,7 +173,7 @@ class StationHubScreen(
 
     private companion object {
         const val TAG = "Screen"
-        val INERT_SERVICES = listOf("OUTFIT", "MISSIONS")
+        val INERT_SERVICES = listOf("MISSIONS")
         const val MARGIN = 32f
         const val TITLE_GAP = 24f
         const val SERVICE_GAP = 12f

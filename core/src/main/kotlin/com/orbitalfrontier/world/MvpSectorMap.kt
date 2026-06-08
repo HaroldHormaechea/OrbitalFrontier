@@ -4,6 +4,10 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarket
 import com.orbitalfrontier.economy.TradeOffer
+import com.orbitalfrontier.outfit.OutfitMarket
+import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.ship.ShipRoster
+import com.orbitalfrontier.ship.Shipyard
 
 /**
  * The hand-authored 3-sector MVP map (UC03 AC#1; docs/design/world-and-sector.md, ADR 0004).
@@ -62,7 +66,16 @@ object MvpSectorMap {
                         listOf(
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
-                            station("alpha-station", "Alpha Station", Vec2(0f, 600f), ALPHA_MARKET),
+                            // Alpha Station (DEALER): trade desk + a tier-I outfitting desk + a shipyard
+                            // selling the courier hull (UC09 AC#3/#5).
+                            station(
+                                id = "alpha-station",
+                                displayName = "Alpha Station",
+                                position = Vec2(0f, 600f),
+                                market = ALPHA_MARKET,
+                                outfitMarket = ALPHA_OUTFIT,
+                                shipyard = Shipyard.of(listOf(ShipRoster.SWIFT.id)),
+                            ),
                             // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
                             // so mining it to a full hold still leaves the field partially depleted (UC06).
                             asteroidField(
@@ -85,7 +98,16 @@ object MvpSectorMap {
                         listOf(
                             gate("beta-to-alpha", angleDegrees = 180f, dest = ALPHA, destGate = "alpha-to-beta"),
                             gate("beta-to-gamma", angleDegrees = 60f, dest = GAMMA, destGate = "gamma-to-beta"),
-                            station("beta-station", "Beta Station", Vec2(300f, -300f), BETA_MARKET),
+                            // Beta Station (DEALER): trade desk + a tier-II outfitting desk + a shipyard
+                            // selling the miner hull (UC09 AC#3/#5).
+                            station(
+                                id = "beta-station",
+                                displayName = "Beta Station",
+                                position = Vec2(300f, -300f),
+                                market = BETA_MARKET,
+                                outfitMarket = BETA_OUTFIT,
+                                shipyard = Shipyard.of(listOf(ShipRoster.PROSPECTOR.id)),
+                            ),
                             // A modest second field (26 units total) of tech-input resources.
                             asteroidField(
                                 "beta-belt",
@@ -106,6 +128,17 @@ object MvpSectorMap {
                         listOf(
                             gate("gamma-to-beta", angleDegrees = 240f, dest = BETA, destGate = "beta-to-gamma"),
                             gate("gamma-to-alpha", angleDegrees = 300f, dest = ALPHA, destGate = "alpha-to-gamma"),
+                            // Gamma Verge hosts the sector's JUNKYARD (UC09 AC#4): the only place the
+                            // player can remove + sell used upgrades and refit. It also stocks a couple of
+                            // tier-I parts so a refit (remove then re-install) can happen on the spot. No
+                            // trade desk and no shipyard.
+                            station(
+                                id = "gamma-junkyard",
+                                displayName = "Gamma Junkyard",
+                                position = Vec2(-500f, 200f),
+                                kind = StationKind.JUNKYARD,
+                                outfitMarket = GAMMA_JUNKYARD_OUTFIT,
+                            ),
                         ),
                 ),
             ),
@@ -161,11 +194,47 @@ object MvpSectorMap {
             ),
         )
 
+    /**
+     * Alpha's tier-I outfitting desk (UC09 AC#3): an engine tune, a cargo pod, a fuel tank and a
+     * scanner — entry-level parts to start specializing the starter ship. [TUNE]
+     */
+    private val ALPHA_OUTFIT: OutfitMarket =
+        OutfitMarket.of(
+            listOf(
+                UpgradeCatalog.ENGINE_TUNE_I,
+                UpgradeCatalog.CARGO_POD_I,
+                UpgradeCatalog.FUEL_TANK_I,
+                UpgradeCatalog.SCANNER_I,
+            ),
+        )
+
+    /** Beta's tier-II outfitting desk (UC09 AC#3): the bigger engine + cargo upgrades. [TUNE] */
+    private val BETA_OUTFIT: OutfitMarket =
+        OutfitMarket.of(
+            listOf(
+                UpgradeCatalog.ENGINE_TUNE_II,
+                UpgradeCatalog.CARGO_POD_II,
+                UpgradeCatalog.CARGO_POD_I,
+            ),
+        )
+
+    /** The Gamma junkyard's small refit stock (UC09 AC#4): a couple of tier-I parts to re-fit on site. [TUNE] */
+    private val GAMMA_JUNKYARD_OUTFIT: OutfitMarket =
+        OutfitMarket.of(
+            listOf(
+                UpgradeCatalog.ENGINE_TUNE_I,
+                UpgradeCatalog.CARGO_POD_I,
+            ),
+        )
+
     private fun station(
         id: String,
         displayName: String,
         position: Vec2,
         market: StationMarket = StationMarket.EMPTY,
+        kind: StationKind = StationKind.DEALER,
+        outfitMarket: OutfitMarket = OutfitMarket.EMPTY,
+        shipyard: Shipyard = Shipyard.EMPTY,
     ): Station =
         Station(
             id = PoiId(id),
@@ -173,6 +242,9 @@ object MvpSectorMap {
             displayName = displayName,
             dockingRadius = STATION_DOCKING_RADIUS,
             market = market,
+            kind = kind,
+            outfitMarket = outfitMarket,
+            shipyard = shipyard,
         )
 
     private fun asteroidField(

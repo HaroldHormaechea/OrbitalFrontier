@@ -1,0 +1,28 @@
+-- Migration v6 -> v7 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v6 (UC08) held meta + settings + the save header (game_state, with credits) + ship kinematics +
+-- dock state + ship fuel + cargo + field_deposit, for a single owned ship. v7 (UC09) generalizes the
+-- single ship into a **fleet**: each ship gains a type, and ships gain installable upgrades. This
+-- migration is purely additive:
+--   * it adds `ship.ship_type` (the ShipTypeId slug) with DEFAULT 'starter', so the existing ship
+--     row is backfilled to the starter type (matching ShipRoster.STARTER_TYPE_ID); and
+--   * it creates the new `ship_upgrade` table (empty), so a migrated save has a single starter ship
+--     with no installed upgrades.
+-- All prior meta/settings/game_state/ship/cargo/field_deposit data is left untouched, and
+-- game_state.active_ship_id continues to point at the one existing ship (the starter, id 0).
+--
+-- ALTER TABLE ... ADD COLUMN with a constant DEFAULT and CREATE TABLE are supported by the bundled
+-- SQLite on minSdk-24 devices (both long predate 24), so this is minSdk-safe — same rationale as the
+-- prior additive migrations.
+
+ALTER TABLE ship ADD COLUMN ship_type TEXT NOT NULL DEFAULT 'starter';
+
+CREATE TABLE ship_upgrade (
+    ship_id INTEGER NOT NULL,
+    slot_category TEXT NOT NULL,
+    slot_index INTEGER NOT NULL,
+    upgrade_id TEXT NOT NULL,
+    PRIMARY KEY (ship_id, slot_category, slot_index)
+);
+
+UPDATE meta SET save_version = 7 WHERE id = 0;

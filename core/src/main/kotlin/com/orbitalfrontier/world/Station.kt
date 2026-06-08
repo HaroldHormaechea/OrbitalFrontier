@@ -2,6 +2,8 @@ package com.orbitalfrontier.world
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.StationMarket
+import com.orbitalfrontier.outfit.OutfitMarket
+import com.orbitalfrontier.ship.Shipyard
 
 /**
  * A station POI — a dockable point of interest that broadcasts a transponder (UC05 AC#1/#2;
@@ -30,6 +32,22 @@ data class Station(
     val dockingRadius: Float = DEFAULT_DOCKING_RADIUS,
     /** This station's fixed buy/sell prices (UC08); [StationMarket.EMPTY] when it has no trade desk. */
     val market: StationMarket = StationMarket.EMPTY,
+    /**
+     * What kind of station this is (UC09 AC#4): a [StationKind.DEALER] (the default) installs upgrades
+     * and may sell ships; a [StationKind.JUNKYARD] additionally lets the player remove/sell used
+     * upgrades and refit. Junkyard is a station **capability**, not a new [Poi] subtype (ADR 0008).
+     */
+    val kind: StationKind = StationKind.DEALER,
+    /**
+     * The upgrades this station offers for install (UC09 AC#3); [OutfitMarket.EMPTY] when it has no
+     * outfitting desk. Authored map data carried with the world, not persisted (ADR 0008).
+     */
+    val outfitMarket: OutfitMarket = OutfitMarket.EMPTY,
+    /**
+     * The ship types this station sells (UC09 AC#5); [Shipyard.EMPTY] when it has no shipyard.
+     * Authored map data carried with the world, not persisted (ADR 0008).
+     */
+    val shipyard: Shipyard = Shipyard.EMPTY,
 ) : Poi, Transponder {
     override val contactKind: ContactKind get() = ContactKind.STATION
 
