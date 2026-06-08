@@ -41,7 +41,8 @@
     "cargoCapacity": 50,
     "cargo": {},
     "fieldDepletion": {},
-    "fuel": 100.0
+    "fuel": 100.0,
+    "credits": 0
   },
   "inputEvents": [
     {

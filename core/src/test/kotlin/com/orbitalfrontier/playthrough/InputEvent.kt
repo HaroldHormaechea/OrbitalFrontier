@@ -2,6 +2,8 @@ package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.RefuelAction
+import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
@@ -116,4 +118,28 @@ data class MineEvent(
 data class RefuelEvent(
     override val tick: Int,
     val action: RefuelAction,
+) : InputEvent()
+
+/**
+ * A trade control sample for one tick (UC08 AC#3) — one BUY/SELL the station trade desk feeds in when
+ * the player taps a trade row while docked. Carried alongside [MovementEvent]/[DockActionEvent]/
+ * [RefuelEvent] in the same tick-stamped script, so a recorded session can dock, refuel *and* trade;
+ * [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs a [com.orbitalfrontier.economy.TradeOrder]
+ * from it and dispatches it to [com.orbitalfrontier.sim.Simulation.step] each tick — and because
+ * trading is resolved inside the docked-freeze branch, it only has an effect while docked.
+ *
+ * [kind] / [resource] are plain (annotation-free) domain enums; kotlinx.serialization emits each by its
+ * constant name, so the on-disk form is the stable, diffable string `"BUY"`/`"SELL"` and the resource
+ * name (e.g. `"TITANIUM"`). [units] is the requested quantity; [com.orbitalfrontier.economy.Trading]
+ * clamps it to what is affordable / fits / is held. A tick with no [TradeEvent] reconstructs as
+ * [com.orbitalfrontier.economy.TradeOrder.None] in the runner, so older artifacts (which carry none)
+ * replay unchanged.
+ */
+@Serializable
+@SerialName("trade")
+data class TradeEvent(
+    override val tick: Int,
+    val kind: TradeKind,
+    val resource: ResourceType,
+    val units: Int,
 ) : InputEvent()

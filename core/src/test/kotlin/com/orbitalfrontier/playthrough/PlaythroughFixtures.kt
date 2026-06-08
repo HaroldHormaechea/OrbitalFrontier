@@ -1,7 +1,10 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
+import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
@@ -9,6 +12,7 @@ import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.PoiId
 
 /**
  * Reproducible test playthrough fixtures, built from the [PlaythroughRecorder] (UC02 AC#4/#7).
@@ -34,6 +38,19 @@ object PlaythroughFixtures {
     /** UC07 low-fuel playthrough name: start near-empty and thrust until the tank crosses below the threshold. */
     const val UC07_LOW_FUEL: String = "uc07-low-fuel"
 
+    /** UC08 trade playthrough name: start docked at Alpha Station with cargo and sell it for credits. */
+    const val UC08_TRADE: String = "uc08-trade"
+
+    /**
+     * Starting credit balance the UC08 trade fixture seeds (mirrors the new-game wallet seed). Authored
+     * here as a literal so the fixture stays self-contained — it does not depend on the production
+     * bootstrap constant — and so the sale's effect is asserted against a known non-zero baseline.
+     */
+    const val UC08_STARTING_CREDITS: Long = 500L
+
+    /** Units of Titanium the UC08 fixture starts with and sells in one go. */
+    const val UC08_TITANIUM_UNITS: Int = 6
+
     /**
      * Power tuning **pinned for the UC07 low-fuel fixture only** — a deliberately thirsty draw
      * (10 fuel-units/s while thrusting vs. the default 2) so a short, compact playthrough actually
@@ -58,6 +75,7 @@ object PlaythroughFixtures {
             UC05_DOCK to ::uc05Dock,
             UC06_MINE to ::uc06Mine,
             UC07_LOW_FUEL to ::uc07LowFuel,
+            UC08_TRADE to ::uc08Trade,
         )
 
     /**
@@ -241,6 +259,46 @@ object PlaythroughFixtures {
         for (tick in 0 until 90) {
             recorder.recordMovement(tick, north)
         }
+        return recorder.build()
+    }
+
+    /**
+     * UC08 trade scenario (AC#1/#7): the ship starts **docked at Alpha Station** in
+     * [MvpSectorMap.START_SECTOR] (Alpha) carrying [UC08_TITANIUM_UNITS] units of Titanium and a
+     * [UC08_STARTING_CREDITS] wallet. At tick 0 it sells all its Titanium to the station; Alpha pays
+     * 50/unit for Titanium (the authored high sell on the map), so the wallet rises by
+     * `units * sellPrice` and the hold empties of Titanium. The remaining held ticks carry no trade
+     * event, so — being docked and idle — credits and cargo stay put (the docked freeze, now covering
+     * the wallet too).
+     *
+     * Starting docked (rather than flying in and docking) keeps the artifact tiny while still exercising
+     * the full trade path: the docked-station market is looked up from the production [MvpSectorMap], the
+     * pure [com.orbitalfrontier.economy.Trading] resolves the sale, and the resulting credits + cargo
+     * thread into the snapshot the save layer persists. [Uc08TradeReplayTest] asserts the exact credit
+     * gain and cargo drop; the fixture tracks the real map's prices.
+     */
+    fun uc08Trade(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC08_TRADE,
+                seed = 8L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at Alpha Station so the trade desk's authored market resolves; at rest,
+                        // in the start sector (currentSector defaults to MvpSectorMap.START_SECTOR / alpha).
+                        ship = ShipKinematics(),
+                        dockedStation = PoiId("alpha-station"),
+                        // A hold of sellable Titanium — Alpha pays the map's highest sell (50/unit) for it.
+                        cargo = Cargo(mapOf(ResourceType.TITANIUM to UC08_TITANIUM_UNITS), Cargo.DEFAULT_CAPACITY),
+                        // A non-zero starting wallet so the sale's gain is measured from a known baseline.
+                        credits = UC08_STARTING_CREDITS,
+                    ),
+            )
+        // Tick 0: sell all the Titanium to Alpha Station. The docked freeze resolves the trade once; the
+        // trailing held ticks (1..3) carry no trade event, proving credits + cargo stay put while docked.
+        recorder.recordTrade(0, TradeKind.SELL, ResourceType.TITANIUM, UC08_TITANIUM_UNITS)
+        recorder.extendToTick(3)
         return recorder.build()
     }
 }

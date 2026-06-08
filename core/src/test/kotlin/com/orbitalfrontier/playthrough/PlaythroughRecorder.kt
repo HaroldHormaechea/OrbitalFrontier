@@ -3,6 +3,8 @@ package com.orbitalfrontier.playthrough
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
+import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -85,6 +87,14 @@ class PlaythroughRecorder(
         tick: Int,
         action: RefuelAction,
     ): PlaythroughRecorder = record(RefuelEvent(tick = tick, action = action))
+
+    /** Convenience: record a [TradeEvent] (one BUY/SELL of [units] [resource]) at [tick] (UC08). */
+    fun recordTrade(
+        tick: Int,
+        kind: TradeKind,
+        resource: ResourceType,
+        units: Int,
+    ): PlaythroughRecorder = record(TradeEvent(tick = tick, kind = kind, resource = resource, units = units))
 
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {
