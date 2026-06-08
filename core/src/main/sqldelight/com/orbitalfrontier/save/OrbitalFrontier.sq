@@ -1,15 +1,17 @@
--- Orbital Frontier save schema, version 3 (ADR 0002 / ADR 0003).
+-- Orbital Frontier save schema, version 4 (ADR 0002 / ADR 0003).
 --
--- This .sq file is ALWAYS the latest schema (currently v3). Earlier versions are upgraded to it
--- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3). Never
--- edit this baseline destructively to make a schema change — bump the version and add a migration
--- instead.
+-- This .sq file is ALWAYS the latest schema (currently v4). Earlier versions are upgraded to it
+-- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
+-- 3.sqm: v3 -> v4). Never edit this baseline destructively to make a schema change — bump the
+-- version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
 -- player's ship kinematics (`ship`). v3 (UC05) adds the player's dock state to the header
 -- (`game_state.docked_station_id`): the [PoiId] of the station the ship is docked at, or NULL when
--- in flight. All save-header singletons live in `game_state`; the `ship` table is keyed by id so
+-- in flight. v4 (UC06) adds the player's `cargo` (per-ship resource units) and asteroid-field
+-- `field_deposit` (remaining units per field) so mined resources and field depletion persist.
+-- All save-header singletons live in `game_state`; the `ship` table is keyed by id so
 -- UC09 can grow to multiple owned ships additively (the active ship is the one
 -- `game_state.active_ship_id` points at). Box2D internals are never persisted — only the pure
 -- kinematics the model re-seeds the body from on load (UC04 pitfall).
@@ -52,6 +54,30 @@ CREATE TABLE ship (
     ang_vel REAL NOT NULL
 );
 
+-- Per-ship cargo (UC06). One row per (ship, resource) the ship is carrying a non-zero amount of;
+-- `resource` is the ResourceType enum *name* (stable across enum reordering, unlike its ordinal).
+-- Keyed by (ship_id, resource) so each resource appears at most once per ship. Capacity is NOT
+-- stored — it is a ship stat the repository reconstructs from Cargo.DEFAULT_CAPACITY on load. The
+-- active ship's rows are rewritten as a full snapshot (delete-then-insert) on each save.
+CREATE TABLE cargo (
+    ship_id INTEGER NOT NULL,
+    resource TEXT NOT NULL,
+    units INTEGER NOT NULL,
+    PRIMARY KEY (ship_id, resource)
+);
+
+-- Asteroid-field depletion (UC06). One row per (field, resource) the field has been mined from,
+-- storing the *remaining* units. `field_id` is the field's PoiId value (globally unique across the
+-- sector graph — see SectorWorld.allPoiIds), `resource` the ResourceType enum name. A field with NO
+-- rows here is pristine (its authored deposits apply). Depletion is monotonic (units only ever
+-- decrease), so saves upsert the latest snapshot per (field, resource) and never delete.
+CREATE TABLE field_deposit (
+    field_id TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    remaining_units INTEGER NOT NULL,
+    PRIMARY KEY (field_id, resource)
+);
+
 -- Read the stored save-format version (null before the meta row is seeded).
 selectSaveVersion:
 SELECT save_version FROM meta WHERE id = 0;
@@ -92,3 +118,27 @@ INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_sta
 -- Insert-or-update one ship row's kinematics by id (active ship id today; more rows under UC09).
 upsertShip:
 INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Read all cargo rows for one ship (resource name + units). Empty when the hold is empty.
+selectCargo:
+SELECT resource, units FROM cargo WHERE ship_id = ?;
+
+-- Clear a ship's cargo rows. The save path does delete-then-plain-INSERT (a full snapshot rewrite)
+-- rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices does not support.
+deleteCargoForShip:
+DELETE FROM cargo WHERE ship_id = ?;
+
+-- Insert one cargo row. Always preceded by deleteCargoForShip in the same transaction, so a plain
+-- INSERT (not INSERT OR REPLACE) is sufficient and there is never a primary-key collision.
+insertCargoEntry:
+INSERT INTO cargo(ship_id, resource, units) VALUES (?, ?, ?);
+
+-- Read all field-depletion rows (field id + resource name + remaining units) across every field.
+selectFieldDeposits:
+SELECT field_id, resource, remaining_units FROM field_deposit;
+
+-- Insert-or-update one field's remaining units for a resource. INSERT OR REPLACE (not UPSERT / ON
+-- CONFLICT DO UPDATE) for the same minSdk-24 rationale as upsertHandedness/upsertGameState; the row
+-- is fully specified by its (field_id, resource) primary key, so REPLACE is side-effect-free.
+upsertFieldDeposit:
+INSERT OR REPLACE INTO field_deposit(field_id, resource, remaining_units) VALUES (?, ?, ?);
