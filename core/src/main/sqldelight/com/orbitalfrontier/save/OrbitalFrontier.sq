@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 7 (ADR 0002 / ADR 0003 / ADR 0008).
+-- Orbital Frontier save schema, version 8 (ADR 0002 / ADR 0003 / ADR 0008).
 --
--- This .sq file is ALWAYS the latest schema (currently v7). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v8). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
--- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7). Never edit this baseline
--- destructively to make a schema change — bump the version and add a migration instead.
+-- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8). Never edit
+-- this baseline destructively to make a schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -23,6 +23,11 @@
 -- (ADR 0007 / ADR 0008). Cargo & fuel *capacities* are derived ship stats reconstructed from
 -- type + loadout on load (ShipStats), never stored. Box2D internals are never persisted — only the
 -- pure kinematics the model re-seeds the body from on load (UC04 pitfall).
+-- v8 (UC10) adds the new `revealed_contact` table: the ids of no-transponder hidden contacts the
+-- player has uncovered by active scanning (UC10 AC#4). Reveal is **monotonic** — a row is only ever
+-- inserted (INSERT OR IGNORE), never deleted, so a revealed contact stays known across save/reload.
+-- The v7 -> v8 migration is additive: it creates the (empty) table, so a migrated save reads back with
+-- nothing revealed. Hidden contacts themselves are fixed authored map data (MvpSectorMap), not stored.
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -105,6 +110,15 @@ CREATE TABLE field_deposit (
     resource TEXT NOT NULL,
     remaining_units INTEGER NOT NULL,
     PRIMARY KEY (field_id, resource)
+);
+
+-- Revealed hidden contacts (UC10). One row per [HiddenContact] the player has uncovered by active
+-- scanning; `contact_id` is the contact's PoiId value (globally unique across the sector graph). A
+-- contact with NO row here is still hidden. Reveal is monotonic (a contact never re-hides), so saves
+-- only ever INSERT OR IGNORE these ids and never delete. A row for a contact the authored map no
+-- longer contains is harmless (it resolves to nothing on load).
+CREATE TABLE revealed_contact (
+    contact_id TEXT NOT NULL PRIMARY KEY
 );
 
 -- Read the stored save-format version (null before the meta row is seeded).
@@ -197,3 +211,13 @@ SELECT field_id, resource, remaining_units FROM field_deposit;
 -- is fully specified by its (field_id, resource) primary key, so REPLACE is side-effect-free.
 upsertFieldDeposit:
 INSERT OR REPLACE INTO field_deposit(field_id, resource, remaining_units) VALUES (?, ?, ?);
+
+-- Read every revealed hidden-contact id (UC10). Empty when nothing has been scanned yet.
+selectRevealedContacts:
+SELECT contact_id FROM revealed_contact;
+
+-- Record one hidden contact as revealed (UC10). INSERT OR IGNORE makes it append-only and idempotent:
+-- re-revealing an already-known contact is a no-op, and reveal is never undone (monotonic, AC#4). The
+-- minSdk-24-safe form (no ON CONFLICT clause) matches the other write queries.
+insertRevealedContact:
+INSERT OR IGNORE INTO revealed_contact(contact_id) VALUES (?);

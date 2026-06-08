@@ -108,6 +108,8 @@ class SqlDelightGameStateRepository(
                 fieldDepletion = loadFieldDepletion(),
                 // Credits (UC08): coerceAtLeast(0) guards a corrupt/negative row — never negative.
                 credits = header.credits.coerceAtLeast(0),
+                // Revealed hidden contacts (UC10): absent = still hidden; reveal is monotonic.
+                revealedContacts = loadRevealedContacts(),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -181,6 +183,12 @@ class SqlDelightGameStateRepository(
                         )
                     }
                 }
+
+                // Revealed hidden contacts (UC10): insert-or-ignore each id. Reveal is monotonic, so we
+                // only ever add rows and never delete — an already-revealed contact stays revealed.
+                for (contactId in state.revealedContacts) {
+                    queries.insertRevealedContact(contact_id = contactId.value)
+                }
             }
             logger.info(
                 TAG,
@@ -240,6 +248,19 @@ class SqlDelightGameStateRepository(
             byField.getOrPut(PoiId(entry.field_id)) { LinkedHashMap() }[resource] = entry.remaining_units.toInt()
         }
         return byField
+    }
+
+    /**
+     * Reconstruct the revealed-hidden-contact set from `revealed_contact` (UC10). Each row's id is a
+     * [PoiId]; an id whose contact the authored map no longer contains is kept harmlessly (it resolves
+     * to nothing when the renderer/scan logic looks it up). Empty when nothing has been scanned.
+     */
+    private fun loadRevealedContacts(): Set<PoiId> {
+        val ids = LinkedHashSet<PoiId>()
+        for (contactId in queries.selectRevealedContacts().executeAsList()) {
+            ids.add(PoiId(contactId))
+        }
+        return ids
     }
 
     /** Resolve a persisted ship-type slug to a [ShipType]; an unknown slug degrades to the starter (WARN). */

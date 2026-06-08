@@ -32,6 +32,12 @@ import com.orbitalfrontier.ship.ShipKinematics
  *
  * Cargo and fuel **capacities** are ship stats reconstructed on load from the ship type + loadout
  * (see [com.orbitalfrontier.outfit.ShipStats]); only the contents/level are persisted.
+ *
+ * [revealedContacts] (UC10) is the set of [HiddenContact] ids the player has revealed by active
+ * scanning. It is **save-wide** (not per-ship or per-sector — a contact's [PoiId] is globally unique
+ * across the sector graph) and **monotonic**: a scan only ever adds ids ([Scanning.resolve]); revealed
+ * contacts never re-hide, even on leaving range, and persist across save/reload (UC10 AC#4). Defaults
+ * to empty — a fresh game has scanned nothing.
  */
 data class WorldState(
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
@@ -39,6 +45,7 @@ data class WorldState(
     val dockedStation: PoiId? = null,
     val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
     val credits: Long = 0L,
+    val revealedContacts: Set<PoiId> = emptySet(),
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics
