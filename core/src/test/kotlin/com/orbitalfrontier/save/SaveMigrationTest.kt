@@ -2,7 +2,9 @@ package com.orbitalfrontier.save
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.platform.NoOpLogger
+import com.orbitalfrontier.world.PoiId
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -161,6 +163,26 @@ class SaveMigrationTest {
             },
         ).value
 
+    /**
+     * Read the single `game_state` row's (`current_sector`, `docked_station_id`) directly via SQL.
+     *
+     * Used by the v2→v3 test for data-survival assertions **without** going through
+     * [SqlDelightGameStateRepository.loadGameState], which now (UC06/v4) reads the `cargo` +
+     * `field_deposit` tables a v3 DB does not yet have. Loading a fully-migrated save through the
+     * repository is covered by the v3→v4 and full-chain tests below.
+     */
+    private fun readGameStateColumns(): Pair<String?, String?> =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT current_sector, docked_station_id FROM game_state WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0) to cursor.getString(1))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
     @Test
     fun `migrating a real v2 database to v3 preserves the saved game, adds the dock column, and bumps the version`() {
         buildRealV2Database()
@@ -177,41 +199,119 @@ class SaveMigrationTest {
         // The new dock column exists and is NULL for the pre-existing (in-flight) save.
         assertTrue("docked_station_id column must exist after migration", columnExists("game_state", "docked_station_id"))
 
-        // The full save still loads, with the migrated row read back as in flight (docked_station_id = NULL).
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
-        val loaded = gameStateRepo.loadGameState()
-        assertNotNull("a migrated v2 save must still load", loaded)
-        assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
-        assertNull("a migrated v2 save reads back as in flight (no dock column value)", loaded.dockedStation)
-        assertTrue("a migrated v2 DB still reports a save", gameStateRepo.hasSave())
+        // Data survival: the seeded game_state row survives, read directly (loadGameState() now needs
+        // the v4 cargo/field_deposit tables, which a v3 DB lacks — covered by the v3->v4 test below).
+        val (sector, docked) = readGameStateColumns()
+        assertEquals("the saved sector must survive", "beta", sector)
+        assertNull("a migrated v2 save reads back as in flight (no dock column value)", docked)
+        assertTrue("a migrated v2 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
 
         // The stored save-format version is bumped to 3 (AC#4).
         assertEquals(3L, queries.selectSaveVersion().executeAsOne())
     }
 
+    // --- UC06 AC#4/#5: v3 -> v4 adds the cargo + field_deposit tables additively ---
+
+    /**
+     * Build the exact v3 (UC05) schema — `meta` + `settings` + the v3 `game_state` (WITH
+     * `docked_station_id`) + `ship` — and seed a real docked save so the v3→v4 migration is
+     * exercised against **data-bearing** tables, not empty ones.
+     */
+    private fun buildRealV3Database() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL)",
+            0,
+        )
+        // v3 game_state: INCLUDES docked_station_id, but NO cargo/field_deposit tables yet.
+        driver.execute(
+            null,
+            "CREATE TABLE game_state (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), " +
+                "current_sector TEXT NOT NULL, active_ship_id INTEGER NOT NULL, docked_station_id TEXT)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE ship (id INTEGER NOT NULL PRIMARY KEY, pos_x REAL NOT NULL, pos_y REAL NOT NULL, " +
+                "vel_x REAL NOT NULL, vel_y REAL NOT NULL, heading REAL NOT NULL, ang_vel REAL NOT NULL)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 3)", 0)
+        driver.execute(null, "INSERT INTO settings(id, handedness) VALUES (0, 'LEFT_HANDED')", 0)
+        driver.execute(
+            null,
+            "INSERT INTO game_state(id, current_sector, active_ship_id, docked_station_id) " +
+                "VALUES (0, 'beta', 0, 'beta-station')",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel) VALUES (0, 12.5, -7.5, 1.0, 2.0, 0.25, -0.5)",
+            0,
+        )
+    }
+
     @Test
-    fun `the full v1 to v3 chain preserves settings, lands every schema change, and ends at version 3`() {
+    fun `migrating a real v3 database to v4 preserves the saved game, adds cargo and field_deposit tables, and bumps the version`() {
+        buildRealV3Database()
+
+        // Apply the sequential v3 -> v4 migration (runs migrations/3.sqm).
+        OrbitalFrontier.Schema.migrate(driver, 3L, 4L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // Data survival: settings + the docked game_state + ship survive the additive migration (AC#4).
+        assertEquals("v3 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+
+        // The two new v4 tables now exist.
+        assertTrue("cargo table must exist after migration", tableExists("cargo"))
+        assertTrue("field_deposit table must exist after migration", tableExists("field_deposit"))
+
+        // The full save still loads: prior sector + dock state intact, hold empty, all fields pristine.
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val loaded = gameStateRepo.loadGameState()
+        assertNotNull("a migrated v3 save must still load", loaded)
+        assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
+        assertEquals("the dock state must survive", PoiId("beta-station"), loaded.dockedStation)
+        assertTrue("a migrated v3 save has an empty hold", loaded.cargo.contents.isEmpty())
+        assertEquals("the hold reloads at the default capacity", Cargo.DEFAULT_CAPACITY, loaded.cargo.capacity)
+        assertTrue("a migrated v3 save has all fields pristine", loaded.fieldDepletion.isEmpty())
+
+        // The stored save-format version is bumped to 4 (AC#4).
+        assertEquals(4L, queries.selectSaveVersion().executeAsOne())
+    }
+
+    @Test
+    fun `the full v1 to v4 chain preserves settings, lands every schema change, and ends at version 4`() {
         buildRealV1Database()
 
-        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) then 2.sqm (v2->v3).
-        OrbitalFrontier.Schema.migrate(driver, 1L, 3L)
+        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2), 2.sqm (v2->v3), 3.sqm (v3->v4).
+        OrbitalFrontier.Schema.migrate(driver, 1L, 4L)
 
         val database = OrbitalFrontier(driver)
         val queries = database.orbitalFrontierQueries
 
         // v1 settings survive the whole chain.
-        assertEquals("v1 settings must survive the v1->v3 chain", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v1 settings must survive the v1->v4 chain", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
 
-        // Both schema changes landed: the v2 tables and the v3 dock column.
+        // Every schema change landed: the v2 tables, the v3 dock column, and the v4 tables.
         assertTrue("game_state table must exist", tableExists("game_state"))
         assertTrue("ship table must exist", tableExists("ship"))
         assertTrue("docked_station_id column must exist", columnExists("game_state", "docked_station_id"))
+        assertTrue("cargo table must exist", tableExists("cargo"))
+        assertTrue("field_deposit table must exist", tableExists("field_deposit"))
 
         // A migrated-from-v1 DB has no game state (settings-only origin) → New Game.
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
         assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState())
 
         // Ends at the current schema version.
-        assertEquals(3L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(4L, queries.selectSaveVersion().executeAsOne())
     }
 }

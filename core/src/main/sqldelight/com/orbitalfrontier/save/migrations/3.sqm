@@ -1,0 +1,24 @@
+-- Migration v3 -> v4 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v3 (UC05) held meta + settings + the save header (game_state) + ship kinematics + dock state. v4
+-- (UC06) adds two child tables: `cargo` (per-ship resource units the player is carrying) and
+-- `field_deposit` (remaining units per asteroid field). This migration is purely additive — it only
+-- CREATEs the two new tables and seeds NO rows, so an existing v3 save upgrades with an empty hold
+-- (Cargo reconstructed at DEFAULT_CAPACITY) and all asteroid fields pristine (no depletion rows),
+-- leaving all prior meta/settings/game_state/ship data untouched (UC06 AC#4/#5).
+
+CREATE TABLE cargo (
+    ship_id INTEGER NOT NULL,
+    resource TEXT NOT NULL,
+    units INTEGER NOT NULL,
+    PRIMARY KEY (ship_id, resource)
+);
+
+CREATE TABLE field_deposit (
+    field_id TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    remaining_units INTEGER NOT NULL,
+    PRIMARY KEY (field_id, resource)
+);
+
+UPDATE meta SET save_version = 4 WHERE id = 0;

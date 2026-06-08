@@ -15,7 +15,7 @@ Statuses:
 | 03 | [use-cases/03-sector-world-and-jump-gates.md](use-cases/03-sector-world-and-jump-gates.md) | Sector world & fixed jump gates | done | 2026-06-07 |
 | 04 | [use-cases/04-full-game-state-save-load.md](use-cases/04-full-game-state-save-load.md) | Full game-state save & load | done | 2026-06-07 |
 | 05 | [use-cases/05-stations-and-docking.md](use-cases/05-stations-and-docking.md) | Stations & docking | done | 2026-06-07 |
-| 06 | [use-cases/06-asteroid-mining-resources-cargo.md](use-cases/06-asteroid-mining-resources-cargo.md) | Asteroid mining, resources & cargo | pending | 2026-06-07 |
+| 06 | [use-cases/06-asteroid-mining-resources-cargo.md](use-cases/06-asteroid-mining-resources-cargo.md) | Asteroid mining, resources & cargo | done | 2026-06-08 |
 | 07 | [use-cases/07-fuel-and-power-energy.md](use-cases/07-fuel-and-power-energy.md) | Fuel & power/energy | pending | 2026-06-07 |
 | 08 | [use-cases/08-credits-and-trading.md](use-cases/08-credits-and-trading.md) | Credits & inter-station trading | pending | 2026-06-07 |
 | 09 | [use-cases/09-outfitting-upgrades-junkyards-ships.md](use-cases/09-outfitting-upgrades-junkyards-ships.md) | Ship outfitting, upgrades, junkyards & multiple ships | pending | 2026-06-07 |

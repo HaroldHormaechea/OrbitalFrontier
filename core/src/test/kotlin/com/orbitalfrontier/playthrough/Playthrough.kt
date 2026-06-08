@@ -1,6 +1,9 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
@@ -25,6 +28,8 @@ import kotlinx.serialization.Serializable
  * @property tickCount total number of ticks the replay should step (0 until tickCount).
  * @property config the pinned [ShipMovementParams] snapshot the run was recorded under, so a later
  *   tuning change can't silently invalidate this artifact.
+ * @property miningConfig the pinned [MiningParams] snapshot the run was recorded under (UC06), same
+ *   rationale as [config]; defaulted so older artifacts (recorded before mining) decode unchanged.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -37,6 +42,7 @@ data class Playthrough(
     val dtSeconds: Float,
     val tickCount: Int,
     val config: MovementParamsDto = MovementParamsDto.DEFAULT,
+    val miningConfig: MiningParamsDto = MiningParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -100,6 +106,30 @@ data class MovementParamsDto(
 }
 
 /**
+ * Serializable mirror of [MiningParams] (UC06 config snapshot).
+ *
+ * [MiningParams] is a pure domain type and stays annotation-free; this DTO carries the same field
+ * for persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the number
+ * lives in exactly one place. Pinning the mining tuning per artifact means a later balancing change
+ * to the extraction rate cannot silently invalidate an old recorded playthrough.
+ */
+@Serializable
+data class MiningParamsDto(
+    val extractionUnitsPerTick: Int,
+) {
+    /** Reconstruct the domain [MiningParams] (its `init` re-validates the value). */
+    fun toMiningParams(): MiningParams = MiningParams(extractionUnitsPerTick = extractionUnitsPerTick)
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: MiningParams): MiningParamsDto = MiningParamsDto(params.extractionUnitsPerTick)
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: MiningParamsDto = from(MiningParams())
+    }
+}
+
+/**
  * Serializable mirror of [SimulationState] (UC02 AC#3 optional initial state; AC#6 snapshots).
  *
  * Mirrors the snapshot as flat scalar fields so the domain types ([SimulationState],
@@ -125,6 +155,23 @@ data class StateSnapshotDto(
      * Defaulted to null so older artifacts (recorded before the field existed) decode as "in flight".
      */
     val dockedStation: String? = null,
+    /**
+     * The cargo hold's capacity (a ship stat, UC06). Defaulted to [Cargo.DEFAULT_CAPACITY] so older
+     * artifacts decode with the starter-ship capacity.
+     */
+    val cargoCapacity: Int = Cargo.DEFAULT_CAPACITY,
+    /**
+     * The cargo contents, keyed by [ResourceType.name] (the stable enum name, not its ordinal) → unit
+     * count (UC06 AC#5). String-keyed so the on-disk form stays diffable and stable across enum
+     * reordering. Empty by default, so older artifacts decode as an empty hold.
+     */
+    val cargo: Map<String, Int> = emptyMap(),
+    /**
+     * Per-asteroid-field remaining deposits (UC06 AC#4): [PoiId.value] → ([ResourceType.name] → units).
+     * String-keyed for the same diffability/stability reason as [cargo]; an absent field is pristine.
+     * Empty by default, so older artifacts decode with every field pristine.
+     */
+    val fieldDepletion: Map<String, Map<String, Int>> = emptyMap(),
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -139,6 +186,11 @@ data class StateSnapshotDto(
                 ),
             currentSector = SectorId(currentSector),
             dockedStation = dockedStation?.let(::PoiId),
+            cargo = Cargo(cargo.mapKeys { ResourceType.valueOf(it.key) }, cargoCapacity),
+            fieldDepletion =
+                fieldDepletion
+                    .mapKeys { (fieldId, _) -> PoiId(fieldId) }
+                    .mapValues { (_, deposits) -> deposits.mapKeys { ResourceType.valueOf(it.key) } },
         )
 
     companion object {
@@ -154,6 +206,12 @@ data class StateSnapshotDto(
                 angularVelocity = state.ship.angularVelocity,
                 currentSector = state.currentSector.value,
                 dockedStation = state.dockedStation?.value,
+                cargoCapacity = state.cargo.capacity,
+                cargo = state.cargo.contents.mapKeys { it.key.name },
+                fieldDepletion =
+                    state.fieldDepletion
+                        .mapKeys { (fieldId, _) -> fieldId.value }
+                        .mapValues { (_, deposits) -> deposits.mapKeys { it.key.name } },
             )
     }
 }

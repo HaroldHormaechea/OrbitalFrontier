@@ -1,9 +1,9 @@
 {
   "formatVersion": 1,
-  "name": "uc01-thrust-north",
-  "seed": 1,
+  "name": "uc06-mine",
+  "seed": 6,
   "dtSeconds": 0.016666668,
-  "tickCount": 90,
+  "tickCount": 40,
   "config": {
     "maxSpeed": 120.0,
     "maxAcceleration": 80.0,
@@ -20,11 +20,11 @@
   },
   "initialState": {
     "tick": 0,
-    "posX": 0.0,
-    "posY": 0.0,
+    "posX": -600.0,
+    "posY": -510.0,
     "velX": 0.0,
-    "velY": 0.0,
-    "headingRadians": 0.0,
+    "velY": 120.0,
+    "headingRadians": 1.5707964,
     "angularVelocity": 0.0,
     "currentSector": "alpha",
     "dockedStation": null,
@@ -42,12 +42,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 0,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 1,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 1,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -58,12 +68,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 2,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 3,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 3,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -74,12 +94,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 4,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 5,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 5,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -90,12 +120,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 6,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 7,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 7,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -106,12 +146,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 8,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 9,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 9,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -122,12 +172,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 10,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 11,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 11,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -138,12 +198,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 12,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 13,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 13,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -154,12 +224,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 14,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 15,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 15,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -170,12 +250,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 16,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 17,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 17,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -186,12 +276,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 18,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 19,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 19,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -202,12 +302,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 20,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 21,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 21,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -218,12 +328,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 22,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 23,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 23,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -234,12 +354,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 24,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 25,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 25,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -250,12 +380,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 26,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 27,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 27,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -266,12 +406,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 28,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 29,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 29,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -282,12 +432,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 30,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 31,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 31,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -298,12 +458,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 32,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 33,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 33,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -314,12 +484,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 34,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 35,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 35,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -330,12 +510,22 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 36,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 37,
       "dirX": 0.0,
       "dirY": 1.0,
       "magnitude": 1.0,
       "released": false
+    },
+    {
+      "type": "mine",
+      "tick": 37,
+      "action": "MINE"
     },
     {
       "type": "movement",
@@ -346,6 +536,11 @@
       "released": false
     },
     {
+      "type": "mine",
+      "tick": 38,
+      "action": "MINE"
+    },
+    {
       "type": "movement",
       "tick": 39,
       "dirX": 0.0,
@@ -354,164 +549,9 @@
       "released": false
     },
     {
-      "type": "movement",
-      "tick": 40,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 41,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 42,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 43,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 44,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 45,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 46,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 47,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 48,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 49,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 50,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 51,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 52,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 53,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 54,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 55,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 56,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 57,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 58,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
-    },
-    {
-      "type": "movement",
-      "tick": 59,
-      "dirX": 0.0,
-      "dirY": 1.0,
-      "magnitude": 1.0,
-      "released": false
+      "type": "mine",
+      "tick": 39,
+      "action": "MINE"
     }
   ]
 }

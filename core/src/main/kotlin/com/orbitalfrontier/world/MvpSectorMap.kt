@@ -1,6 +1,7 @@
 package com.orbitalfrontier.world
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.ResourceType
 
 /**
  * The hand-authored 3-sector MVP map (UC03 AC#1; docs/design/world-and-sector.md, ADR 0004).
@@ -37,6 +38,9 @@ object MvpSectorMap {
     /** Docking-range radius (world-units) of each authored station. [TUNE] */
     private const val STATION_DOCKING_RADIUS: Float = 100f
 
+    /** Mining-range radius (world-units) of each authored asteroid field. [TUNE] */
+    private const val ASTEROID_MINING_RADIUS: Float = 100f
+
     private val ALPHA = SectorId("alpha")
     private val BETA = SectorId("beta")
     private val GAMMA = SectorId("gamma")
@@ -57,6 +61,18 @@ object MvpSectorMap {
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
                             station("alpha-station", "Alpha Station", Vec2(0f, 600f)),
+                            // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
+                            // so mining it to a full hold still leaves the field partially depleted (UC06).
+                            asteroidField(
+                                "alpha-belt",
+                                Vec2(-600f, -400f),
+                                mapOf(
+                                    ResourceType.HYDROGEN to 20,
+                                    ResourceType.WATER_ICE to 15,
+                                    ResourceType.IRON_ORE to 25,
+                                    ResourceType.COPPER to 10,
+                                ),
+                            ),
                         ),
                 ),
                 Sector(
@@ -68,6 +84,16 @@ object MvpSectorMap {
                             gate("beta-to-alpha", angleDegrees = 180f, dest = ALPHA, destGate = "alpha-to-beta"),
                             gate("beta-to-gamma", angleDegrees = 60f, dest = GAMMA, destGate = "gamma-to-beta"),
                             station("beta-station", "Beta Station", Vec2(300f, -300f)),
+                            // A modest second field (26 units total) of tech-input resources.
+                            asteroidField(
+                                "beta-belt",
+                                Vec2(-500f, 500f),
+                                mapOf(
+                                    ResourceType.SILICON to 12,
+                                    ResourceType.ALUMINUM to 8,
+                                    ResourceType.TITANIUM to 6,
+                                ),
+                            ),
                         ),
                 ),
                 Sector(
@@ -106,5 +132,17 @@ object MvpSectorMap {
             position = position,
             displayName = displayName,
             dockingRadius = STATION_DOCKING_RADIUS,
+        )
+
+    private fun asteroidField(
+        id: String,
+        position: Vec2,
+        deposits: Map<ResourceType, Int>,
+    ): AsteroidField =
+        AsteroidField(
+            id = PoiId(id),
+            position = position,
+            miningRadius = ASTEROID_MINING_RADIUS,
+            deposits = deposits,
         )
 }

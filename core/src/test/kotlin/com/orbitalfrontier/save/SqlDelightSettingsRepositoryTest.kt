@@ -47,8 +47,10 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC05 bumped the schema to v3 (dock state); ensureInitialized seeds SaveVersion.CURRENT (3L).
-        assertEquals(3L, version)
+        // UC06 bumped the schema to v4 (cargo + field depletion); ensureInitialized seeds
+        // SaveVersion.CURRENT (4L), which is pinned to OrbitalFrontier.Schema.version.
+        assertEquals(OrbitalFrontier.Schema.version, version)
+        assertEquals(4L, version)
     }
 
     @Test
@@ -58,7 +60,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-3 row", 3L, version)
+        assertEquals("repeated init keeps a single version-4 row", 4L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---

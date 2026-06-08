@@ -5,6 +5,7 @@ import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
 
 /**
@@ -25,6 +26,9 @@ object PlaythroughFixtures {
     /** UC05 docking playthrough name: thrust into Alpha Station's dock range and dock. */
     const val UC05_DOCK: String = "uc05-dock"
 
+    /** UC06 mining playthrough name: thrust into the alpha-belt and hold MINE until the hold fills. */
+    const val UC06_MINE: String = "uc06-mine"
+
     /** Fixed timestep used by the fixtures (60 Hz) — a *fixed* step, not a live frame delta. */
     const val DT_SECONDS: Float = 1f / 60f
 
@@ -38,6 +42,7 @@ object PlaythroughFixtures {
             UC01_THRUST_NORTH to ::uc01ThrustNorth,
             UC03_JUMP to ::uc03Jump,
             UC05_DOCK to ::uc05Dock,
+            UC06_MINE to ::uc06Mine,
         )
 
     /**
@@ -135,6 +140,52 @@ object PlaythroughFixtures {
         recorder.recordDockAction(15, DockAction.DOCK)
         // Hold: ticks 16..20 carry no input, so the docked ship stays frozen (no movement/bounce).
         recorder.extendToTick(20)
+        return recorder.build()
+    }
+
+    /**
+     * UC06 mining scenario (AC#2/#3/#4/#5/#7): the ship starts in [MvpSectorMap.START_SECTOR] (Alpha)
+     * just south of the authored `alpha-belt` field (centre `(-600, -400)`, mining radius 100),
+     * already cruising north at max speed, and thrusts straight north into the field's mining circle
+     * while **holding MINE the whole time**. Holding MINE out of range is a no-op (proximity gating),
+     * so extraction auto-starts once the ship is in range and continues every tick until the hold is
+     * full.
+     *
+     * The field's authored deposits total 70 units (Hydrogen 20, Water-Ice 15, Iron-Ore 25, Copper
+     * 10) — more than the starter hold's [com.orbitalfrontier.economy.Cargo.DEFAULT_CAPACITY] of 50 —
+     * so mining to a full hold (50 units, extracted in [com.orbitalfrontier.economy.ResourceType]
+     * ordinal order: all 20 Hydrogen, all 15 Water-Ice, then 15 of the Iron-Ore) leaves the field
+     * **partially depleted** (20 units remain), exercising both the capacity stop (AC#3) and field
+     * depletion (AC#4). At the default 2 units/tick the fill takes 25 mining ticks; the 40-tick span
+     * leaves comfortable margin to enter range first. Geometry is read from the production
+     * [MvpSectorMap], so the fixture tracks the real map.
+     */
+    fun uc06Mine(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC06_MINE,
+                seed = 6L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        ship =
+                            ShipKinematics(
+                                // x aligned with the field centre; ~110 wu south of it (just out of
+                                // the radius-100 circle) so a few ticks of northward thrust enter it.
+                                position = Vec2(-600f, -510f),
+                                velocity = Vec2(0f, 120f),
+                                headingRadians = (Math.PI / 2).toFloat(),
+                            ),
+                        // currentSector defaults to MvpSectorMap.START_SECTOR (alpha).
+                    ),
+            )
+        val north = MovementInput(targetDirection = Vec2(0f, 1f), magnitude = 1f, released = false)
+        // Thrust north into the alpha-belt while holding MINE; extraction auto-starts once in range
+        // and runs until the hold fills (25 mining ticks at the default 2 units/tick).
+        for (tick in 0 until 40) {
+            recorder.recordMovement(tick, north)
+            recorder.recordMineAction(tick, MineAction.MINE)
+        }
         return recorder.build()
     }
 }

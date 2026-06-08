@@ -8,6 +8,8 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.PoiId
@@ -126,6 +128,74 @@ class SqlDelightGameStateRepositoryTest {
         repo.saveGameState(sampleState())
 
         assertNull("the latest in-flight save wins", newRepository().loadGameState()?.dockedStation)
+    }
+
+    // --- UC06 AC#4/#5: cargo + field depletion are part of game state and round-trip ---
+
+    @Test
+    fun `cargo and field depletion round-trip exactly through a reload`() {
+        val state =
+            sampleState().copy(
+                cargo =
+                    Cargo(
+                        mapOf(ResourceType.HYDROGEN to 12, ResourceType.IRON_ORE to 7),
+                        Cargo.DEFAULT_CAPACITY,
+                    ),
+                fieldDepletion =
+                    mapOf(
+                        // An exhausted resource (0 remaining) and a partially-mined one in one field…
+                        PoiId("alpha-belt") to mapOf(ResourceType.HYDROGEN to 0, ResourceType.IRON_ORE to 18),
+                        // …and a second, separately-tracked field.
+                        PoiId("beta-belt") to mapOf(ResourceType.SILICON to 5),
+                    ),
+            )
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        // Exact value equality covers cargo (capacity reconstructed at DEFAULT_CAPACITY) + depletion.
+        assertEquals(state, reloaded)
+        assertEquals(Cargo.DEFAULT_CAPACITY, reloaded?.cargo?.capacity)
+    }
+
+    @Test
+    fun `an empty hold and no field depletion round-trip as empty`() {
+        val state = sampleState() // cargo defaults to an empty hold; fieldDepletion to an empty map
+        assertTrue("precondition: the sample hold is empty", state.cargo.contents.isEmpty())
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals(state, reloaded)
+        assertEquals("an empty hold reloads empty at the default capacity", Cargo.empty(), reloaded?.cargo)
+        assertTrue("no depletion rows reload as 'all fields pristine'", reloaded?.fieldDepletion?.isEmpty() == true)
+    }
+
+    @Test
+    fun `cargo entries with zero units are not persisted`() {
+        // Cargo.add never stores zeros, but a hand-built contents map could; the repo skips them.
+        val withZero = sampleState().copy(cargo = Cargo(mapOf(ResourceType.COPPER to 0, ResourceType.NICKEL to 4), Cargo.DEFAULT_CAPACITY))
+        newRepository().saveGameState(withZero)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals("only the non-zero entry survives", mapOf(ResourceType.NICKEL to 4), reloaded?.cargo?.contents)
+    }
+
+    @Test
+    fun `the latest cargo snapshot wins (a shrinking hold drops old rows)`() {
+        val repo = newRepository()
+        repo.saveGameState(
+            sampleState().copy(
+                cargo = Cargo(mapOf(ResourceType.HYDROGEN to 9, ResourceType.IRON_ORE to 4), Cargo.DEFAULT_CAPACITY),
+            ),
+        )
+        // A later save with fewer resources must not leave stale rows behind (full-snapshot rewrite).
+        repo.saveGameState(
+            sampleState().copy(cargo = Cargo(mapOf(ResourceType.HYDROGEN to 2), Cargo.DEFAULT_CAPACITY)),
+        )
+
+        assertEquals(mapOf(ResourceType.HYDROGEN to 2), newRepository().loadGameState()?.cargo?.contents)
     }
 
     @Test

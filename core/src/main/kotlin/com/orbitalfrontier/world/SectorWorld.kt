@@ -9,10 +9,15 @@ package com.orbitalfrontier.world
  * programmer/authoring error, so per coding-guidelines § error-handling we throw rather than degrade.
  * The invariants checked:
  *  - sector ids are unique;
- *  - POI ids are unique within each sector;
+ *  - POI ids are unique **graph-globally** (across every sector, not merely within one);
  *  - every gate link resolves: the destination sector exists and contains the destination gate;
  *  - every link is **reciprocal**: the destination gate links straight back to the origin gate
  *    (so traversal is symmetric and there are no one-way or dangling gates).
+ *
+ * Graph-global POI uniqueness (promoted from per-sector in UC06) is what makes a **bare [PoiId] a
+ * sound key on its own** — e.g. [WorldState.fieldDepletion] keys asteroid-field depletion by field
+ * id with no sector qualifier. Since the MVP map already authors globally-distinct ids, this is a
+ * non-breaking tightening of the invariant.
  *
  * Lookups are O(1) via an id index. Pure (no engine types): the graph is part of the JVM-testable
  * world model and is safe for the replay-path purity guard.
@@ -21,20 +26,26 @@ class SectorWorld(sectors: List<Sector>) {
     /** All sectors, in authored order. */
     val sectors: List<Sector> = sectors.toList()
 
+    /** Every POI id in the graph (globally unique by construction), in authored order. */
+    val allPoiIds: Set<PoiId>
+
     private val byId: Map<SectorId, Sector>
 
     init {
         require(sectors.isNotEmpty()) { "SectorWorld must contain at least one sector" }
 
         val index = LinkedHashMap<SectorId, Sector>(sectors.size)
+        val poiIds = LinkedHashSet<PoiId>()
         for (sector in sectors) {
             require(index.put(sector.id, sector) == null) { "duplicate sector id: ${sector.id}" }
-            val poiIds = HashSet<PoiId>(sector.pois.size)
             for (poi in sector.pois) {
-                require(poiIds.add(poi.id)) { "duplicate POI id ${poi.id} in sector ${sector.id}" }
+                require(poiIds.add(poi.id)) {
+                    "duplicate POI id ${poi.id} (POI ids must be unique across the whole sector graph)"
+                }
             }
         }
         byId = index
+        allPoiIds = poiIds
 
         validateGateGraph()
     }

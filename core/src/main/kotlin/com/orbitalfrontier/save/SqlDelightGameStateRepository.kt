@@ -1,6 +1,8 @@
 package com.orbitalfrontier.save
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.world.PoiId
@@ -39,6 +41,10 @@ class SqlDelightGameStateRepository(
                     ),
                 // Null column (a v2 save migrated to v3, or a save written while in flight) -> not docked.
                 dockedStation = row.docked_station_id?.let { PoiId(it) },
+                // Cargo: capacity is a ship stat, NOT persisted — reconstructed at DEFAULT_CAPACITY (UC06).
+                cargo = loadCargo(),
+                // Field depletion: absent field = pristine; stored values are REMAINING units (UC06).
+                fieldDepletion = loadFieldDepletion(),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
@@ -66,6 +72,31 @@ class SqlDelightGameStateRepository(
                     active_ship_id = ACTIVE_SHIP_ID,
                     docked_station_id = state.dockedStation?.value,
                 )
+
+                // Cargo: full-snapshot rewrite of the active ship's rows (delete-then-plain-INSERT,
+                // minSdk-24-safe). Only non-zero amounts are stored; capacity is not persisted (UC06).
+                queries.deleteCargoForShip(ACTIVE_SHIP_ID)
+                for ((resource, units) in state.cargo.contents) {
+                    if (units > 0) {
+                        queries.insertCargoEntry(
+                            ship_id = ACTIVE_SHIP_ID,
+                            resource = resource.name,
+                            units = units.toLong(),
+                        )
+                    }
+                }
+
+                // Field depletion: upsert every (field, resource) remaining amount (full snapshot).
+                // Depletion is monotonic so we never delete; an untouched field simply has no rows (UC06).
+                for ((fieldId, remaining) in state.fieldDepletion) {
+                    for ((resource, units) in remaining) {
+                        queries.upsertFieldDeposit(
+                            field_id = fieldId.value,
+                            resource = resource.name,
+                            remaining_units = units.toLong(),
+                        )
+                    }
+                }
             }
             logger.info(
                 TAG,
@@ -85,6 +116,44 @@ class SqlDelightGameStateRepository(
             logger.error(TAG, "Failed to query save presence; treating as no save", e)
             false
         }
+    }
+
+    /**
+     * Reconstruct the active ship's [Cargo] from its persisted rows. Capacity is a ship stat, so it
+     * is re-seeded from [Cargo.DEFAULT_CAPACITY] (later, the ship's cargo-hold upgrade) rather than
+     * read from the save. An unrecognised resource name (e.g. after an enum rename) is skipped with a
+     * WARN rather than failing the whole load — "never stranded" (coding-guidelines § error-handling).
+     */
+    private fun loadCargo(): Cargo {
+        val contents = LinkedHashMap<ResourceType, Int>()
+        for (entry in queries.selectCargo(ACTIVE_SHIP_ID).executeAsList()) {
+            val resource = parseResource(entry.resource) ?: continue
+            contents[resource] = entry.units.toInt()
+        }
+        return Cargo(contents, Cargo.DEFAULT_CAPACITY)
+    }
+
+    /**
+     * Reconstruct the per-field remaining-deposit map from `field_deposit`. Grouped by field id; a
+     * field with no rows is simply absent (pristine). Unrecognised resource names are skipped with a
+     * WARN, as in [loadCargo].
+     */
+    private fun loadFieldDepletion(): Map<PoiId, Map<ResourceType, Int>> {
+        val byField = LinkedHashMap<PoiId, LinkedHashMap<ResourceType, Int>>()
+        for (entry in queries.selectFieldDeposits().executeAsList()) {
+            val resource = parseResource(entry.resource) ?: continue
+            byField.getOrPut(PoiId(entry.field_id)) { LinkedHashMap() }[resource] = entry.remaining_units.toInt()
+        }
+        return byField
+    }
+
+    /** Map a persisted resource name to its [ResourceType], or null (logged) if it is unknown. */
+    private fun parseResource(name: String): ResourceType? {
+        val resource = ResourceType.entries.firstOrNull { it.name == name }
+        if (resource == null) {
+            logger.warn(TAG, "Skipping unknown persisted resource '$name' (enum changed?)")
+        }
+        return resource
     }
 
     private companion object {

@@ -6,6 +6,7 @@ import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.DockAction
+import com.orbitalfrontier.world.MineAction
 
 /**
  * Executes a [Playthrough] headlessly on the JVM and returns the resulting state (UC02 AC#5/#6).
@@ -52,6 +53,7 @@ class ReplayRunner {
                 rng = SeededRng(playthrough.seed),
                 timeSource = TickTimeSource(playthrough.dtSeconds),
                 params = playthrough.config.toParams(),
+                miningParams = playthrough.miningConfig.toMiningParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()
@@ -67,7 +69,8 @@ class ReplayRunner {
             val tickEvents = eventsByTick[tick].orEmpty()
             val input = movementInputFor(tickEvents)
             val dockAction = dockActionFor(tickEvents)
-            state = simulation.step(state, input, playthrough.dtSeconds, dockAction)
+            val mineAction = mineActionFor(tickEvents)
+            state = simulation.step(state, input, playthrough.dtSeconds, dockAction, mineAction)
             perTick?.add(state)
         }
 
@@ -93,4 +96,12 @@ class ReplayRunner {
      */
     private fun dockActionFor(events: List<InputEvent>): DockAction =
         events.filterIsInstance<DockActionEvent>().lastOrNull()?.action ?: DockAction.NONE
+
+    /**
+     * Reduce a tick's events to the [MineAction] the sim steps with (UC06). When several mine samples
+     * share a tick the latest wins; a tick with no [MineEvent] steps with [MineAction.NONE], so
+     * non-mining artifacts (UC01/UC03/UC05) replay exactly as before.
+     */
+    private fun mineActionFor(events: List<InputEvent>): MineAction =
+        events.filterIsInstance<MineEvent>().lastOrNull()?.action ?: MineAction.NONE
 }

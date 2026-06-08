@@ -30,9 +30,15 @@ data class Sector(
     /** The stations in this sector (a view over [pois], authored order); empty if it has none. */
     val stations: List<Station> get() = pois.filterIsInstance<Station>()
 
+    /** The asteroid fields in this sector (a view over [pois], authored order); empty if it has none. */
+    val asteroidFields: List<AsteroidField> get() = pois.filterIsInstance<AsteroidField>()
+
     /** The gate with [gateId] in this sector, or null if there is none. */
     fun gate(gateId: PoiId): JumpGate? = gates.firstOrNull { it.id == gateId }
 
     /** The station with [stationId] in this sector, or null if there is none. */
     fun station(stationId: PoiId): Station? = stations.firstOrNull { it.id == stationId }
+
+    /** The asteroid field with [fieldId] in this sector, or null if there is none. */
+    fun asteroidField(fieldId: PoiId): AsteroidField? = asteroidFields.firstOrNull { it.id == fieldId }
 }
