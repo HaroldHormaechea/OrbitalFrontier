@@ -92,3 +92,93 @@ data class Fleet(
         }
     }
 }
+
+/**
+ * The player's fleet intent for one action (UC09 AC#5) — the fleet analogue of
+ * [com.orbitalfrontier.outfit.OutfitOrder]/[com.orbitalfrontier.economy.TradeOrder], a `sealed`
+ * hierarchy (coding-guidelines § O).
+ *
+ * [None] is idle. [BuyShip] buys a hull from the docked station's shipyard and adds it to the fleet.
+ * [SwitchActive] makes an owned ship the active one. [FleetResolver.resolve] gates every case.
+ */
+sealed interface FleetOrder {
+    /** No fleet action — [FleetResolver.resolve] returns its inputs unchanged. */
+    data object None : FleetOrder
+
+    /** Buy a ship of [typeId] from the docked station's shipyard and add it to the fleet. */
+    data class BuyShip(val typeId: ShipTypeId) : FleetOrder
+
+    /** Switch the active ship to the owned ship [shipId]. */
+    data class SwitchActive(val shipId: ShipId) : FleetOrder
+}
+
+/**
+ * The outcome of a single [FleetResolver.resolve] call — the new fleet, the new credit balance, and
+ * whether anything changed. A no-op (can't afford / not offered / already active / not owned) reports
+ * [changed] = false with [fleet]/[credits] unchanged (coding-guidelines § error-handling).
+ */
+data class FleetResult(
+    val fleet: Fleet,
+    val credits: Long,
+    val changed: Boolean,
+)
+
+/**
+ * Pure, deterministic fleet operations (UC09 AC#5/#7) — buying a ship and switching the active ship,
+ * both **docked-only** (the caller resolves this only while docked, mirroring [Outfitting]). A
+ * side-effect-free function with no I/O and no engine types, so it slots into the deterministic
+ * simulation/replay path and is fully JVM-unit-testable. It takes the decoupled [Shipyard] (not a
+ * world `Station`) so the `ship` package stays world-agnostic.
+ *
+ * All money math is [Long] so a large balance can never overflow.
+ */
+object FleetResolver {
+    /**
+     * Resolve a single fleet [order] against the player's [fleet] and [credits], given the docked
+     * station's [shipyard].
+     *
+     * - **BuyShip:** gated on the type being **offered** by [shipyard] (AC#5), known to [ShipRoster],
+     *   and affordable (`credits >= type.price`). On success a fresh ship of that type — spawned at the
+     *   active ship's (docked) position so switching to it does not teleport the player — is appended
+     *   and its price deducted. The active ship is unchanged.
+     * - **SwitchActive:** gated on owning the target ship (AC#5). A no-op when it is already active.
+     */
+    fun resolve(
+        fleet: Fleet,
+        credits: Long,
+        shipyard: Shipyard,
+        order: FleetOrder,
+    ): FleetResult {
+        val unchanged = FleetResult(fleet, credits, false)
+        return when (order) {
+            FleetOrder.None -> unchanged
+            is FleetOrder.BuyShip -> resolveBuyShip(fleet, credits, shipyard, order, unchanged)
+            is FleetOrder.SwitchActive -> resolveSwitchActive(fleet, credits, order, unchanged)
+        }
+    }
+
+    private fun resolveBuyShip(
+        fleet: Fleet,
+        credits: Long,
+        shipyard: Shipyard,
+        order: FleetOrder.BuyShip,
+        unchanged: FleetResult,
+    ): FleetResult {
+        if (!shipyard.offers(order.typeId)) return unchanged // not sold here
+        val type = ShipRoster.byId(order.typeId) ?: return unchanged // unknown type
+        if (credits < type.price) return unchanged // can't afford
+        val newShip = OwnedShip.fresh(fleet.nextShipId(), type, fleet.active.kinematics.position)
+        return FleetResult(fleet.addShip(newShip), credits - type.price, true)
+    }
+
+    private fun resolveSwitchActive(
+        fleet: Fleet,
+        credits: Long,
+        order: FleetOrder.SwitchActive,
+        unchanged: FleetResult,
+    ): FleetResult {
+        if (fleet.ship(order.shipId) == null) return unchanged // not owned
+        if (order.shipId == fleet.activeShipId) return unchanged // already active — no-op
+        return FleetResult(fleet.switchActive(order.shipId), credits, true)
+    }
+}

@@ -74,9 +74,16 @@ data class ShipType(
     val baseScanRange: Float,
     val baseCrewCapacity: Int,
     val movement: MovementProfile = MovementProfile.IDENTITY,
+    /**
+     * Dealer purchase price in credits (UC09 AC#5) — what a shipyard charges for this hull. The
+     * analogue of [com.orbitalfrontier.outfit.Upgrade.price]. Defaults to 0 (the starter ship is never
+     * for sale, so its price is unused); a purchasable type sets a positive [TUNE] price.
+     */
+    val price: Long = 0L,
 ) {
     init {
         require(displayName.isNotBlank()) { "ShipType ${id.value} displayName must not be blank" }
+        require(price >= 0) { "ShipType ${id.value} price must not be negative: $price" }
         require(baseCargoCapacity >= 0) { "ShipType ${id.value} baseCargoCapacity must not be negative" }
         require(baseFuelCapacity > 0f) { "ShipType ${id.value} baseFuelCapacity must be positive" }
         require(baseScanRange >= 0f) { "ShipType ${id.value} baseScanRange must not be negative" }

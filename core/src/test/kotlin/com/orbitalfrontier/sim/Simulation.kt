@@ -7,13 +7,20 @@ import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.outfit.OutfitMarket
+import com.orbitalfrontier.outfit.OutfitOrder
+import com.orbitalfrontier.outfit.Outfitting
+import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.ship.FleetOrder
+import com.orbitalfrontier.ship.FleetResolver
 import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
+import com.orbitalfrontier.ship.Shipyard
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
@@ -22,6 +29,7 @@ import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.MiningResult
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
+import com.orbitalfrontier.world.StationKind
 
 /**
  * The single, pure, deterministic fixed-timestep stepper for the game world (UC02 AC#1, UC03 AC#10).
@@ -124,6 +132,8 @@ class Simulation(
         mineAction: MineAction = MineAction.NONE,
         refuelAction: RefuelAction = RefuelAction.NONE,
         tradeOrder: TradeOrder = TradeOrder.None,
+        outfitOrder: OutfitOrder = OutfitOrder.None,
+        fleetOrder: FleetOrder = FleetOrder.None,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -142,15 +152,38 @@ class Simulation(
             // PlayScreen.trade uses; an unresolvable station / no trade desk yields a null market and
             // Trading.resolve no-ops. TradeOrder.None (the default) is a no-op too — credits + cargo
             // thread through unchanged, so a held-while-docked stretch stays bit-for-bit stable.
-            val market = world.sector(state.currentSector).station(state.dockedStation)?.market
-            val trade = Trading.resolve(state.credits, refuel.cargo, market, tradeOrder)
-            // UC09: fold the post-refuel/​trade cargo + fuel back onto the active ship in the fleet.
-            // copy() (not withLoadout) — the loadout is unchanged here, so capacities stay as derived.
-            val updatedActive = state.fleet.active.copy(cargo = trade.cargo, fuel = refuel.fuel)
+            val station = world.sector(state.currentSector).station(state.dockedStation)
+            val trade = Trading.resolve(state.credits, refuel.cargo, station?.market, tradeOrder)
+
+            // UC09 composition while docked: refuel -> trade -> outfit -> fleet. Outfitting resolves
+            // against the active ship's loadout + slot layout and the docked station's outfit desk;
+            // FleetResolver against the station's shipyard. Both no-op on their default None order, so a
+            // held-while-docked stretch (no orders) stays bit-for-bit stable.
+            val active = state.fleet.active
+            val outfit =
+                Outfitting.resolve(
+                    credits = trade.credits,
+                    loadout = active.loadout,
+                    slotCounts = active.type.slotCounts,
+                    outfitMarket = station?.outfitMarket ?: OutfitMarket.EMPTY,
+                    isJunkyard = station?.kind == StationKind.JUNKYARD,
+                    order = outfitOrder,
+                )
+            // Fold cargo (trade) + fuel (refuel) onto the active ship, then — only if the fit changed —
+            // re-derive capacities via withLoadout (Δ-capacity propagation, UC09 AC#2). Contents/level
+            // are preserved (clamped only if a capacity shrank).
+            val refittedActive =
+                active.copy(cargo = trade.cargo, fuel = refuel.fuel)
+                    .let { if (outfit.changed) it.withLoadout(outfit.loadout) else it }
+            val fleetAfterOutfit = state.fleet.withActive(refittedActive)
+
+            val fleetResult =
+                FleetResolver.resolve(fleetAfterOutfit, outfit.credits, station?.shipyard ?: Shipyard.EMPTY, fleetOrder)
+
             return state.copy(
                 tick = state.tick + 1,
-                fleet = state.fleet.withActive(updatedActive),
-                credits = trade.credits,
+                fleet = fleetResult.fleet,
+                credits = fleetResult.credits,
             )
         }
 
@@ -158,9 +191,15 @@ class Simulation(
         // "Thrusting" matches the device loop's gate exactly so live and replayed burn agree (UC07 AC#2).
         val thrusting = !input.released && input.magnitude > params.inputDeadzone
         val burnedFuel = FuelBurn.step(refuel.fuel, thrusting, powerParams, dt)
-        // Byte-identical at a full-enough tank: effectiveParams returns `params` unchanged (factor 1.0),
-        // so the movement model steps exactly as before; only a low tank scales the speed caps (AC#3).
-        val effectiveParams = FuelLimitedMovement.effectiveParams(params, burnedFuel, fuelParams)
+        // UC09: derive the active ship's effective movement params from its type + engine loadout FIRST
+        // (ShipStats), then apply the fuel-limited scaling on top. For the starter ship with an empty
+        // loadout ShipStats returns `params` unchanged (===), so the pre-UC09 fixtures stay byte-
+        // identical; an engine upgrade / faster hull raises the speed+accel caps before fuel limiting.
+        val active = state.fleet.active
+        val shipParams = ShipStats.effectiveMovementParams(params, active.type, active.loadout)
+        // Byte-identical at a full-enough tank: effectiveParams returns `shipParams` unchanged (factor
+        // 1.0), so the movement model steps exactly as before; only a low tank scales the caps (AC#3).
+        val effectiveParams = FuelLimitedMovement.effectiveParams(shipParams, burnedFuel, fuelParams)
 
         val movedShip = movementModel.update(state.ship, input, effectiveParams, dt)
         val traversal = GateTraversal.resolve(world, state.currentSector, movedShip.position)

@@ -1,5 +1,6 @@
 package com.orbitalfrontier.ship
 
+import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -67,15 +68,26 @@ data class OwnedShip(
          * today's constants (UC09 byte-identical contract). The default ship for a new game and the
          * single ship a migrated/legacy save reconstructs.
          */
-        fun starter(): OwnedShip {
-            val type = ShipRoster.STARTER
+        fun starter(): OwnedShip = fresh(STARTER_SHIP_ID, ShipRoster.STARTER)
+
+        /**
+         * Build a brand-new [OwnedShip] of [type] with id [id]: an empty [Loadout], an empty hold and a
+         * full tank (capacities derived from [type] via [ShipStats]), at rest at [spawnPosition]. The
+         * ship a freshly-bought hull (UC09 AC#5) or the starter begins as. [spawnPosition] lets a bought
+         * ship appear where the player is docked, so switching to it does not teleport them away.
+         */
+        fun fresh(
+            id: ShipId,
+            type: ShipType,
+            spawnPosition: Vec2 = Vec2.ZERO,
+        ): OwnedShip {
             val loadout = Loadout.EMPTY
             val cargoCapacity = ShipStats.cargoCapacity(type, loadout)
             val fuelCapacity = ShipStats.fuelCapacity(type, loadout)
             return OwnedShip(
-                id = STARTER_SHIP_ID,
+                id = id,
                 type = type,
-                kinematics = ShipKinematics(),
+                kinematics = ShipKinematics(position = spawnPosition),
                 cargo = Cargo.empty(cargoCapacity),
                 fuel = Fuel(level = fuelCapacity, capacity = fuelCapacity),
                 loadout = loadout,

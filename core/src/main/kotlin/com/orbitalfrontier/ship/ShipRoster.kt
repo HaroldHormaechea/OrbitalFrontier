@@ -67,6 +67,7 @@ object ShipRoster {
             baseScanRange = 700f,
             baseCrewCapacity = 4,
             movement = MovementProfile(maxSpeedMultiplier = 0.85f, maxAccelerationMultiplier = 0.8f),
+            price = 2500,
         )
 
     /** A courier role: speed + cargo, fewer utility slots, intrinsically faster hull. [TUNE] */
@@ -89,6 +90,7 @@ object ShipRoster {
             baseScanRange = 600f,
             baseCrewCapacity = 2,
             movement = MovementProfile(maxSpeedMultiplier = 1.25f, maxAccelerationMultiplier = 1.2f),
+            price = 1800,
         )
 
     /** Every ship type in the MVP roster, in authored order ([STARTER] first). */

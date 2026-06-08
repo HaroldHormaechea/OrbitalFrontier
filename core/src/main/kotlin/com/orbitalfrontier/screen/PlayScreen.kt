@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
@@ -22,6 +23,9 @@ import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.outfit.OutfitOrder
+import com.orbitalfrontier.outfit.Outfitting
+import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
@@ -40,6 +44,8 @@ import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
 import com.orbitalfrontier.ship.Fleet
+import com.orbitalfrontier.ship.FleetOrder
+import com.orbitalfrontier.ship.FleetResolver
 import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -53,6 +59,7 @@ import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
+import com.orbitalfrontier.world.StationKind
 import com.orbitalfrontier.world.WorldState
 import kotlin.math.roundToInt
 
@@ -235,11 +242,14 @@ class PlayScreen(
         val thrusting = !input.released && input.magnitude > params.inputDeadzone
         fuel = FuelBurn.step(fuel, thrusting, powerParams, dt)
 
-        // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps. The model
-        // runs against FUEL-LIMITED params (UC07 AC#3): at/above the low-fuel threshold the factor is
-        // exactly 1.0f and [effectiveParams] returns `params` unchanged, so movement stays byte-identical
-        // to a fuel-less build; a low tank scales max forward/reverse speed down toward the floor.
-        val effectiveParams = FuelLimitedMovement.effectiveParams(params, fuel, fuelParams)
+        // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps. UC09:
+        // the model runs against the ACTIVE SHIP's params — its type + engine loadout (ShipStats) — then
+        // the fuel-limited scaling on top (UC07 AC#3). For the starter ship with an empty loadout
+        // ShipStats returns `params` unchanged and, at a full-enough tank, [effectiveParams] also returns
+        // it unchanged, so movement stays byte-identical to the pre-UC09 build.
+        val active = fleet.active
+        val shipParams = ShipStats.effectiveMovementParams(params, active.type, active.loadout)
+        val effectiveParams = FuelLimitedMovement.effectiveParams(shipParams, fuel, fuelParams)
         val state = physics.readKinematics()
         val next = model.update(state, input, effectiveParams, dt)
         physics.applyKinematics(next)
@@ -502,6 +512,96 @@ class PlayScreen(
         )
         // Trading is a key world event (mirrors mining/dock/refuel) — persist it now.
         autosave.onEvent("trade")
+    }
+
+    /** The current fleet (UC09) — read by the outfit / shipyard screens for their readouts. */
+    fun fleetSnapshot(): Fleet = fleet
+
+    /**
+     * Execute one outfit [order] against the **docked** station via the pure [Outfitting.resolve]
+     * (UC09 AC#2/#3/#4) — the outfitting analogue of [trade]. The [com.orbitalfrontier.screen.OutfitScreen]
+     * routes BUY-INSTALL / REMOVE-SELL taps here. Resolves against the active ship's loadout + slot
+     * layout, the docked station's [com.orbitalfrontier.world.Station.outfitMarket], and whether the
+     * station is a junkyard; when not docked it no-ops.
+     *
+     * On a real change it deducts/refunds credits, **re-derives the active ship's cargo/fuel capacities**
+     * from the new loadout (preserving the live contents/level — the Δ-capacity propagation, AC#2),
+     * folds the result back into the fleet, logs one line, and autosaves. A no-op tap changes nothing.
+     */
+    fun outfit(order: OutfitOrder) {
+        val station = dockedStation?.let { sectorWorld.sector(currentSector).station(it) } ?: return
+        val active = fleet.active
+        val result =
+            Outfitting.resolve(
+                credits = credits,
+                loadout = active.loadout,
+                slotCounts = active.type.slotCounts,
+                outfitMarket = station.outfitMarket,
+                isJunkyard = station.kind == StationKind.JUNKYARD,
+                order = order,
+            )
+        if (!result.changed) {
+            logger.info(ECONOMY_TAG, "Outfit requested but nothing changed (not offered, unaffordable, no free slot, or empty slot)")
+            return
+        }
+        credits = result.credits
+        // Re-derive capacities from the new fit on the LIVE active ship (current cargo/fuel), then sync.
+        val refitted = active.copy(cargo = cargo, fuel = fuel).withLoadout(result.loadout)
+        cargo = refitted.cargo
+        fuel = refitted.fuel
+        fleet = fleet.withActive(refitted)
+        logger.info(
+            ECONOMY_TAG,
+            "Outfit applied; credits=$credits, cargoCap=${cargo.capacity}, fuelCap=${fuel.capacity}",
+        )
+        autosave.onEvent("outfit")
+    }
+
+    /**
+     * Execute one fleet [order] against the **docked** station via the pure [FleetResolver.resolve]
+     * (UC09 AC#5) — buy a ship from the station's shipyard, or switch the active ship. The
+     * [com.orbitalfrontier.screen.ShipyardScreen] routes taps here; when not docked it no-ops.
+     *
+     * Before resolving, the live cargo/fuel/kinematics are folded into the current active ship so a
+     * switch preserves them. On a switch, the now-active ship is brought to the docked position (you
+     * walked over to it), its live cargo/fuel are reloaded, and the Box2D body is re-seeded so flight
+     * resumes from the station. On a buy, the new hull is appended (it spawns at the docked position).
+     * A no-op tap changes nothing.
+     */
+    fun fleetCommand(order: FleetOrder) {
+        val station = dockedStation?.let { sectorWorld.sector(currentSector).station(it) } ?: return
+        val dockedKinematics = physics.readKinematics()
+        // Fold the live active-ship state in so switching away from it preserves cargo/fuel/position.
+        fleet = fleet.withActive(fleet.active.copy(cargo = cargo, fuel = fuel, kinematics = dockedKinematics))
+
+        val result = FleetResolver.resolve(fleet, credits, station.shipyard, order)
+        if (!result.changed) {
+            logger.info(
+                ECONOMY_TAG,
+                "Fleet command requested but nothing changed (not offered, unaffordable, not owned, or already active)",
+            )
+            return
+        }
+        val previousActive = fleet.activeShipId
+        credits = result.credits
+        fleet = result.fleet
+
+        if (fleet.activeShipId != previousActive) {
+            // Switched ships: present the new active ship at the docked position, reload its live
+            // cargo/fuel, and re-seed the body so undocking resumes from the station (not its old spot).
+            val arrived =
+                fleet.active.copy(
+                    kinematics = fleet.active.kinematics.copy(position = dockedKinematics.position, velocity = Vec2.ZERO),
+                )
+            fleet = fleet.withActive(arrived)
+            cargo = arrived.cargo
+            fuel = arrived.fuel
+            physics.resetTo(arrived.kinematics)
+            logger.info(WORLD_TAG, "Switched active ship to ${fleet.activeShipId.value} (${fleet.active.type.displayName})")
+        } else {
+            logger.info(WORLD_TAG, "Bought ship; fleet now has ${fleet.ships.size} ships, credits=$credits")
+        }
+        autosave.onEvent("fleet")
     }
 
     /**
