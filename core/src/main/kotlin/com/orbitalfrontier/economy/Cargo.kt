@@ -65,6 +65,27 @@ data class Cargo(
         return CargoTransfer(Cargo(updated, capacity), accepted)
     }
 
+    /**
+     * Remove up to [units] of [resource], bounded by how many are actually held (UC07 refuelling
+     * draws hydrogen out of the hold). Returns a new cargo with the resource's count decremented; the
+     * key is dropped entirely when it reaches 0, so the hold never carries zero-count entries. When
+     * the resource is absent or [units] is 0 the original cargo is returned unchanged.
+     *
+     * @throws IllegalArgumentException if [units] is negative (a programmer error — fail fast).
+     */
+    fun remove(
+        resource: ResourceType,
+        units: Int,
+    ): Cargo {
+        require(units >= 0) { "Cannot remove a negative number of units: $units" }
+        val held = contents[resource] ?: 0
+        val removed = units.coerceAtMost(held)
+        if (removed == 0) return this
+        val remaining = held - removed
+        val updated = if (remaining == 0) contents - resource else contents + (resource to remaining)
+        return Cargo(updated, capacity)
+    }
+
     companion object {
         /**
          * Default cargo capacity (units) of a starter ship. An authored tunable; later UCs derive
