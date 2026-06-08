@@ -1,5 +1,6 @@
 package com.orbitalfrontier.mission
 
+import com.orbitalfrontier.common.DeterministicRng
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.world.PoiId
@@ -216,42 +217,33 @@ object MissionGenerator {
     }
 
     /**
-     * Explicit FNV-1a 64-bit hash of [s] over its UTF-16 code units — a deterministic, well-specified
-     * string hash used to seed [MissionRng]. Deliberately NOT [String.hashCode] (and certainly not
-     * enum/data-class/identity hashCode), so the seed is self-contained and stable across JVMs and
-     * refactors (ADR 0011). Long multiplication wraps mod 2^64 (two's complement), which is exactly the
-     * FNV mixing step.
+     * Explicit FNV-1a 64-bit hash of [s] — delegates to the shared [DeterministicRng.fnv1a] primitive
+     * (UC13 extraction). Deliberately NOT [String.hashCode] (and certainly not enum/data-class/identity
+     * hashCode), so the seed is self-contained and stable across JVMs and refactors (ADR 0011).
      */
-    private fun fnv1a(s: String): Long {
-        var h = FNV_OFFSET_BASIS
-        for (c in s) {
-            h = h xor c.code.toLong()
-            h *= FNV_PRIME
-        }
-        return h
-    }
+    private fun fnv1a(s: String): Long = DeterministicRng.fnv1a(s)
 
     /**
      * A tiny deterministic 64-bit LCG (Knuth MMIX constants) seeded by a string hash — the explicit
      * "string-hash → LCG" the determinism rule prescribes. Pure integer arithmetic, no floating point,
      * no platform RNG, no wall clock; identical seed ⇒ identical stream on any JVM.
+     *
+     * **UC13 refactor (byte-for-byte unchanged).** The advance/draw arithmetic now lives in the shared
+     * [DeterministicRng] primitive ([DeterministicRng.lcgAdvance] / [DeterministicRng.boundedInt]); this
+     * class is a thin stateful wrapper over it. The stream is identical to the pre-UC13 inlined version
+     * (the constants and bit operations are the same), which UC12's golden fixtures verify on replay.
      */
     private class MissionRng(seed: Long) {
         private var state: Long = seed
 
         /** Advance the LCG and return the next 64-bit state. */
         private fun nextLong(): Long {
-            state = state * LCG_MULTIPLIER + LCG_INCREMENT
+            state = DeterministicRng.lcgAdvance(state)
             return state
         }
 
         /** A uniform non-negative int in `[0, bound)`. [bound] must be positive. */
-        fun nextInt(bound: Int): Int {
-            require(bound > 0) { "bound must be positive: $bound" }
-            // Top 31 bits via a logical shift ⇒ always non-negative, fits a positive Int.
-            val r = (nextLong() ushr 33).toInt()
-            return r % bound
-        }
+        fun nextInt(bound: Int): Int = DeterministicRng.boundedInt(nextLong(), bound)
 
         /** A uniform int in the inclusive range `[minInclusive, maxInclusive]`. */
         fun nextIntInRange(
@@ -262,12 +254,4 @@ object MissionGenerator {
             return minInclusive + nextInt(maxInclusive - minInclusive + 1)
         }
     }
-
-    // FNV-1a 64-bit constants (offset basis 0xcbf29ce484222325, prime 0x100000001b3) as signed Longs.
-    private const val FNV_OFFSET_BASIS: Long = -3750763034362895579L
-    private const val FNV_PRIME: Long = 1099511628211L
-
-    // Knuth MMIX 64-bit LCG constants.
-    private const val LCG_MULTIPLIER: Long = 6364136223846793005L
-    private const val LCG_INCREMENT: Long = 1442695040888963407L
 }
