@@ -1,5 +1,7 @@
 package com.orbitalfrontier.world
 
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.ship.ShipKinematics
 
 /**
@@ -17,9 +19,17 @@ import com.orbitalfrontier.ship.ShipKinematics
  * [dockedStation] is the [PoiId] of the station the ship is currently docked at, or null when in
  * flight (the common case). It defaults to null so existing call sites and a migrated save with no
  * dock column read back as "in flight" (UC05 AC#4).
+ *
+ * [cargo] is the active ship's hold and [fieldDepletion] the per-field remaining deposits, both
+ * added by UC06. Each defaults (empty cargo at [Cargo.DEFAULT_CAPACITY]; no depletion) so existing
+ * call sites and a v3 save migrated to v4 read back as "empty hold, all fields pristine".
+ * [fieldDepletion] stores *remaining* units per [AsteroidField] id; an **absent** field is pristine.
+ * Cargo capacity is a ship stat reconstructed on load, not persisted (see [Cargo]).
  */
 data class WorldState(
     val currentSector: SectorId = MvpSectorMap.START_SECTOR,
     val ship: ShipKinematics = ShipKinematics(),
     val dockedStation: PoiId? = null,
+    val cargo: Cargo = Cargo.empty(),
+    val fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = emptyMap(),
 )
