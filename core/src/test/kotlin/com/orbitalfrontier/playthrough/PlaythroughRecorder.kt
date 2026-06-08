@@ -91,6 +91,12 @@ class PlaythroughRecorder(
         action: ScanAction,
     ): PlaythroughRecorder = record(ScanEvent(tick = tick, action = action))
 
+    /** Convenience: record a [HireEvent] (a request to hire [units] crew) at [tick] (UC11). */
+    fun recordHire(
+        tick: Int,
+        units: Int,
+    ): PlaythroughRecorder = record(HireEvent(tick = tick, units = units))
+
     /** Convenience: record a [RefuelEvent] for [action] at [tick] (UC07). */
     fun recordRefuelAction(
         tick: Int,

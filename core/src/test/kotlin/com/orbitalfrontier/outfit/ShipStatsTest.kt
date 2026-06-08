@@ -132,6 +132,42 @@ class ShipStatsTest {
         assertEquals(650f, ShipStats.scanRange(starter, loadout), 0f)
     }
 
+    // --- UC11: crew capacity = base crew + crew-quarters deltas (no MVP crew part yet) ---
+
+    @Test
+    fun `starter with an empty loadout derives its base crew capacity`() {
+        // The starter's base crew capacity is the authored DEFAULT_STARTER_CREW (2).
+        assertEquals(starter.baseCrewCapacity, ShipStats.crewCapacity(starter, Loadout.EMPTY))
+        assertEquals(2, ShipStats.crewCapacity(starter, Loadout.EMPTY))
+    }
+
+    @Test
+    fun `a crew-quarters part raises crew capacity by its delta and leaves cargo and fuel untouched`() {
+        // The MVP catalog ships no crew-quarters part yet, so use a synthetic catalog carrying one
+        // (+3 crew) to exercise the crew delta path.
+        val crewQuartersI = UpgradeId("crew-quarters-i-test")
+        val crewCatalog =
+            UpgradeCatalog(
+                listOf(
+                    Upgrade(
+                        id = crewQuartersI,
+                        category = SlotCategory.CREW_QUARTERS,
+                        displayName = "Crew Quarters I (test)",
+                        price = 200,
+                        statDeltas = StatDelta(crew = 3),
+                    ),
+                ),
+            )
+        val slotCount = starter.slotCount(SlotCategory.CREW_QUARTERS)
+        val loadout = (Loadout.EMPTY.install(SlotCategory.CREW_QUARTERS, slotCount, crewQuartersI) as InstallResult.Installed).loadout
+
+        // base crew 2 + crew-quarters 3.
+        assertEquals(5, ShipStats.crewCapacity(starter, loadout, crewCatalog))
+        // The crew part touches neither cargo nor fuel.
+        assertEquals(Cargo.DEFAULT_CAPACITY, ShipStats.cargoCapacity(starter, loadout, crewCatalog))
+        assertEquals(FuelParams.DEFAULT_TANK_CAPACITY, ShipStats.fuelCapacity(starter, loadout, crewCatalog), 0f)
+    }
+
     // --- Robustness: unknown upgrade ids contribute nothing; order does not matter ---
 
     @Test
