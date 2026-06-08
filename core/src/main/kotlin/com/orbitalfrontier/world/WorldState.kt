@@ -4,6 +4,7 @@ import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
@@ -72,6 +73,16 @@ data class WorldState(
      * [com.orbitalfrontier.combat.Respawn] relocates the ship here with a cargo-loss penalty.
      */
     val lastDockedStation: PoiId? = null,
+    /**
+     * The player's per-faction reputation (UC14 AC#2) — save-wide standing with each faction, like
+     * [credits]. Defaults to [Reputation.EMPTY] (every faction neutral) so a fresh game, and a pre-UC14
+     * save with no reputation rows, reads back neutral and replays byte-identically. Only non-neutral
+     * standings are persisted (the repository stores the non-zero rows, like cargo / field depletion);
+     * mission turn-ins / courier failures fold the pure [com.orbitalfrontier.mission.Missions] result
+     * back in, and reputation gates which mission offers are surfaced
+     * ([com.orbitalfrontier.faction.ReputationGate]).
+     */
+    val reputation: Reputation = Reputation.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

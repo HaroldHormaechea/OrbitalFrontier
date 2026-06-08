@@ -51,6 +51,13 @@ MVP** but **dynamic later** (driven by sector/faction state — see
 [world-and-sector.md](world-and-sector.md), factions). Station offers/prices/stock are
 **persisted**.
 
+> **Faction state now exists (UC14), but dynamic pricing is still deferred.** UC14
+> ([ADR 0013](../adr/0013-factions-and-reputation.md)) added station-owning factions and a
+> per-faction reputation that gates **mission offers**. It deliberately did **not** wire
+> reputation/faction state into prices — `FactionPricing` (reputation- or faction-state-driven
+> price modulation) is recorded in ADR 0013 as an explicit deferred hook. Prices remain the fixed
+> authored `StationMarket` tables of UC08 until a later UC implements it.
+
 **Implemented (UC08, [ADR 0007](../adr/0007-trading-prices.md)).** Each station carries a
 `StationMarket` — a map of `ResourceType` → `TradeOffer(buyPrice, sellPrice)` (both `Long`
 credits/unit) — authored per station in
@@ -69,8 +76,9 @@ in cargo and the existing station REFUEL converts it (UC07).
 MVP prices are fixed authored constants, they are reconstructed from `MvpSectorMap` on load (like
 cargo/fuel *capacity*), not stored per save — a save always reloads the same prices, so AC#4's
 "prices persist" holds by reconstruction. Only the player's **credits** wallet is persisted
-(`game_state.credits`, schema v6). Dynamic pricing (UC14) is where mutable per-station price state
-will move into the save, behind the same `StationMarket` type.
+(`game_state.credits`, schema v6). Dynamic pricing (a deferred `FactionPricing` hook, ADR 0013 — **not**
+done in UC14) is where mutable per-station price state will later move into the save, behind the same
+`StationMarket` type. UC14 added the faction state it would key on, but not the pricing itself.
 
 **Spending sinks:**
 - **Ship upgrades** (see [upgrades-and-progression.md](upgrades-and-progression.md))
@@ -121,8 +129,9 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Fuel level per ship.**
 - **Station prices/offers** — MVP-fixed, so **reconstructed from `MvpSectorMap` on load, not stored
   per save** ([ADR 0007](../adr/0007-trading-prices.md)); a save reloads the same fixed prices, so
-  they "persist" by reconstruction. (Mutable per-station price/stock state lands in the save with
-  **dynamic pricing**, UC14.) Asteroid-field **depletion** is persisted and owned by
+  they "persist" by reconstruction. (Mutable per-station price/stock state would land in the save with
+  **dynamic pricing** — a deferred `FactionPricing` hook, ADR 0013; UC14 added factions/reputation but
+  not dynamic pricing.) Asteroid-field **depletion** is persisted and owned by
   [world-and-sector.md](world-and-sector.md).
 
 ## Dependencies & interactions
@@ -130,7 +139,8 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Fed by** missions (rewards), mining (world asteroids), and combat loot (later).
 - **Drains into** upgrades & progression (upgrades, **ships**, cargo), crew
   (wages/hiring), repairs (sectional damage), and fuel.
-- **Trading** couples to stations (world) and, later, **factions** (dynamic pricing).
+- **Trading** couples to stations (world); a station's owning **faction** exists as of UC14
+  (ADR 0013), but **dynamic pricing** off faction/reputation state is still a deferred hook.
 - **Ship-switching** couples to ship-and-controls and upgrades (each ship has its own
   loadout/cargo/fuel).
 - **Fuel** couples to ship-and-controls (modulates `max_speed`).

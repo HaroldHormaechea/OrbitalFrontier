@@ -52,6 +52,12 @@ tree. Slot counts per category vary by ship.
 at stations**; what's available and the price is gated by **credits** and (post-MVP)
 **reputation/faction state**. There is **no unlock/research progression** for now.
 
+> **Reputation exists as of UC14, but it does not yet gate upgrades/ships.** UC14
+> ([ADR 0013](../adr/0013-factions-and-reputation.md)) implemented per-faction reputation and used it
+> to gate **mission offers** only. Gating upgrade/ship **availability or price** by standing is not
+> built — it remains a recorded hook (reward/price modulation, ADR 0013). Acquisition is still
+> cash-only at the dealer/shipyard.
+
 **Selling & refitting — junkyards (a station _kind_, not a new POI type).** Installed/used
 upgrades can be **removed and sold only at junkyard-type stations** (not back to a normal
 dealer). Junkyards are where **refits** happen, so no separate respec system is required.
@@ -91,7 +97,8 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Crew upgrade** mechanics (deferred).
 - **Junkyard** used-part **buy-used** option and used-part pricing curve (only the sell/refit side
   shipped; the refund fraction is a [TUNE] value).
-- **Reputation gating** detail (post-MVP, UC14 — cash-only for now).
+- **Reputation gating of upgrades/ships** detail — still deferred. Reputation itself shipped in UC14
+  (ADR 0013) but gates only **mission offers**; upgrade/ship acquisition is still cash-only.
 - Active-ship **switching while ships are parked apart**: the MVP presents the switched-to ship at the
   docked station (no idle-ship storage / travel model yet).
 

@@ -1,0 +1,35 @@
+-- Migration v11 -> v12 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v11 (UC13) held meta + settings + the save header (game_state) + per-ship rows + cargo + ship_upgrade
+-- + ship_section_damage + field_deposit + revealed_contact + mission. v12 (UC14, ADR 0013) adds
+-- **factions & reputation**:
+--
+--  1. `reputation` is a new table — one row per faction the player holds a NON-NEUTRAL standing with
+--     (`faction_id` slug PK, `value` the clamped standing). A faction with NO row is neutral (0), so a
+--     migrated save reads back fully neutral (byte-identical to a pre-UC14 game, which had no reputation).
+--     Only non-neutral standings are stored (like cargo storing only non-zero amounts); full-snapshot
+--     rewrite on save.
+--  2. `mission.faction_id` is a new NULLABLE column — the faction a persisted mission credits reputation
+--     to on completion (or costs it on courier expiry). NULL means a faction-less mission (the value a
+--     migrated pre-UC14 mission row reads back as — pre-UC14 missions had no faction, so they grant no
+--     reputation, which is correct). The mission **gate** (unlockFaction/unlockThreshold) is deliberately
+--     NOT a column: it only affects which AVAILABLE offers surface, and AVAILABLE offers are never
+--     persisted (regenerated + gate-filtered on load, ADR 0011/0013).
+--
+-- Factions themselves are fixed authored data (the Factions catalog), reconstructed on load — never
+-- stored; only the player's per-faction standing and a mission's faction attribution are rows. An unknown
+-- faction slug degrades gracefully on load (the reputation row is skipped / the mission attribution
+-- dropped, with a WARN — never stranded).
+--
+-- This migration is purely additive: a new (empty) table + a new NULLABLE column. CREATE TABLE / ALTER
+-- TABLE ADD COLUMN are both supported by the bundled SQLite on minSdk-24 devices (they long predate 24),
+-- so this is minSdk-safe — same rationale as every prior additive migration. All prior data is untouched.
+
+CREATE TABLE reputation (
+    faction_id TEXT NOT NULL PRIMARY KEY,
+    value INTEGER NOT NULL
+);
+
+ALTER TABLE mission ADD COLUMN faction_id TEXT;
+
+UPDATE meta SET save_version = 12 WHERE id = 0;

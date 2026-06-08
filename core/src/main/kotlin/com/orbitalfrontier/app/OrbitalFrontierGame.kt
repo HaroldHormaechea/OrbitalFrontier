@@ -5,6 +5,8 @@ import com.badlogic.gdx.Game
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.faction.Factions
+import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
@@ -170,6 +172,8 @@ class OrbitalFrontierGame(
                 // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
                 onRefuel = { playScreen?.refuel() },
                 fuelStatus = { playScreen?.fuelStatusLine() ?: "" },
+                // UC14: the station's owning faction (cosmetic), resolved from the authored catalog.
+                factionName = station.factionId?.let { Factions.byId(it)?.displayName },
             )
         stationHubScreen = hub
         setScreen(hub)
@@ -254,6 +258,9 @@ class OrbitalFrontierGame(
                 creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
                 onMissionOrder = { order: MissionOrder -> playScreen?.applyMissionOrder(order) },
                 onBack = { returnToHub() },
+                // UC14: reputation-gated (locked) offers + the current standing readout.
+                lockedSupplier = { playScreen?.lockedStationOffers() ?: emptyList() },
+                reputationSupplier = { playScreen?.reputationSnapshot() ?: Reputation.EMPTY },
             )
         missionBoardScreen = board
         setScreen(board)

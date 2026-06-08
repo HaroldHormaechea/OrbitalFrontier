@@ -42,6 +42,9 @@ class StationHubScreen(
     private val onMissions: () -> Unit,
     private val onRefuel: () -> Unit,
     private val fuelStatus: () -> String,
+    // UC14: optional owning-faction display name; null for an unaligned station. Purely cosmetic and
+    // defaulted so existing call sites / tests need not supply it (must not crash when absent).
+    factionName: String? = null,
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -55,6 +58,10 @@ class StationHubScreen(
         root.pad(MARGIN)
 
         root.add(Label(stationName, skin.labelStyle)).padBottom(TITLE_GAP).row()
+        // UC14: show the owning faction when the station has one (cosmetic).
+        if (factionName != null) {
+            root.add(Label("FACTION: $factionName", skin.labelStyle)).padBottom(SERVICE_GAP).row()
+        }
         root.add(Label("STATION SERVICES", skin.labelStyle)).padBottom(SERVICE_GAP).row()
 
         // Active TRADE service (UC08): opens the station trade desk. The play screen owns the pure

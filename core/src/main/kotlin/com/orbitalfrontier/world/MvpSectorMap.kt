@@ -6,6 +6,8 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarket
 import com.orbitalfrontier.economy.TradeOffer
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.ship.ShipRoster
@@ -108,6 +110,9 @@ object MvpSectorMap {
                                 outfitMarket = ALPHA_OUTFIT,
                                 shipyard = Shipyard.of(listOf(ShipRoster.SWIFT.id)),
                                 hiresCrew = true,
+                                // Alpha + Beta belong to the Trade League (UC14): a board mining mission
+                                // here credits LEAGUE reputation, which unlocks Alpha's gated premium offer.
+                                factionId = Factions.LEAGUE.id,
                             ),
                             // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
                             // so mining it to a full hold still leaves the field partially depleted (UC06).
@@ -153,6 +158,8 @@ object MvpSectorMap {
                                 market = BETA_MARKET,
                                 outfitMarket = BETA_OUTFIT,
                                 shipyard = Shipyard.of(listOf(ShipRoster.PROSPECTOR.id)),
+                                // Beta is the Trade League's second core station (UC14).
+                                factionId = Factions.LEAGUE.id,
                             ),
                             // A modest second field (26 units total) of tech-input resources.
                             asteroidField(
@@ -184,6 +191,8 @@ object MvpSectorMap {
                                 position = Vec2(-500f, 200f),
                                 kind = StationKind.JUNKYARD,
                                 outfitMarket = GAMMA_JUNKYARD_OUTFIT,
+                                // The Gamma junkyard is run by the unaligned Independents (UC14).
+                                factionId = Factions.INDEPENDENTS.id,
                             ),
                         ),
                 ),
@@ -282,6 +291,7 @@ object MvpSectorMap {
         outfitMarket: OutfitMarket = OutfitMarket.EMPTY,
         shipyard: Shipyard = Shipyard.EMPTY,
         hiresCrew: Boolean = false,
+        factionId: FactionId? = null,
     ): Station =
         Station(
             id = PoiId(id),
@@ -293,6 +303,7 @@ object MvpSectorMap {
             outfitMarket = outfitMarket,
             shipyard = shipyard,
             hiresCrew = hiresCrew,
+            factionId = factionId,
         )
 
     private fun asteroidField(

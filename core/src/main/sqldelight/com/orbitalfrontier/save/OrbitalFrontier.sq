@@ -1,10 +1,10 @@
--- Orbital Frontier save schema, version 11 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012).
+-- Orbital Frontier save schema, version 12 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013).
 --
--- This .sq file is ALWAYS the latest schema (currently v11). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v12). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
--- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11). Never edit this baseline destructively to make a
--- schema change — bump the version and add a migration instead.
+-- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12). Never edit this baseline
+-- destructively to make a schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -46,6 +46,16 @@
 -- (the respawn point on destruction, UC13 AC#5). Transient combat (hostiles, projectiles, combat RNG) is
 -- NOT persisted — it is regenerated from the seeded encounter on load (a mid-combat save reloads with
 -- combat cleared, ADR 0012). The v10 -> v11 migration is additive (new table + new NULLABLE column).
+-- v12 (UC14) adds **factions & reputation** (ADR 0013): the new `reputation` table (one row per faction
+-- the player holds a NON-NEUTRAL standing with — neutral 0 is the absent-row default, like cargo only
+-- storing non-zero amounts) and a nullable `mission.faction_id` column (the faction a persisted mission
+-- credits reputation to on completion / costs it on courier expiry). Factions themselves are fixed
+-- authored data (Factions catalog), not stored — only the player's per-faction standing and a mission's
+-- faction attribution are rows. The mission **gate** (unlockFaction/unlockThreshold) is NOT stored: it
+-- only affects which AVAILABLE offers surface, and AVAILABLE offers are never persisted (regenerated +
+-- gate-filtered on load, ADR 0011/0013). The v11 -> v12 migration is additive (new table + new NULLABLE
+-- column). An unknown faction slug degrades gracefully on load (skip the reputation row / drop the
+-- attribution with a WARN — never stranded).
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -171,6 +181,10 @@ CREATE TABLE revealed_contact (
 -- (`pickup`/`destination` PoiId values, `remaining_ticks` model timer, `picked_up` 0/1) are NULL/0 for
 -- a mining mission and vice-versa. An unknown enum / resource / station name degrades on load (the row
 -- is skipped with a WARN — never stranded), so an evolved catalog never crashes a load.
+-- `faction_id` (UC14) is the FactionId slug the mission credits reputation to on completion (mining /
+-- premium / board-courier) or costs it on courier expiry; NULLABLE (a faction-less mission stores NULL).
+-- An unknown faction slug degrades to "no attribution" on load (dropped with a WARN). The gate
+-- (unlockFaction/unlockThreshold) is NOT stored — it only affects AVAILABLE offers, which are never persisted.
 CREATE TABLE mission (
     id TEXT NOT NULL PRIMARY KEY,
     type TEXT NOT NULL,
@@ -184,7 +198,19 @@ CREATE TABLE mission (
     pickup TEXT,
     destination TEXT,
     remaining_ticks INTEGER NOT NULL DEFAULT 0,
-    picked_up INTEGER NOT NULL DEFAULT 0
+    picked_up INTEGER NOT NULL DEFAULT 0,
+    faction_id TEXT
+);
+
+-- Player per-faction reputation (UC14, ADR 0013). One row per faction the player holds a NON-NEUTRAL
+-- standing with; `faction_id` is the FactionId slug, `value` the clamped standing. A faction with NO row
+-- is neutral (0) — only non-neutral standings are stored (like cargo storing only non-zero amounts), so a
+-- fresh / migrated save reads back fully neutral. The repository coerces a stored value into the params'
+-- [min,max] bounds and skips an unknown faction slug (WARN) on load. Save-wide (not per-ship), full-snapshot
+-- rewrite (delete-then-insert) on each save, like the mission table.
+CREATE TABLE reputation (
+    faction_id TEXT NOT NULL PRIMARY KEY,
+    value INTEGER NOT NULL
 );
 
 -- Read the stored save-format version (null before the meta row is seeded).
@@ -307,7 +333,7 @@ INSERT OR IGNORE INTO revealed_contact(contact_id) VALUES (?);
 -- when nothing has been accepted yet.
 selectAllMissions:
 SELECT id, type, source, status, reward_credits, reward_resource, reward_resource_units,
-       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up
+       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id
 FROM mission
 ORDER BY id;
 
@@ -321,5 +347,20 @@ DELETE FROM mission;
 -- INSERT (not INSERT OR REPLACE) suffices and there is never a primary-key collision.
 insertMission:
 INSERT INTO mission(id, type, source, status, reward_credits, reward_resource, reward_resource_units,
-                    quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Read every persisted (non-neutral) faction standing (UC14). Empty when fully neutral.
+selectReputation:
+SELECT faction_id, value FROM reputation;
+
+-- Clear every reputation row. The save path does delete-then-plain-INSERT (a full snapshot rewrite of the
+-- non-neutral standings) rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices
+-- lacks — the same rationale as the cargo / mission snapshots.
+deleteAllReputation:
+DELETE FROM reputation;
+
+-- Insert one reputation row. Always preceded by deleteAllReputation in the same transaction, so a plain
+-- INSERT (not INSERT OR REPLACE) suffices and there is never a primary-key collision.
+insertReputation:
+INSERT INTO reputation(faction_id, value) VALUES (?, ?);
