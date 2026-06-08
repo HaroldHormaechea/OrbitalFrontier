@@ -10,6 +10,9 @@ import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.ReputationParams
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionId
 import com.orbitalfrontier.mission.MissionLog
@@ -32,6 +35,8 @@ import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -61,10 +66,16 @@ import kotlinx.serialization.Serializable
  * @property combatConfig the pinned [CombatParams] snapshot the run was recorded under (UC13), same
  *   rationale as [config] — a later balance retune of weapon/damage/respawn numbers can't invalidate this
  *   replay; defaulted so older artifacts (recorded before combat) decode unchanged.
+ * @property reputationConfig the pinned [ReputationParams] snapshot the run was recorded under (UC14),
+ *   same rationale as [config] — a later retune of the mission-complete / courier-fail deltas or the
+ *   clamp bounds can't silently invalidate this replay. Marked `@EncodeDefault(NEVER)` so an artifact
+ *   that ran under the default params **omits** it on disk, keeping every pre-UC14 fixture byte-identical
+ *   (`encodeDefaults = true` would otherwise write it into all of them).
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Playthrough(
     val formatVersion: Int = CURRENT_FORMAT_VERSION,
@@ -78,6 +89,10 @@ data class Playthrough(
     val fuelConfig: FuelParamsDto = FuelParamsDto.DEFAULT,
     val missionConfig: MissionParamsDto = MissionParamsDto.DEFAULT,
     val combatConfig: CombatParamsDto = CombatParamsDto.DEFAULT,
+    // UC14: @EncodeDefault(NEVER) so a run under the default reputation tuning omits this on disk, keeping
+    // every pre-UC14 fixture byte-identical despite the codec's global encodeDefaults = true.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reputationConfig: ReputationParamsDto = ReputationParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -356,12 +371,55 @@ data class CombatParamsDto(
 }
 
 /**
+ * Serializable mirror of [ReputationParams] (UC14 config snapshot).
+ *
+ * [ReputationParams] is a pure domain type and stays annotation-free; this DTO carries the same fields
+ * for persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers
+ * live in exactly one place. Pinning the reputation tuning per artifact (mirroring [MissionParamsDto])
+ * means a later balance change to the mission-complete gain, the courier-fail loss, or the clamp bounds
+ * cannot silently invalidate an old recorded faction playthrough — the standings it grants are
+ * reproduced exactly. Defaulted (and `@EncodeDefault(NEVER)` on [Playthrough]) so older artifacts
+ * (recorded before reputation) decode unchanged and omit it on disk.
+ */
+@Serializable
+data class ReputationParamsDto(
+    val missionCompleteDelta: Int,
+    val courierFailDelta: Int,
+    val min: Int,
+    val max: Int,
+) {
+    /** Reconstruct the domain [ReputationParams] (its `init` re-validates the values). */
+    fun toReputationParams(): ReputationParams =
+        ReputationParams(
+            missionCompleteDelta = missionCompleteDelta,
+            courierFailDelta = courierFailDelta,
+            min = min,
+            max = max,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: ReputationParams): ReputationParamsDto =
+            ReputationParamsDto(
+                missionCompleteDelta = params.missionCompleteDelta,
+                courierFailDelta = params.courierFailDelta,
+                min = params.min,
+                max = params.max,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: ReputationParamsDto = from(ReputationParams())
+    }
+}
+
+/**
  * Serializable mirror of [SimulationState] (UC02 AC#3 optional initial state; AC#6 snapshots).
  *
  * Mirrors the snapshot as flat scalar fields so the domain types ([SimulationState],
  * [ShipKinematics], [Vec2]) stay annotation-free. Extend this DTO in lock-step with
  * [SimulationState] as later use cases add simulated systems.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class StateSnapshotDto(
     val tick: Int,
@@ -451,6 +509,16 @@ data class StateSnapshotDto(
      * Defaulted null so older artifacts (recorded before combat) decode unchanged.
      */
     val lastDockedStation: String? = null,
+    /**
+     * The player's per-faction reputation (UC14 AC#2) — the save-wide standing carried on
+     * [SimulationState.reputation]. Marked `@EncodeDefault(NEVER)` and defaulted to [ReputationDto.EMPTY]
+     * so a neutral snapshot (every pre-UC14 fixture, and a fresh game) **omits** it on disk — keeping the
+     * 11 committed fixtures byte-identical despite the codec's global `encodeDefaults = true`. A non-neutral
+     * standing is written as a compact `factionSlug → value` map (only the non-zero rows, matching the
+     * domain [Reputation], which stores only non-neutral standings).
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reputation: ReputationDto = ReputationDto.EMPTY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -468,6 +536,8 @@ data class StateSnapshotDto(
             missions = missions.toMissionLog(),
             // Combat is transient (ADR 0012) — decode as NONE; only the durable lastDockedStation rides here.
             lastDockedStation = lastDockedStation?.let(::PoiId),
+            // UC14: the per-faction standing (an absent / omitted field decodes to neutral EMPTY).
+            reputation = reputation.toReputation(),
         )
 
     /**
@@ -530,7 +600,34 @@ data class StateSnapshotDto(
                 missions = MissionLogDto.from(state.missions),
                 // UC13: only the durable last docked station is snapshotted; live combat is transient.
                 lastDockedStation = state.lastDockedStation?.value,
+                // UC14: the per-faction standing — neutral EMPTY omits on disk (byte-identical pre-UC14).
+                reputation = ReputationDto.from(state.reputation),
             )
+    }
+}
+
+/**
+ * Serializable mirror of [Reputation] (UC14 AC#2). Stores the player's standings as a compact
+ * `factionSlug → value` map — only the **non-neutral** rows, exactly as the domain [Reputation] keeps
+ * only non-zero standings, so the on-disk form is minimal and diffable. [EMPTY] (the neutral default)
+ * is the value [StateSnapshotDto.reputation] omits via `@EncodeDefault(NEVER)`, so a fresh game and
+ * every pre-UC14 fixture serialize without a reputation field at all.
+ */
+@Serializable
+data class ReputationDto(
+    val byFaction: Map<String, Int> = emptyMap(),
+) {
+    /** Reconstruct the domain [Reputation] (factionSlug → standing). */
+    fun toReputation(): Reputation =
+        Reputation(byFaction.mapKeys { FactionId(it.key) })
+
+    companion object {
+        /** The neutral default — no recorded standing with any faction. */
+        val EMPTY: ReputationDto = ReputationDto()
+
+        /** Snapshot [reputation] into its serializable form (the non-neutral rows, keyed by faction slug). */
+        fun from(reputation: Reputation): ReputationDto =
+            ReputationDto(reputation.byFaction.mapKeys { it.key.value })
     }
 }
 
