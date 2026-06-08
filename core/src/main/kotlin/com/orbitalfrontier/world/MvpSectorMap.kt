@@ -101,7 +101,8 @@ object MvpSectorMap {
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
                             // Alpha Station (DEALER): trade desk + a tier-I outfitting desk + a shipyard
-                            // selling the courier hull (UC09 AC#3/#5) and hiring crew (UC11 AC#2).
+                            // selling the courier hull (UC09 AC#3/#5), hiring crew (UC11 AC#2), and the
+                            // one MVP station that lets the player build a personal station (UC15 AC#1).
                             station(
                                 id = "alpha-station",
                                 displayName = "Alpha Station",
@@ -113,6 +114,9 @@ object MvpSectorMap {
                                 // Alpha + Beta belong to the Trade League (UC14): a board mining mission
                                 // here credits LEAGUE reputation, which unlocks Alpha's gated premium offer.
                                 factionId = Factions.LEAGUE.id,
+                                // The start-sector station is the MVP's build-capable station (UC15): the
+                                // player can found / expand a personal station while docked here.
+                                buildsStations = true,
                             ),
                             // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
                             // so mining it to a full hold still leaves the field partially depleted (UC06).
@@ -292,6 +296,7 @@ object MvpSectorMap {
         shipyard: Shipyard = Shipyard.EMPTY,
         hiresCrew: Boolean = false,
         factionId: FactionId? = null,
+        buildsStations: Boolean = false,
     ): Station =
         Station(
             id = PoiId(id),
@@ -304,6 +309,7 @@ object MvpSectorMap {
             shipyard = shipyard,
             hiresCrew = hiresCrew,
             factionId = factionId,
+            buildsStations = buildsStations,
         )
 
     private fun asteroidField(

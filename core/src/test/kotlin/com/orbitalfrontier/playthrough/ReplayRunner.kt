@@ -13,6 +13,7 @@ import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
@@ -92,6 +93,7 @@ class ReplayRunner {
             val hireOrder = hireOrderFor(tickEvents)
             val missionOrder = missionOrderFor(tickEvents)
             val fireAction = fireActionFor(tickEvents)
+            val stationBuildOrder = stationBuildOrderFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -107,6 +109,7 @@ class ReplayRunner {
                     hireOrder,
                     missionOrder,
                     fireAction,
+                    stationBuildOrder,
                 )
             perTick?.add(state)
         }
@@ -217,4 +220,15 @@ class ReplayRunner {
      */
     private fun missionOrderFor(events: List<InputEvent>): MissionOrder =
         events.filterIsInstance<MissionEvent>().lastOrNull()?.toMissionOrder() ?: MissionOrder.None
+
+    /**
+     * Reduce a tick's events to the [StationBuildOrder] the sim steps with (UC15). When several station-build
+     * samples share a tick the latest wins; a tick with no [StationBuildEvent] steps with
+     * [StationBuildOrder.None], so non-building artifacts (UC01..UC14) replay exactly as before. A
+     * [StationBuildEvent] maps to the matching [StationBuildOrder.FoundStation]/[StationBuildOrder.BuildModule]
+     * (the resolver no-ops an order it cannot satisfy — not docked at a build-capable station, unaffordable,
+     * unknown module, or not owned).
+     */
+    private fun stationBuildOrderFor(events: List<InputEvent>): StationBuildOrder =
+        events.filterIsInstance<StationBuildEvent>().lastOrNull()?.toStationBuildOrder() ?: StationBuildOrder.None
 }

@@ -1,0 +1,36 @@
+-- Migration v12 -> v13 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v12 (UC14) held meta + settings + the save header (game_state) + per-ship rows + cargo + ship_upgrade
+-- + ship_section_damage + field_deposit + revealed_contact + mission + reputation. v13 (UC15, ADR 0014)
+-- adds **player-owned stations**:
+--
+--  1. `owned_station` is a new table — one row per station the player has founded (`id` the StationId
+--     value PK, `sector` the SectorId slug it is anchored in). A pre-UC15 game owned no stations, so a
+--     migrated save reads back with this table empty — byte-identical to a game that never built one.
+--  2. `station_module` is a new table — one row per module snapped onto a station, keyed by
+--     (station_id, slot_index); `module_type` is the StationModuleId slug, resolved against
+--     StationModuleCatalog on load (gaps allowed, like ship_upgrade; an unknown id is skipped with a
+--     WARN — never stranded). Each station's rows are a full snapshot (delete-then-insert) on save.
+--
+-- The module catalog / functions / costs are fixed authored data (StationModuleCatalog), reconstructed
+-- on load — never stored; only a station's id, anchor sector and built-module slugs are rows. In the MVP
+-- stations only ever GROW (founded, gain modules) and are never removed, so there is no delete-station
+-- query / path.
+--
+-- This migration is purely additive: two new (empty) tables. CREATE TABLE is supported by the bundled
+-- SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe — the same rationale as every
+-- prior additive migration. All prior data is untouched.
+
+CREATE TABLE owned_station (
+    id INTEGER NOT NULL PRIMARY KEY,
+    sector TEXT NOT NULL
+);
+
+CREATE TABLE station_module (
+    station_id INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL,
+    module_type TEXT NOT NULL,
+    PRIMARY KEY (station_id, slot_index)
+);
+
+UPDATE meta SET save_version = 13 WHERE id = 0;

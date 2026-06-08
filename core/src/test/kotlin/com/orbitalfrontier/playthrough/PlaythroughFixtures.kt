@@ -22,6 +22,8 @@ import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
@@ -97,6 +99,22 @@ object PlaythroughFixtures {
     const val UC14_FACTION: String = "uc14-faction"
 
     /**
+     * UC15 station-building playthrough name (AC#6): start docked at Alpha Station (the one build-capable
+     * MVP station) with credits + mined resources, found a `commerce-hub-i` station in one tick, and end
+     * owning a single station whose [com.orbitalfrontier.station.OwnedStation.availableFunctions] expose
+     * COMMERCE. [Uc15StationReplayTest] asserts ownership (AC#1/#3) + the COMMERCE function (AC#2/#6) +
+     * determinism. Loadable via `playtest -Dplaythrough.name=uc15-station`.
+     */
+    const val UC15_STATION: String = "uc15-station"
+
+    /**
+     * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
+     * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
+     * fixture stays self-contained.
+     */
+    const val UC15_STARTING_CREDITS: Long = 2000L
+
+    /**
      * Starting credit balance the UC11 crew fixture seeds — comfortably above one hire's cost
      * ([com.orbitalfrontier.crew.Hiring.HIRE_COST_PER_CREW] = 100) so the single hire clears and the
      * post-hire wallet is a known non-zero baseline. Authored as a literal so the fixture stays
@@ -152,6 +170,7 @@ object PlaythroughFixtures {
             UC12_MISSION to ::uc12Mission,
             UC13_COMBAT to ::uc13Combat,
             UC14_FACTION to ::uc14Faction,
+            UC15_STATION to ::uc15Station,
         )
 
     /**
@@ -665,6 +684,51 @@ object PlaythroughFixtures {
             recorder.recordDockAction(tick, DockAction.DOCK)
             recorder.recordMission(tick, MissionOrder.TurnIn(UC12_BOARD_MINING))
         }
+        return recorder.build()
+    }
+
+    /**
+     * UC15 station-building scenario (AC#6): the player starts **docked at Alpha Station** — the one MVP
+     * station whose `buildsStations` flag is set — in [MvpSectorMap.START_SECTOR] (Alpha), with
+     * [UC15_STARTING_CREDITS] credits and a hold carrying more than the commerce hub's resource bill
+     * (IRON_ORE:15 + SILICON:8). The script is a single tick:
+     *  - **tick 0** (docked): found a `commerce-hub-i` station ([StationBuildOrder.FoundStation]). Resolved
+     *    as the last docked step, this deducts 1500 credits + {IRON_ORE:15, SILICON:8}, allocates station id
+     *    0, anchors it in Alpha, and snaps the commerce hub into slot 0.
+     *
+     * [Uc15StationReplayTest] asserts the AC#6 contract: after the replay the player owns exactly one
+     * station (AC#1/#3) whose [com.orbitalfrontier.station.OwnedStation.availableFunctions] contains COMMERCE
+     * (AC#2/#6), plus bit-for-bit determinism. The ship is seeded at Alpha Station's authored position so the
+     * snapshot is faithful, though a docked ship is frozen regardless. Loadable via
+     * `playtest -Dplaythrough.name=uc15-station`.
+     */
+    fun uc15Station(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC15_STATION,
+                seed = 15L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        fleet =
+                            singleShipFleet(
+                                // Alpha Station's authored position
+                                kinematics = ShipKinematics(position = Vec2(0f, 600f)),
+                                cargo =
+                                    Cargo(
+                                        mapOf(ResourceType.IRON_ORE to 20, ResourceType.SILICON to 12),
+                                        Cargo.DEFAULT_CAPACITY,
+                                    ),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC15_STARTING_CREDITS,
+                    ),
+            )
+
+        // Tick 0 (docked at the build-capable Alpha Station): found a commerce-hub-i station. The build
+        // resolves as the last docked step, deducting the cost and adding the owned station (id 0, anchored
+        // in Alpha, commerce hub in slot 0).
+        recorder.recordStationBuild(0, StationBuildOrder.FoundStation(StationModuleCatalog.COMMERCE_HUB))
         return recorder.build()
     }
 

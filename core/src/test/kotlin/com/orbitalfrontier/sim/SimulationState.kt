@@ -8,6 +8,7 @@ import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
+import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
@@ -84,6 +85,16 @@ data class SimulationState(
      * so every pre-UC14 fixture constructs and **steps byte-identically** (the byte-identical contract).
      */
     val reputation: Reputation = Reputation.EMPTY,
+    /**
+     * The player's owned stations (UC15 AC#1/#3), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.stations]. Save-wide (like [credits]); the pure
+     * [Simulation] only ever grows it through [com.orbitalfrontier.station.StationBuilder.resolve] (the
+     * LAST docked step), and a build only happens while docked at a build-capable station. Defaults to
+     * [StationRegistry.EMPTY] (no owned stations) and stays the SAME instance on a no-op tick, so every
+     * pre-UC15 fixture constructs and **steps byte-identically** (the byte-identical contract) — the
+     * empty registry is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
+     */
+    val stations: StationRegistry = StationRegistry.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

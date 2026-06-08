@@ -15,6 +15,9 @@ import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipTypeId
+import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationId
+import com.orbitalfrontier.station.StationModuleId
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
@@ -383,6 +386,75 @@ data class MissionEvent(
                 MissionOrder.None -> MissionEvent(tick, MissionOrderKind.NONE)
                 is MissionOrder.Accept -> MissionEvent(tick, MissionOrderKind.ACCEPT, missionId = order.id.value)
                 is MissionOrder.TurnIn -> MissionEvent(tick, MissionOrderKind.TURN_IN, missionId = order.id.value)
+            }
+    }
+}
+
+/** Which [StationBuildOrder] kind a [StationBuildEvent] carries — the serialized discriminator for the order. */
+enum class StationBuildOrderKind {
+    /** No station action (maps to [StationBuildOrder.None]). */
+    NONE,
+
+    /** Found a new station (maps to [StationBuildOrder.FoundStation]); [StationBuildEvent.moduleType] is set. */
+    FOUND_STATION,
+
+    /** Build a module onto an owned station (maps to [StationBuildOrder.BuildModule]); stationId + moduleType set. */
+    BUILD_MODULE,
+}
+
+/**
+ * A station-build control sample for one tick (UC15 AC#1/#6) — one FoundStation / BuildModule the station
+ * hub's BUILD action feeds in while docked at a build-capable station. Carried alongside the other per-tick
+ * events; [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs a [StationBuildOrder] from it and
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step], where it is resolved as the LAST docked step
+ * (so it only has an effect while docked at a station whose `buildsStations` flag is set).
+ *
+ * Flat serializable fields keep the domain [StationBuildOrder] (a non-serializable sealed hierarchy)
+ * annotation-free: [kind] is the discriminator, [moduleType] is the [StationModuleId] slug for a
+ * FOUND_STATION / BUILD_MODULE, and [stationId] is the [StationId] value a BUILD_MODULE targets. A tick
+ * with no [StationBuildEvent] reconstructs as [StationBuildOrder.None] in the runner, so older artifacts
+ * (which carry none) replay unchanged.
+ */
+@Serializable
+@SerialName("stationBuild")
+data class StationBuildEvent(
+    override val tick: Int,
+    val kind: StationBuildOrderKind,
+    val moduleType: String? = null,
+    val stationId: Long? = null,
+) : InputEvent() {
+    /** Reconstruct the domain [StationBuildOrder] this event recorded. */
+    fun toStationBuildOrder(): StationBuildOrder =
+        when (kind) {
+            StationBuildOrderKind.NONE -> StationBuildOrder.None
+            StationBuildOrderKind.FOUND_STATION ->
+                StationBuildOrder.FoundStation(
+                    StationModuleId(requireNotNull(moduleType) { "FOUND_STATION requires a moduleType" }),
+                )
+            StationBuildOrderKind.BUILD_MODULE ->
+                StationBuildOrder.BuildModule(
+                    StationId(requireNotNull(stationId) { "BUILD_MODULE requires a stationId" }),
+                    StationModuleId(requireNotNull(moduleType) { "BUILD_MODULE requires a moduleType" }),
+                )
+        }
+
+    companion object {
+        /** Snapshot a [StationBuildOrder] into its serializable event form at [tick]. */
+        fun from(
+            tick: Int,
+            order: StationBuildOrder,
+        ): StationBuildEvent =
+            when (order) {
+                StationBuildOrder.None -> StationBuildEvent(tick, StationBuildOrderKind.NONE)
+                is StationBuildOrder.FoundStation ->
+                    StationBuildEvent(tick, StationBuildOrderKind.FOUND_STATION, moduleType = order.moduleType.value)
+                is StationBuildOrder.BuildModule ->
+                    StationBuildEvent(
+                        tick,
+                        StationBuildOrderKind.BUILD_MODULE,
+                        moduleType = order.moduleType.value,
+                        stationId = order.stationId.value,
+                    )
             }
     }
 }

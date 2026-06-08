@@ -1,16 +1,19 @@
-# Design Note — Station Building (post-MVP / stretch)
+# Design Note — Station Building (post-MVP stretch; UC15 sim + persistence built)
 
-- **Status:** draft (out of MVP scope — vision recorded, detail intentionally deferred)
-- **Last updated:** 2026-06-07
-- **Related:** PROJECT_BRIEF.md → non_goals #2 (explicitly out of MVP), core_gameplay_loop (Improve, deeper); [economy-and-resources.md](economy-and-resources.md) (credits/resources cost, commerce), [upgrades-and-progression.md](upgrades-and-progression.md) (retrofit), [world-and-sector.md](world-and-sector.md) (where stations sit), [save-and-persistence.md](save-and-persistence.md) (schema extensibility)
+- **Status:** in-progress — the **sim model + persistence** are built (UC15, ADR 0014); the **build/edit UI, world-surfacing/placement, docking-to-use, defense, passive economics, and crew** stay deferred.
+- **Last updated:** 2026-06-08
+- **Related:** PROJECT_BRIEF.md → non_goals #2 (stretch, lowest priority), core_gameplay_loop (Improve, deeper); **[ADR 0014](../adr/0014-owned-stations.md)** (the binding decision); [economy-and-resources.md](economy-and-resources.md) (credits/resources cost, commerce), [upgrades-and-progression.md](upgrades-and-progression.md) (retrofit), [world-and-sector.md](world-and-sector.md) (where stations sit), [save-and-persistence.md](save-and-persistence.md) (additive v13 migration)
 
 ## Summary
 
-A post-MVP "Improve, deeper" layer: the player builds and grows **multiple personal
-stations** used for **commerce, retrofit, and more**, from **modular snap-together
-pieces**, paid for with **credits and/or mined resources**. Single-player and offline like
-the rest of the game (no networked base-building). **Explicitly NOT in the MVP** — recorded
-here so the idea isn't lost and so the MVP is built without precluding it.
+An "Improve, deeper" layer: the player builds and grows **multiple personal stations** used
+for **commerce, retrofit, and more**, from **modular snap-together pieces**, paid for with
+**credits and/or mined resources**. Single-player and offline like the rest of the game (no
+networked base-building). The lowest-priority stretch UC — UC15 builds the **smallest coherent
+slice** that satisfies the six acceptance criteria: a pure, deterministic, JVM-testable
+ownership + build model that persists additively. The richer surfacing (UI, world placement,
+using a built station's functions, defense, economics) is deliberately deferred — see
+[ADR 0014](../adr/0014-owned-stations.md).
 
 ## Goals
 
@@ -18,44 +21,77 @@ here so the idea isn't lost and so the MVP is built without precluding it.
 - Player-owned infrastructure that plugs into the existing economy (commerce) and
   outfitting (retrofit) systems.
 
-## Mechanics / ideas (deferred — light sketch only)
+## Mechanics (UC15 — built)
 
-- **Multiple stations**, each serving roles such as **commerce** (trade hub / passive
-  income) and **retrofit** (outfitting/refit, à la a player-owned shipyard/junkyard).
-- **Modular, snap-together construction** — assemble stations from modules; expand over
-  time.
-- **Cost:** built from **credits and/or resources** (the mined materials from
-  [economy-and-resources.md](economy-and-resources.md)).
-- _Everything below is intentionally undefined for now: module catalog, placement rules,
-  defense (ties to deferred combat), passive economics, and crew needs._
+The model lives in the pure `com.orbitalfrontier.station` package (no engine types, fully
+JVM-testable, AC#5) — the station analogue of the `ship` (fleet) + `outfit` packages:
+
+- **Multiple owned stations** (AC#3) — `StationRegistry` (the `Fleet` analogue): a
+  sorted-unique list of `OwnedStation`, defaulting to `EMPTY`. It only ever **grows** in the
+  MVP (stations are founded and gain modules; never removed). Station ids are allocated
+  `max(id) + 1` (pure, no counter/clock — replay-stable).
+- **Modular construction** (AC#1) — an `OwnedStation` holds a gap-tolerant
+  `Map<slotIndex, StationModuleId>` (the `Loadout` analogue), anchored in a `SectorId`. A
+  `StationModule` (in `StationModuleCatalog`, authored data resolved on load — never persisted)
+  exposes one `StationFunction` and a `StationBuildCost`.
+- **Functions** (AC#2) — `StationFunction { COMMERCE, RETROFIT }`. `OwnedStation
+  .availableFunctions()` derives the set its built modules expose.
+- **Cost: credits and/or resources** (AC#1) — `StationBuildCost(credits, resources)`; resources
+  are drawn from the active ship's cargo hold. The MVP catalog: **Commerce Hub**
+  (`commerce-hub-i`, COMMERCE) and **Retrofit Bay** (`retrofit-bay-i`, RETROFIT). All costs are
+  **`[TUNE]`** placeholders.
+- **The build resolver** — `StationBuilder.resolve(...)` is pure and deterministic (the
+  `FleetResolver`/`Outfitting` analogue): `FoundStation(moduleType)` founds a station at the
+  docked station's sector with that module in slot 0; `BuildModule(stationId, moduleType)` snaps
+  a module onto an owned station's lowest free slot. Both are **docked-only and gated on the
+  docked station's `buildsStations` capability flag** (a station capability, like `hiresCrew` —
+  NOT a new `StationKind`). Affordability is **atomic** (credits + every resource checked up
+  front; all-or-nothing; a shortfall is a no-op). In the MVP, **Alpha Station** (start sector)
+  is the one build-capable station.
 
 ## Player-facing behavior
 
-_TODO (post-MVP): build/edit UI, where stations are placed, how they surface in the world
-and on the map._
+- **Built (UC15):** while docked at a build-capable station, the player can found a personal
+  station (and, via the resolver, add modules); ownership and the modules' functions persist
+  across save/reload. A recorded playthrough (UC02) founds a module and asserts ownership +
+  function availability (AC#6).
+- **Deferred (post-MVP, ADR 0014):** the dedicated **build/edit screen** (module choice,
+  expansion). UC15 wires only a minimal `BUILD` hub **action** (shown at a build-capable
+  station) that fires a default `FoundStation` order through `PlayScreen.build` — proving the
+  device→resolver→persist path without a new screen. How owned stations are **placed and
+  surfaced** in the world / on the minimap, and **docking to use** a built station's commerce
+  or retrofit function, are also deferred (today `OwnedStation` carries only its anchor sector).
 
 ## Data & state
 
-- Station ownership, layouts, and module state will be persisted in the SQLite save.
-- **Guardrail (matters for the MVP now):** design the MVP save schema (see ADR 0002 /
-  [save-and-persistence.md](save-and-persistence.md)) so player-owned stations can be added
-  **as a new versioned migration without a breaking change** — e.g. keep player-owned
-  entities and world objects modeled in a way that a "stations" table/section can be
-  appended later.
+- **Built (UC15, additive schema v12 → v13 — ADR 0014):** owned stations are save-wide player
+  state on `WorldState.stations`. Two new tables — `owned_station(id PK, sector)` and
+  `station_module(station_id, slot_index, module_type, PK(station_id, slot_index))`. A station's
+  modules are a full-snapshot rewrite (delete-then-insert, minSdk-24 safe, like `ship_upgrade`);
+  the `owned_station` row is upserted. Stations only grow, so there is no delete-station query.
+  The module catalog (functions/costs) is authored data reconstructed on load — only id slugs
+  are stored; an unknown slug is skipped with a WARN. The `12.sqm` migration creates the two
+  empty tables, so a migrated pre-UC15 save reads back with **zero** owned stations
+  (byte-identical to a game that never built one). The UC04 schema-extensibility **guardrail
+  below was honored** — this landed as a purely additive migration with no breaking change (AC#4).
+- **Guardrail (still holds for future station data):** keep player-owned entities modeled so
+  further station state (placement, economics, crew) can be appended as new versioned migrations
+  without a breaking change (ADR 0002 / [save-and-persistence.md](save-and-persistence.md)).
 
 ## Dependencies & interactions
 
-- **Economy** (commerce, build costs, passive income), **upgrades/progression** (retrofit),
-  **world & sector** (placement near asteroids / jump points), **combat** (defense, if any —
-  deferred), **crew** (staffing, if any — deferred).
+- **Economy** (build costs paid in credits + mined resources — built; commerce/passive income —
+  deferred), **upgrades/progression** (retrofit — function modeled, surfacing deferred),
+  **world & sector** (placement near asteroids / jump points — deferred), **combat** (defense —
+  deferred), **crew** (staffing — deferred).
 
-## Open questions (all deferred)
+## Open questions (deferred)
 
-- Is this ever actually built, or aspirational? If pursued, what's the minimum viable
-  version?
-- Module catalog and what each module provides.
-- Placement (anchored in a sector, at jump points, mobile?).
-- Defense vs. purely economic/utility.
+- Module catalog breadth and balancing (costs are `[TUNE]`); what each future module provides.
+- Placement (anchored in a sector, at jump points, mobile?) and how owned stations surface in
+  the world and on the map.
+- Using a built station's functions (docking to trade / refit at your own station).
+- Defense vs. purely economic/utility; passive economics; crew needs; station teardown.
 
 ## References
 

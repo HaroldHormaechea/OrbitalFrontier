@@ -75,6 +75,9 @@ import com.orbitalfrontier.ship.FuelLimitedMovement
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
+import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationBuilder
+import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.AsteroidField
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
@@ -216,6 +219,12 @@ class PlayScreen(
     // [reputationParams] feed the resolvers here and the replay harness, so live behaviour matches.
     private var reputation: Reputation = initialWorldState.reputation
     private val reputationParams = ReputationParams()
+
+    // Owned stations (UC15): the player-built stations, seeded from the loaded/initial snapshot. Save-wide
+    // (like the fleet/credits). Mutated only by [build] (the docked station-build service, via the pure
+    // [StationBuilder.resolve]) and handed to the autosave via [currentWorldState]. Defaults to EMPTY for a
+    // fresh / pre-UC15 save, so the snapshot stays byte-identical until the player builds their first station.
+    private var stations: StationRegistry = initialWorldState.stations
 
     // Courier timer drive (UC12): the model timer is TICK-based ([Missions.advance] decrements one
     // `remainingTicks` per call); the device paces those calls off accumulated real time so the
@@ -909,6 +918,8 @@ class PlayScreen(
             lastDockedStation = lastDockedStation,
             // Reputation (UC14): the live per-faction standing, folded onto the snapshot for the autosave.
             reputation = reputation,
+            // Owned stations (UC15): the live registry, folded onto the snapshot for the autosave.
+            stations = stations,
         )
     }
 
@@ -1207,6 +1218,52 @@ class PlayScreen(
         reputation = result.reputation
         logger.info(ECONOMY_TAG, "Mission order applied; active=${activeMissions().size}, credits=$credits")
         autosave.onEvent("mission")
+    }
+
+    /** The player's owned stations (UC15) — read by the station-build hub action for its readout/intent. */
+    fun stationsSnapshot(): StationRegistry = stations
+
+    /**
+     * Execute one station-build [order] against the **docked** station via the pure
+     * [StationBuilder.resolve] (UC15 AC#1) — the station analogue of [fleetCommand]/[outfit]. The
+     * station hub's BUILD action routes here. Resolves against the player's owned-station registry, the
+     * live credits + active-ship cargo (build resources are drawn from the hold), whether the docked
+     * station is build-capable ([com.orbitalfrontier.world.Station.buildsStations]), and the current
+     * sector (where a newly-founded station is anchored). When not docked (or the station is
+     * unresolvable) it no-ops, so building is implicitly gated on being docked.
+     *
+     * On a real build it deducts credits, folds the post-build cargo back onto the active ship's live
+     * hold (only when changed — same same-instance discipline as the mission step; [currentWorldState]
+     * carries it onto the active ship for the autosave), updates the registry, logs one line, and
+     * autosaves so the build is durable. A no-op tap (not build-capable, unknown module, unaffordable,
+     * not owned) changes nothing and is not persisted.
+     */
+    fun build(order: StationBuildOrder) {
+        val station = dockedStation?.let { sectorWorld.sector(currentSector).station(it) } ?: return
+        val result =
+            StationBuilder.resolve(
+                registry = stations,
+                credits = credits,
+                cargo = cargo,
+                buildsStations = station.buildsStations,
+                sector = currentSector,
+                order = order,
+            )
+        if (!result.changed) {
+            logger.info(
+                WORLD_TAG,
+                "Station build requested but nothing changed (not build-capable, unknown module, unaffordable, or not owned)",
+            )
+            return
+        }
+        credits = result.credits
+        cargo = result.cargo
+        stations = result.registry
+        logger.info(
+            WORLD_TAG,
+            "Station build applied; stations=${stations.size}, credits=$credits, cargo=${cargo.usedUnits}/${cargo.capacity}",
+        )
+        autosave.onEvent("build")
     }
 
     /**

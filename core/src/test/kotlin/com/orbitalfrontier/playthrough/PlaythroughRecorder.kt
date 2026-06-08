@@ -16,6 +16,7 @@ import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
@@ -145,6 +146,12 @@ class PlaythroughRecorder(
         tick: Int,
         order: MissionOrder,
     ): PlaythroughRecorder = record(MissionEvent.from(tick, order))
+
+    /** Convenience: record a [StationBuildEvent] for [order] at [tick] (UC15). */
+    fun recordStationBuild(
+        tick: Int,
+        order: StationBuildOrder,
+    ): PlaythroughRecorder = record(StationBuildEvent.from(tick, order))
 
     /** Record several [newEvents] in order. */
     fun recordAll(newEvents: Iterable<InputEvent>): PlaythroughRecorder {

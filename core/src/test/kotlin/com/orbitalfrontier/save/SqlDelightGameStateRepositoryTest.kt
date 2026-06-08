@@ -23,6 +23,11 @@ import com.orbitalfrontier.ship.ShipId
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
+import com.orbitalfrontier.station.OwnedStation
+import com.orbitalfrontier.station.StationFunction
+import com.orbitalfrontier.station.StationId
+import com.orbitalfrontier.station.StationModuleCatalog
+import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
@@ -335,6 +340,82 @@ class SqlDelightGameStateRepositoryTest {
 
         assertEquals(state, reloaded)
         assertEquals("an uncrewed ship reloads with zero crew", 0, reloaded!!.fleet.active.crew)
+    }
+
+    // --- UC15 AC#1/#3/#4: owned stations + their modules persist and round-trip (additive) ---
+
+    @Test
+    fun `multiple owned stations with gap-tolerant module slots round-trip exactly`() {
+        // Station 0: a commerce hub in slot 0 and a retrofit bay in slot 2 (slot 1 is a deliberate gap).
+        // Station 1: a single commerce hub. Two stations exercises AC#3 (multiple owned stations).
+        val station0 =
+            OwnedStation(
+                id = StationId(0),
+                sector = SectorId("alpha"),
+                modules =
+                    mapOf(
+                        0 to StationModuleCatalog.COMMERCE_HUB,
+                        2 to StationModuleCatalog.RETROFIT_BAY,
+                    ),
+            )
+        val station1 =
+            OwnedStation(
+                id = StationId(1),
+                sector = SectorId("beta"),
+                modules = mapOf(0 to StationModuleCatalog.COMMERCE_HUB),
+            )
+        val state = sampleState().copy(stations = StationRegistry(listOf(station0, station1)))
+
+        newRepository().saveGameState(state)
+        val reloaded = newRepository().loadGameState()
+
+        // EXACT equality covers both stations' ids, anchor sectors, and gap-tolerant module slot maps (AC#4).
+        assertEquals(state, reloaded)
+
+        // Detail spot-checks on the reconstructed registry.
+        val stations = reloaded!!.stations
+        assertEquals("both owned stations survive (AC#3)", 2, stations.size)
+        val s0 = stations.station(StationId(0))!!
+        assertEquals("station 0 keeps its commerce hub in slot 0", StationModuleCatalog.COMMERCE_HUB, s0.moduleAt(0))
+        assertNull("station 0's slot 1 stays an empty gap", s0.moduleAt(1))
+        assertEquals("station 0 keeps its retrofit bay in slot 2", StationModuleCatalog.RETROFIT_BAY, s0.moduleAt(2))
+        assertEquals(
+            "station 0 offers both functions (AC#2)",
+            setOf(StationFunction.COMMERCE, StationFunction.RETROFIT),
+            s0.availableFunctions(),
+        )
+    }
+
+    @Test
+    fun `the latest station snapshot wins — a re-save rewrites a station's modules`() {
+        val repo = newRepository()
+        val before =
+            OwnedStation(id = StationId(0), sector = SectorId("alpha"), modules = mapOf(0 to StationModuleCatalog.COMMERCE_HUB))
+        repo.saveGameState(sampleState().copy(stations = StationRegistry(listOf(before))))
+
+        // The same station gains a second module; the per-station module rewrite (delete-then-insert) must
+        // leave no stale rows and add the new one.
+        val after = before.addModule(StationModuleCatalog.RETROFIT_BAY)
+        repo.saveGameState(sampleState().copy(stations = StationRegistry(listOf(after))))
+
+        val reloaded = newRepository().loadGameState()!!.stations.station(StationId(0))!!
+        assertEquals("the station now has two modules", 2, reloaded.moduleCount)
+        assertEquals("the retrofit bay was added at slot 1", StationModuleCatalog.RETROFIT_BAY, reloaded.moduleAt(1))
+    }
+
+    // --- UC15 AC#4: backward compatibility — a pre-UC15 save reads back with zero owned stations ---
+
+    @Test
+    fun `a save with no stations reads back with the empty registry (backward-compatible)`() {
+        val state = sampleState() // stations defaults to StationRegistry.EMPTY (no owned stations)
+        assertTrue("precondition: the sample state owns no stations", state.stations.isEmpty)
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals(state, reloaded)
+        assertTrue("a station-less save reloads as the empty registry", reloaded!!.stations.isEmpty)
+        assertEquals("zero owned stations (additive, no breaking change)", 0, reloaded.stations.size)
     }
 
     // --- AC#3: transactional, corruption-safe write (graceful degradation) ---

@@ -39,6 +39,8 @@ import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.Shipyard
+import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationBuilder
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
@@ -172,6 +174,7 @@ class Simulation(
         hireOrder: HireOrder = HireOrder.None,
         missionOrder: MissionOrder = MissionOrder.None,
         fireAction: FireAction = FireAction.NONE,
+        stationBuildOrder: StationBuildOrder = StationBuildOrder.None,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -285,11 +288,40 @@ class Simulation(
                     fleetAfterHire
                 }
 
+            // Station building (UC15) — the LAST docked step (refuel -> trade -> outfit -> fleet -> hire ->
+            // mission -> build). Resolved against the docked station's build-capability (Station.buildsStations)
+            // and the current sector (where a newly-founded station is anchored), drawing build resources from
+            // the active ship's (post-mission) hold and the post-mission wallet — the SAME composition
+            // PlayScreen.build runs on device. A no-op (idle / not build-capable / unknown module / unaffordable
+            // / not owned) returns the SAME registry / credits / cargo instances, so a held-while-docked stretch
+            // stays bit-for-bit stable and pre-UC15 fixtures step byte-identically.
+            val buildActive = fleetAfterMission.active
+            val build =
+                StationBuilder.resolve(
+                    registry = state.stations,
+                    credits = missionAdvance.credits,
+                    cargo = buildActive.cargo,
+                    buildsStations = station?.buildsStations ?: false,
+                    sector = state.currentSector,
+                    order = stationBuildOrder,
+                )
+            // Fold the post-build cargo back onto the active ship only when it actually changed (resources
+            // were spent); otherwise keep the same instance (byte-identical on a no-op build).
+            val fleetAfterBuild =
+                if (build.changed && build.cargo !== buildActive.cargo) {
+                    fleetAfterMission.withActive(buildActive.copy(cargo = build.cargo))
+                } else {
+                    fleetAfterMission
+                }
+
             return state.copy(
                 tick = state.tick + 1,
-                fleet = fleetAfterMission,
-                credits = missionAdvance.credits,
+                fleet = fleetAfterBuild,
+                credits = build.credits,
                 missions = missionAdvance.log,
+                // UC15: the player's owned stations after this tick's build step (the SAME instance as
+                // state.stations on a no-op, so a held-while-docked stretch is byte-identical).
+                stations = build.registry,
                 // UC14: the per-faction standing after this tick's resolve + advance. A faction mission
                 // turn-in moved it; otherwise it is the SAME instance as state.reputation (byte-identical).
                 reputation = missionAdvance.reputation,

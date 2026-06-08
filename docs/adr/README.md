@@ -24,6 +24,7 @@ still wins on any conflict — keep them in sync.
 | [0011](0011-missions.md) | Missions: deterministic static-state instancing, regenerate-and-filter persistence, virtual courier parcel, tick-authoritative timer | Accepted |
 | [0012](0012-real-time-combat.md) | Real-time combat: transient encounter state, durable per-ship damage, additive v11 persistence | Accepted |
 | [0013](0013-factions-and-reputation.md) | Factions & reputation: action-driven standing, separate gate filter, additive v12 persistence | Accepted |
+| [0014](0014-owned-stations.md) | Player-owned stations: player state in WorldState, station-build capability flag, additive v13 persistence | Accepted |
 
 ## Adding an ADR
 

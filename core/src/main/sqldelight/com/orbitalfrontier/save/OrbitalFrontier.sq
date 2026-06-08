@@ -1,10 +1,10 @@
--- Orbital Frontier save schema, version 12 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013).
+-- Orbital Frontier save schema, version 13 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014).
 --
--- This .sq file is ALWAYS the latest schema (currently v12). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v13). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
--- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12). Never edit this baseline
--- destructively to make a schema change — bump the version and add a migration instead.
+-- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12; 12.sqm: v12 -> v13). Never edit
+-- this baseline destructively to make a schema change — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -56,6 +56,16 @@
 -- gate-filtered on load, ADR 0011/0013). The v11 -> v12 migration is additive (new table + new NULLABLE
 -- column). An unknown faction slug degrades gracefully on load (skip the reputation row / drop the
 -- attribution with a WARN — never stranded).
+-- v13 (UC15) adds **player-owned stations** (ADR 0014): the new `owned_station` table (one row per
+-- station the player has built — its id + the sector it is anchored in) and `station_module` (one row
+-- per module snapped onto a station, keyed by (station_id, slot_index) — gaps allowed like ship_upgrade).
+-- A module's `module_type` is the StationModuleId slug, resolved against StationModuleCatalog on load (an
+-- unknown id is skipped with a WARN — never stranded). The module catalog / functions / costs are fixed
+-- authored data, reconstructed on load — never stored. Each station's module rows are rewritten as a full
+-- snapshot (delete-then-insert), like ship_upgrade; the owned_station row is upserted. In the MVP stations
+-- only ever GROW (founded, gain modules) and are never removed, so there is no delete-station query. The
+-- v12 -> v13 migration is purely additive (two new empty tables), so a migrated pre-UC15 save reads back
+-- with zero owned stations (byte-identical to a game that never built one).
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -213,6 +223,28 @@ CREATE TABLE reputation (
     value INTEGER NOT NULL
 );
 
+-- Player-owned stations (UC15, ADR 0014). One row per station the player has founded: `id` is its
+-- StationId value (allocated max(id)+1, deterministic), `sector` the SectorId slug it is anchored in.
+-- The full module list lives in `station_module` (below). In the MVP stations only ever grow — they are
+-- never removed — so there is no delete-station query; a station's row is upserted on each save.
+CREATE TABLE owned_station (
+    id INTEGER NOT NULL PRIMARY KEY,
+    sector TEXT NOT NULL
+);
+
+-- Per-station built modules (UC15, ADR 0014). One row per filled (station, slot): `slot_index` the
+-- module's slot position on the station (gaps allowed — an absent index is an empty slot, like
+-- ship_upgrade), `module_type` the StationModuleId slug (resolved against StationModuleCatalog on load;
+-- an unknown id is skipped with a WARN). Keyed by (station_id, slot_index). A station's rows are rewritten
+-- as a full snapshot (delete-then-insert) on each save. The module's function/cost are NOT stored — they
+-- are authored catalog data reconstructed on load.
+CREATE TABLE station_module (
+    station_id INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL,
+    module_type TEXT NOT NULL,
+    PRIMARY KEY (station_id, slot_index)
+);
+
 -- Read the stored save-format version (null before the meta row is seeded).
 selectSaveVersion:
 SELECT save_version FROM meta WHERE id = 0;
@@ -364,3 +396,30 @@ DELETE FROM reputation;
 -- INSERT (not INSERT OR REPLACE) suffices and there is never a primary-key collision.
 insertReputation:
 INSERT INTO reputation(faction_id, value) VALUES (?, ?);
+
+-- Read every player-owned station (UC15), ordered by id for a deterministic load order. Empty when the
+-- player owns no stations (a fresh / migrated pre-UC15 save).
+selectAllOwnedStations:
+SELECT id, sector FROM owned_station ORDER BY id;
+
+-- Insert-or-update one owned-station row (id + anchor sector). INSERT OR REPLACE (not UPSERT / ON CONFLICT
+-- DO UPDATE) for the same minSdk-24 rationale as upsertGameState; the row is fully specified by its `id`
+-- primary key, so REPLACE is side-effect-free. Stations only grow, so this is only ever an insert in
+-- practice — but a re-save of an existing station re-writes the same (id, sector) harmlessly.
+upsertOwnedStation:
+INSERT OR REPLACE INTO owned_station(id, sector) VALUES (?, ?);
+
+-- Read every station's built modules across all owned stations, ordered deterministically (UC15).
+selectAllStationModules:
+SELECT station_id, slot_index, module_type FROM station_module ORDER BY station_id, slot_index;
+
+-- Clear one station's module rows. The save path does delete-then-plain-INSERT (a full snapshot rewrite)
+-- rather than UPSERT/ON CONFLICT, which the bundled SQLite on minSdk-24 devices lacks — the same rationale
+-- as ship_upgrade / cargo.
+deleteStationModulesForStation:
+DELETE FROM station_module WHERE station_id = ?;
+
+-- Insert one station-module row. Always preceded by deleteStationModulesForStation in the same
+-- transaction, so a plain INSERT (not INSERT OR REPLACE) suffices and there is never a PK collision.
+insertStationModule:
+INSERT INTO station_module(station_id, slot_index, module_type) VALUES (?, ?, ?);
