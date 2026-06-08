@@ -12,8 +12,12 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
+import com.orbitalfrontier.render.AsteroidFieldRenderer
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.MinimapRenderer
@@ -30,9 +34,12 @@ import com.orbitalfrontier.settings.ScreenSide
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
+import com.orbitalfrontier.world.AsteroidField
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
+import com.orbitalfrontier.world.MineAction
+import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
@@ -87,13 +94,24 @@ class PlayScreen(
     private val shipRenderer = ShipRenderer()
     private val hudRenderer = HudRenderer()
     private val gateRenderer = GateRenderer()
+    private val asteroidFieldRenderer = AsteroidFieldRenderer()
     private val minimap = MinimapRenderer()
+
+    // Mining tunables (UC06). Authored defaults; the same params feed the pure [Mining.resolve] each
+    // frame so live mining matches the replay harness exactly.
+    private val miningParams = MiningParams()
 
     // The current sector + dock state are the only mutable world state held here (the sector graph
     // itself is fixed authored data, injected as [sectorWorld]). [dockedStation] is null while flying;
     // when the ship docks it holds the station id and the game shows the station hub instead.
     private var currentSector = initialWorldState.currentSector
     private var dockedStation: PoiId? = initialWorldState.dockedStation
+
+    // Cargo + per-field depletion (UC06): the only other mutable world state held here. Seeded from
+    // the loaded/initial snapshot; mining folds each tick's [Mining.resolve] result back into them and
+    // [currentWorldState] hands them to the autosave.
+    private var cargo: Cargo = initialWorldState.cargo
+    private var fieldDepletion: Map<PoiId, Map<ResourceType, Int>> = initialWorldState.fieldDepletion
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport())
@@ -109,6 +127,14 @@ class PlayScreen(
     private val dockButton = TextButton("DOCK", skin.settingsButtonStyle)
     private val dockPanel = Table()
     private var dockRequested = false
+
+    // Context mine control (UC06): a "MINE: <units>/<capacity>" prompt above a MINE button, shown only
+    // while an asteroid field is in range. Unlike docking (an edge-triggered tap), mining is a *held*
+    // action — each frame the field is in range and the button is pressed, one [Mining.resolve] tick
+    // runs. We therefore read [mineButton]'s pressed state per frame rather than latching a one-shot.
+    private val minePrompt = Label("", skin.labelStyle)
+    private val mineButton = TextButton("MINE", skin.settingsButtonStyle)
+    private val minePanel = Table()
 
     private var handedness = initialHandedness
 
@@ -143,11 +169,19 @@ class PlayScreen(
         // cannot be tapped (and does not affect flight controls) while undocked and out of range.
         dockPanel.isVisible = false
 
+        // Mine panel mirrors the dock panel. No ClickListener: mining is held, so the render loop reads
+        // mineButton.isPressed each frame rather than reacting to a discrete tap.
+        minePanel.add(minePrompt).padBottom(DOCK_PROMPT_GAP).row()
+        minePanel.add(mineButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
+        minePanel.pack()
+        minePanel.isVisible = false
+
         actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
         stage.addActor(settingsOverlay.actor)
         stage.addActor(dockPanel)
+        stage.addActor(minePanel)
     }
 
     override fun show() {
@@ -206,6 +240,39 @@ class PlayScreen(
             }
         }
 
+        // UC06 mining: same pure [Mining] the replay harness uses. Each frame, find the in-range field
+        // (if any) to drive the context prompt/button; while the MINE button is held, run one
+        // extraction tick and fold the result back into cargo + depletion (proximity + held action,
+        // never automatic). No per-frame logging — only the discrete cargo-full / field-depleted
+        // transitions trigger an event autosave (which logs once), protecting the 60 FPS budget.
+        val field = Mining.availableField(sectorWorld, currentSector, ship.position)
+        updateMinePanel(field)
+        if (field != null && mineButton.isPressed) {
+            val wasFull = cargo.isFull
+            val result =
+                Mining.resolve(
+                    sectorWorld,
+                    currentSector,
+                    ship.position,
+                    cargo,
+                    fieldDepletion,
+                    MineAction.MINE,
+                    miningParams,
+                )
+            if (result.minedUnits > 0) {
+                cargo = result.cargo
+                fieldDepletion = result.fieldDepletion
+                val fieldEmptied = (result.fieldDepletion[field.id]?.values?.sum() ?: 0) <= 0
+                // Event-driven autosave on the two key transitions (UC06): the hold just filled, or the
+                // field just emptied. Each fires at most once because subsequent ticks are no-ops.
+                if (cargo.isFull && !wasFull) {
+                    autosave.onEvent("cargo-full")
+                } else if (fieldEmptied) {
+                    autosave.onEvent("field-depleted")
+                }
+            }
+        }
+
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
@@ -222,6 +289,7 @@ class PlayScreen(
         val sector = sectorWorld.sector(currentSector)
         // Parallax keyed off the camera's world position conveys motion (AC#11).
         starfield.render(ship.position.x, ship.position.y, viewportWidth, viewportHeight)
+        asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
         shipRenderer.render(worldCamera, ship)
         hudRenderer.render(ship.speed, ship.headingRadians, viewportWidth, viewportHeight)
@@ -263,6 +331,7 @@ class PlayScreen(
         )
 
         positionDockPanel()
+        positionMinePanel()
     }
 
     /** Centre the dock context panel near the top of the screen. */
@@ -271,6 +340,18 @@ class PlayScreen(
         dockPanel.setPosition(
             (stage.viewport.worldWidth - dockPanel.width) / 2f,
             stage.viewport.worldHeight - MARGIN - dockPanel.height,
+        )
+    }
+
+    /**
+     * Centre the mine context panel just below where the dock panel sits, so the two never overlap on
+     * the rare frame a station and an asteroid field are both in range.
+     */
+    private fun positionMinePanel() {
+        minePanel.pack()
+        minePanel.setPosition(
+            (stage.viewport.worldWidth - minePanel.width) / 2f,
+            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height,
         )
     }
 
@@ -293,6 +374,25 @@ class PlayScreen(
         }
     }
 
+    /**
+     * Show or hide the context mine control for the frame's in-range field (UC06): visible with a
+     * "MINE <used>/<capacity>" cargo readout when [field] is non-null, hidden otherwise. Re-centres
+     * after a text change so the panel stays centred as its width varies. The text is rebuilt only
+     * while a field is in range (not on the common out-of-range path), keeping the 60 FPS budget.
+     */
+    private fun updateMinePanel(field: AsteroidField?) {
+        if (field == null) {
+            if (minePanel.isVisible) minePanel.isVisible = false
+            return
+        }
+        minePanel.isVisible = true
+        val prompt = "MINE ${cargo.usedUnits}/${cargo.capacity}"
+        if (!minePrompt.textEquals(prompt)) {
+            minePrompt.setText(prompt)
+            positionMinePanel()
+        }
+    }
+
     private fun sideX(
         side: ScreenSide,
         screenWidth: Float,
@@ -305,7 +405,7 @@ class PlayScreen(
      * where touching the body is safe; the returned [WorldState] is immutable and handed to the save
      * executor thread.
      */
-    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation)
+    fun currentWorldState(): WorldState = WorldState(currentSector, physics.readKinematics(), dockedStation, cargo, fieldDepletion)
 
     /**
      * Return to flight from the station hub (UC05 AC#2/#4). Runs the same pure [Docking.resolve] with
@@ -341,6 +441,7 @@ class PlayScreen(
         shipRenderer.dispose()
         hudRenderer.dispose()
         gateRenderer.dispose()
+        asteroidFieldRenderer.dispose()
         minimap.dispose()
         physics.dispose()
     }
@@ -359,6 +460,9 @@ class PlayScreen(
         const val DOCK_WIDTH = 200f
         const val DOCK_HEIGHT = 56f
         const val DOCK_PROMPT_GAP = 8f
+
+        // Vertical gap between the dock panel and the mine panel stacked below it.
+        const val MINE_PANEL_GAP = 16f
         const val BG_R = 0.02f
         const val BG_G = 0.02f
         const val BG_B = 0.05f
