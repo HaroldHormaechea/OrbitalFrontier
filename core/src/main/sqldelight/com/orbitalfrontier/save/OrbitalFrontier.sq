@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 4 (ADR 0002 / ADR 0003).
+-- Orbital Frontier save schema, version 5 (ADR 0002 / ADR 0003).
 --
--- This .sq file is ALWAYS the latest schema (currently v4). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v5). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
--- 3.sqm: v3 -> v4). Never edit this baseline destructively to make a schema change — bump the
--- version and add a migration instead.
+-- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5). Never edit this baseline destructively to make a schema change
+-- — bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -11,6 +11,9 @@
 -- (`game_state.docked_station_id`): the [PoiId] of the station the ship is docked at, or NULL when
 -- in flight. v4 (UC06) adds the player's `cargo` (per-ship resource units) and asteroid-field
 -- `field_deposit` (remaining units per field) so mined resources and field depletion persist.
+-- v5 (UC07) adds the active ship's `ship.fuel` level so fuel/power state persists; the v4 -> v5
+-- migration backfills it with a full tank (DEFAULT 100 == FuelParams.DEFAULT_TANK_CAPACITY) so a
+-- migrated save is never stranded.
 -- All save-header singletons live in `game_state`; the `ship` table is keyed by id so
 -- UC09 can grow to multiple owned ships additively (the active ship is the one
 -- `game_state.active_ship_id` points at). Box2D internals are never persisted — only the pure
@@ -44,6 +47,10 @@ CREATE TABLE game_state (
 -- Owned-ship kinematics. One row today (the active ship); UC09 adds more rows (and, later, a
 -- ship_slot child table) without touching this baseline. Stored as REAL (SQLite has no Float);
 -- the repository owns the single Float<->Double conversion so a round-trip is exact (UC04 AC#8).
+-- `fuel` (UC07) is the active ship's fuel level in fuel units. DEFAULT 100 ==
+-- FuelParams.DEFAULT_TANK_CAPACITY, matching the v4 -> v5 migration's backfill so a migrated save
+-- starts with a full tank (never stranded). Capacity is NOT stored — it is a ship stat the
+-- repository reconstructs from FuelParams.DEFAULT_TANK_CAPACITY on load (like cargo capacity).
 CREATE TABLE ship (
     id INTEGER NOT NULL PRIMARY KEY,
     pos_x REAL NOT NULL,
@@ -51,7 +58,8 @@ CREATE TABLE ship (
     vel_x REAL NOT NULL,
     vel_y REAL NOT NULL,
     heading REAL NOT NULL,
-    ang_vel REAL NOT NULL
+    ang_vel REAL NOT NULL,
+    fuel REAL NOT NULL DEFAULT 100
 );
 
 -- Per-ship cargo (UC06). One row per (ship, resource) the ship is carrying a non-zero amount of;
@@ -101,7 +109,7 @@ INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
 -- no save yet (-> New Game). One row otherwise (game_state is single-slot).
 selectGameState:
 SELECT game_state.current_sector, game_state.docked_station_id,
-       ship.pos_x, ship.pos_y, ship.vel_x, ship.vel_y, ship.heading, ship.ang_vel
+       ship.pos_x, ship.pos_y, ship.vel_x, ship.vel_y, ship.heading, ship.ang_vel, ship.fuel
 FROM game_state
 JOIN ship ON ship.id = game_state.active_ship_id
 WHERE game_state.id = 0;
@@ -115,9 +123,9 @@ SELECT EXISTS(SELECT 1 FROM game_state WHERE id = 0);
 upsertGameState:
 INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_station_id) VALUES (0, ?, ?, ?);
 
--- Insert-or-update one ship row's kinematics by id (active ship id today; more rows under UC09).
+-- Insert-or-update one ship row's kinematics + fuel by id (active ship id today; more rows under UC09).
 upsertShip:
-INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Read all cargo rows for one ship (resource name + units). Empty when the hold is empty.
 selectCargo:

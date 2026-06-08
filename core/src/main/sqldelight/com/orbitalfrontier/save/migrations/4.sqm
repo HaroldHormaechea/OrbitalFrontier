@@ -1,0 +1,15 @@
+-- Migration v4 -> v5 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v4 (UC06) held meta + settings + the save header (game_state) + ship kinematics + dock state +
+-- cargo + field_deposit. v5 (UC07) adds the active ship's fuel level. This migration is purely
+-- additive: it adds the `ship.fuel` column with DEFAULT 100 (== FuelParams.DEFAULT_TANK_CAPACITY),
+-- so every existing ship row is backfilled to a FULL tank. A migrated save therefore upgrades with
+-- the ship fully fuelled and is never stranded (UC07 AC#3/AC#6), leaving all prior
+-- meta/settings/game_state/ship/cargo/field_deposit data untouched.
+--
+-- ALTER TABLE ... ADD COLUMN with a constant DEFAULT is supported by the bundled SQLite on
+-- minSdk-24 devices (it long predates 24), so this is minSdk-safe.
+
+ALTER TABLE ship ADD COLUMN fuel REAL NOT NULL DEFAULT 100;
+
+UPDATE meta SET save_version = 5 WHERE id = 0;
