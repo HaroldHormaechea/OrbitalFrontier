@@ -1,9 +1,10 @@
--- Orbital Frontier save schema, version 8 (ADR 0002 / ADR 0003 / ADR 0008).
+-- Orbital Frontier save schema, version 9 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010).
 --
--- This .sq file is ALWAYS the latest schema (currently v8). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v9). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
--- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8). Never edit
--- this baseline destructively to make a schema change — bump the version and add a migration instead.
+-- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
+-- v8 -> v9). Never edit this baseline destructively to make a schema change — bump the version and
+-- add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -28,6 +29,11 @@
 -- inserted (INSERT OR IGNORE), never deleted, so a revealed contact stays known across save/reload.
 -- The v7 -> v8 migration is additive: it creates the (empty) table, so a migrated save reads back with
 -- nothing revealed. Hidden contacts themselves are fixed authored map data (MvpSectorMap), not stored.
+-- v9 (UC11) adds the per-ship `ship.crew` column: the crew COUNT aboard each owned ship (ADR 0010).
+-- Crew is hired at a crew-hiring station for credits up to the ship's crew CAPACITY (a derived stat
+-- from type + loadout, NOT stored — like cargo/fuel capacity). The v8 -> v9 migration is additive: it
+-- adds the column with DEFAULT 0, so a migrated ship reads back with 0 crew. Turret operability is a
+-- pure derived flag (TurretOperability), not persisted; combat (UC13) is future work.
 --
 -- The `meta`/`settings` rows are single-row (CHECK (id = 0)); `game_state` is likewise single-row.
 
@@ -64,6 +70,10 @@ CREATE TABLE game_state (
 -- `ship_type` (UC09) is the ShipTypeId slug (ShipRoster). DEFAULT 'starter' matches the v6 -> v7
 -- migration's backfill so a migrated ship reads back as the starter type. An unknown slug degrades
 -- to the starter type with a WARN on load (never stranded).
+-- `crew` (UC11) is the crew COUNT aboard this ship. DEFAULT 0 matches the v8 -> v9 migration's
+-- backfill so a migrated ship reads back uncrewed. Crew CAPACITY is NOT stored — it is a derived ship
+-- stat (ShipStats.crewCapacity(type, loadout)); the repository coerces a corrupt/over-capacity value
+-- into 0..capacity on load.
 CREATE TABLE ship (
     id INTEGER NOT NULL PRIMARY KEY,
     pos_x REAL NOT NULL,
@@ -73,7 +83,8 @@ CREATE TABLE ship (
     heading REAL NOT NULL,
     ang_vel REAL NOT NULL,
     fuel REAL NOT NULL DEFAULT 100,
-    ship_type TEXT NOT NULL DEFAULT 'starter'
+    ship_type TEXT NOT NULL DEFAULT 'starter',
+    crew INTEGER NOT NULL DEFAULT 0
 );
 
 -- Per-ship installed upgrades (UC09). One row per filled (ship, slot): `slot_category` is the
@@ -159,12 +170,12 @@ INSERT OR REPLACE INTO game_state(id, current_sector, active_ship_id, docked_sta
 
 -- Read every owned ship's row, ordered by id (UC09: the whole fleet; deterministic order).
 selectAllShips:
-SELECT id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type FROM ship ORDER BY id;
+SELECT id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type, crew FROM ship ORDER BY id;
 
--- Insert-or-update one ship row's kinematics + fuel + type by id. INSERT OR REPLACE for the same
--- minSdk-24 rationale as upsertHandedness; addressed by primary key, so REPLACE is side-effect-free.
+-- Insert-or-update one ship row's kinematics + fuel + type + crew by id. INSERT OR REPLACE for the
+-- same minSdk-24 rationale as upsertHandedness; addressed by primary key, so REPLACE is side-effect-free.
 upsertShip:
-INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type, crew) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Read every ship's installed upgrades across the whole fleet, ordered deterministically (UC09).
 selectAllShipUpgrades:

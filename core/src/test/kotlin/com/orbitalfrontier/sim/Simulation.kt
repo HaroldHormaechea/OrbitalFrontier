@@ -1,5 +1,7 @@
 package com.orbitalfrontier.sim
 
+import com.orbitalfrontier.crew.HireOrder
+import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
@@ -146,6 +148,7 @@ class Simulation(
         outfitOrder: OutfitOrder = OutfitOrder.None,
         fleetOrder: FleetOrder = FleetOrder.None,
         scanAction: ScanAction = ScanAction.NONE,
+        hireOrder: HireOrder = HireOrder.None,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -192,10 +195,29 @@ class Simulation(
             val fleetResult =
                 FleetResolver.resolve(fleetAfterOutfit, outfit.credits, station?.shipyard ?: Shipyard.EMPTY, fleetOrder)
 
+            // Crew hiring (UC11) is the LAST docked step: refuel -> trade -> outfit -> fleet -> hire, so a
+            // hire resolves against the post-fleet wallet and the ship that is active AFTER any switch.
+            // Capacity is derived from the active ship's type + loadout via ShipStats.crewCapacity — the
+            // SAME source PlayScreen.hire uses on device (parity is required for AC#6) — and is gated on
+            // the docked station's hiresCrew flag. HireOrder.None (the default) and a non-hiring station
+            // both no-op, so a held-while-docked stretch (no hire) stays bit-for-bit stable; crew rides
+            // on the active ship, so SimulationState needs no new field.
+            val postFleetActive = fleetResult.fleet.active
+            val hire =
+                Hiring.resolve(
+                    credits = fleetResult.credits,
+                    currentCrew = postFleetActive.crew,
+                    crewCapacity = ShipStats.crewCapacity(postFleetActive.type, postFleetActive.loadout),
+                    offersCrew = station?.hiresCrew ?: false,
+                    order = hireOrder,
+                )
+            val fleetAfterHire =
+                if (hire.changed) fleetResult.fleet.withActive(postFleetActive.withCrew(hire.crew)) else fleetResult.fleet
+
             return state.copy(
                 tick = state.tick + 1,
-                fleet = fleetResult.fleet,
-                credits = fleetResult.credits,
+                fleet = fleetAfterHire,
+                credits = hire.credits,
             )
         }
 

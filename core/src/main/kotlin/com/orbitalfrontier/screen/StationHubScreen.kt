@@ -38,6 +38,7 @@ class StationHubScreen(
     private val onTrade: () -> Unit,
     private val onOutfit: () -> Unit,
     private val onShipyard: () -> Unit,
+    private val onCrew: () -> Unit,
     private val onRefuel: () -> Unit,
     private val fuelStatus: () -> String,
 ) : ScreenAdapter() {
@@ -78,6 +79,10 @@ class StationHubScreen(
         // Active SHIPS service (UC09 AC#5): opens the shipyard / ship-switch screen (buy a ship where a
         // shipyard exists; switch the active ship anywhere while docked). Pure FleetResolver behind it.
         root.add(serviceButton("SHIPS", onShipyard)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Active CREW service (UC11 AC#2): opens the crew-hire desk (hire crew where the station hires
+        // them; the desk shows crew/capacity + turret operability anywhere). Pure Hiring behind it.
+        root.add(serviceButton("CREW", onCrew)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
         // Inert service stubs — no listeners; wired by later UCs (missions).
         for (service in INERT_SERVICES) {

@@ -1,6 +1,7 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
@@ -125,6 +126,27 @@ data class ScanEvent(
     override val tick: Int,
     val action: ScanAction,
 ) : InputEvent()
+
+/**
+ * A crew-hire control sample for one tick (UC11 AC#2) — one hire the station hire desk feeds in when
+ * the player taps HIRE while docked at a crew-hiring station. Carried alongside the other per-tick
+ * events; [com.orbitalfrontier.playthrough.ReplayRunner] reconstructs a [HireOrder.Hire] from it and
+ * dispatches it to [com.orbitalfrontier.sim.Simulation.step], where it is resolved inside the
+ * docked-freeze branch (so a hire only has an effect while docked at a station that offers crew).
+ *
+ * [units] is the requested crew count; [com.orbitalfrontier.crew.Hiring] clamps the actual amount to
+ * the remaining crew capacity and what the wallet can afford. A tick with no [HireEvent] reconstructs
+ * as [HireOrder.None] in the runner, so older artifacts (which carry none) replay unchanged.
+ */
+@Serializable
+@SerialName("hire")
+data class HireEvent(
+    override val tick: Int,
+    val units: Int,
+) : InputEvent() {
+    /** Reconstruct the domain [HireOrder] this event recorded (always a [HireOrder.Hire]). */
+    fun toHireOrder(): HireOrder = HireOrder.Hire(units)
+}
 
 /**
  * A refuel control sample for one tick (UC07 AC#5) — the discrete [RefuelAction] the station hub

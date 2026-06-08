@@ -61,6 +61,20 @@ object PlaythroughFixtures {
     const val UC10_SCAN: String = "uc10-scan"
 
     /**
+     * UC11 crew playthrough name: start docked at Alpha Station (a crew-hiring station) with crew=0 and
+     * a small wallet, hire one crew, and assert the crew count rises and the turret-operability flag flips.
+     */
+    const val UC11_CREW: String = "uc11-crew"
+
+    /**
+     * Starting credit balance the UC11 crew fixture seeds — comfortably above one hire's cost
+     * ([com.orbitalfrontier.crew.Hiring.HIRE_COST_PER_CREW] = 100) so the single hire clears and the
+     * post-hire wallet is a known non-zero baseline. Authored as a literal so the fixture stays
+     * self-contained.
+     */
+    const val UC11_STARTING_CREDITS: Long = 500L
+
+    /**
      * Starting credit balance the UC09 outfit fixture seeds — comfortably above the engine-tune-i
      * (300) + Swift hull (1800) total so both purchases clear. Authored as a literal so the fixture
      * stays self-contained.
@@ -104,6 +118,7 @@ object PlaythroughFixtures {
             UC08_TRADE to ::uc08Trade,
             UC09_OUTFIT to ::uc09Outfit,
             UC10_SCAN to ::uc10Scan,
+            UC11_CREW to ::uc11Crew,
         )
 
     /**
@@ -412,6 +427,42 @@ object PlaythroughFixtures {
         // Tick 0: a single active scan reveals the in-range derelict; the trailing held ticks (1..2)
         // carry no scan event, proving the revealed set persists (monotonic, AC#4).
         recorder.recordScanAction(0, ScanAction.SCAN)
+        recorder.extendToTick(2)
+        return recorder.build()
+    }
+
+    /**
+     * UC11 crew scenario (AC#6): the ship starts **docked at Alpha Station** in
+     * [MvpSectorMap.START_SECTOR] (Alpha) — the one station that hires crew (`hiresCrew = true`) — with a
+     * single starter ship (crew=0, base crew capacity 2) and a [UC11_STARTING_CREDITS] wallet. At tick 0
+     * it hires **one** crew via the docked composition's final step (refuel→trade→outfit→fleet→**hire**):
+     * the crew count rises 0→1, [UC11_STARTING_CREDITS] − [com.orbitalfrontier.crew.Hiring.HIRE_COST_PER_CREW]
+     * credits remain, and — at the MVP turret crew requirement of 1 — the turret-operability flag flips
+     * from inoperable to operable on that first hire.
+     *
+     * The two trailing held ticks carry no hire event, so the crew count stays put (the docked freeze now
+     * covers crew too). Starting docked keeps the artifact tiny while exercising the full hire path against
+     * the real [MvpSectorMap] crew-hiring flag; [Uc11CrewReplayTest] asserts the crew count, the operability
+     * flip, and replay determinism.
+     */
+    fun uc11Crew(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC11_CREW,
+                seed = 11L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at Alpha Station (its crew desk resolves from MvpSectorMap.hiresCrew), a single
+                        // starter ship at rest with crew=0, and a wallet that covers one hire.
+                        fleet = singleShipFleet(),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC11_STARTING_CREDITS,
+                    ),
+            )
+        // Tick 0: hire one crew. The trailing held ticks (1..2) carry no hire event, proving crew + credits
+        // stay put while docked (the docked freeze covers crew).
+        recorder.recordHire(0, 1)
         recorder.extendToTick(2)
         return recorder.build()
     }

@@ -1,5 +1,6 @@
 package com.orbitalfrontier.playthrough
 
+import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.economy.TradeOrder
@@ -83,6 +84,7 @@ class ReplayRunner {
             val outfitOrder = outfitOrderFor(tickEvents)
             val fleetOrder = fleetOrderFor(tickEvents)
             val scanAction = scanActionFor(tickEvents)
+            val hireOrder = hireOrderFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -95,6 +97,7 @@ class ReplayRunner {
                     outfitOrder,
                     fleetOrder,
                     scanAction,
+                    hireOrder,
                 )
             perTick?.add(state)
         }
@@ -137,6 +140,16 @@ class ReplayRunner {
      */
     private fun scanActionFor(events: List<InputEvent>): ScanAction =
         events.filterIsInstance<ScanEvent>().lastOrNull()?.action ?: ScanAction.NONE
+
+    /**
+     * Reduce a tick's events to the [HireOrder] the sim steps with (UC11). When several hire samples
+     * share a tick the latest wins; a tick with no [HireEvent] steps with [HireOrder.None], so
+     * non-hiring artifacts (UC01..UC10) replay exactly as before. A [HireEvent] maps to a
+     * [HireOrder.Hire] carrying its requested units (the resolver clamps the actual quantity to the
+     * remaining crew capacity + wallet).
+     */
+    private fun hireOrderFor(events: List<InputEvent>): HireOrder =
+        events.filterIsInstance<HireEvent>().lastOrNull()?.toHireOrder() ?: HireOrder.None
 
     /**
      * Reduce a tick's events to the [RefuelAction] the sim steps with (UC07). When several refuel

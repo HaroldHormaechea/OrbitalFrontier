@@ -20,6 +20,7 @@ still wins on any conflict — keep them in sync.
 | [0007](0007-trading-prices.md) | Trading model & fixed authored prices (reconstructed, not row-persisted) | Accepted |
 | [0008](0008-fleet-and-outfitting-persistence.md) | Fleet & outfitting: derived stats, junkyard-as-kind, additive v7 persistence | Accepted |
 | [0009](0009-scanning-and-hidden-contacts.md) | Active scanning & hidden contacts: shared Contact capability + additive v8 persistence | Accepted |
+| [0010](0010-crew-and-turret-operability.md) | Crew: persisted per-ship count, derived capacity, one-time hire, turret operability as a pure flag | Accepted |
 
 ## Adding an ADR
 

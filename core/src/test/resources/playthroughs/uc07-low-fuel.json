@@ -57,7 +57,8 @@
         "cargo": {},
         "fuelLevel": 24.0,
         "fuelCapacity": 100.0,
-        "loadout": {}
+        "loadout": {},
+        "crew": 0
       }
     ],
     "activeShipId": 0,

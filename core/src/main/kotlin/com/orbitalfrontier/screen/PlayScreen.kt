@@ -13,6 +13,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.HireOrder
+import com.orbitalfrontier.crew.Hiring
+import com.orbitalfrontier.crew.TurretOperability
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
@@ -591,6 +594,60 @@ class PlayScreen(
         )
         // Trading is a key world event (mirrors mining/dock/refuel) — persist it now.
         autosave.onEvent("trade")
+    }
+
+    /** The active ship's current crew count (UC11) — read by the hire desk for its readout. */
+    fun activeCrew(): Int = fleet.active.crew
+
+    /**
+     * The active ship's derived crew **capacity** (UC11 AC#1) — `ShipStats.crewCapacity(type,
+     * loadout)`. Read by the hire desk to show "crew N / capacity". Derived, never stored.
+     */
+    fun activeCrewCapacity(): Int = ShipStats.crewCapacity(fleet.active.type, fleet.active.loadout)
+
+    /**
+     * Whether the active ship's turrets are crew-operable (UC11 AC#3) — the pure
+     * [TurretOperability.turretsOperable] derived flag the future combat model (UC13) will read. Shown
+     * on the hire desk so the player sees a hire flip turrets from inoperable to operable.
+     */
+    fun turretsOperable(): Boolean = TurretOperability.turretsOperable(fleet.active.crew)
+
+    /**
+     * Execute one crew-hire [order] against the **docked** station via the pure [Hiring.resolve]
+     * (UC11 AC#2) — the crew analogue of [trade]/[outfit]. The [com.orbitalfrontier.screen.HireScreen]
+     * routes HIRE taps here. Resolves against the docked station's
+     * [com.orbitalfrontier.world.Station.hiresCrew] flag, the player's credits, the active ship's crew,
+     * and its derived crew capacity (`ShipStats.crewCapacity(active.type, active.loadout)` — the SAME
+     * capacity source the deterministic simulation's docked-hire branch uses, so live and replayed
+     * hiring match). When not docked (or the station doesn't hire crew) it no-ops.
+     *
+     * On a real hire it deducts credits, folds the new crew onto the active ship in the fleet, logs one
+     * INFO line, and autosaves so the hire is durable; a no-op tap (station doesn't hire, at capacity,
+     * unaffordable) changes nothing and is not persisted.
+     */
+    fun hire(order: HireOrder) {
+        val station = dockedStation?.let { sectorWorld.sector(currentSector).station(it) } ?: return
+        val active = fleet.active
+        val result =
+            Hiring.resolve(
+                credits = credits,
+                currentCrew = active.crew,
+                crewCapacity = ShipStats.crewCapacity(active.type, active.loadout),
+                offersCrew = station.hiresCrew,
+                order = order,
+            )
+        if (!result.changed) {
+            logger.info(ECONOMY_TAG, "Hire requested but nothing changed (station doesn't hire, at capacity, or unaffordable)")
+            return
+        }
+        credits = result.credits
+        fleet = fleet.withActive(active.withCrew(result.crew))
+        logger.info(
+            ECONOMY_TAG,
+            "Hired ${result.hired} crew; crew=${fleet.active.crew}/${activeCrewCapacity()}, credits=$credits, " +
+                "turretsOperable=${turretsOperable()}",
+        )
+        autosave.onEvent("hire")
     }
 
     /** The current fleet (UC09) — read by the outfit / shipyard screens for their readouts. */

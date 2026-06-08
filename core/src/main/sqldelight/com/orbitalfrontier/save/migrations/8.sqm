@@ -1,0 +1,17 @@
+-- Migration v8 -> v9 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v8 (UC10) held meta + settings + the save header (game_state, with credits + active_ship_id) +
+-- per-ship kinematics/type/fuel/cargo/upgrades + field_deposit + revealed_contact, for a fleet of
+-- owned ships. v9 (UC11) adds **crew**: each ship gains a crew COUNT (capacity stays derived, never
+-- stored). This migration is purely additive: it adds `ship.crew` with DEFAULT 0, so every existing
+-- ship row is backfilled to 0 crew (uncrewed) — a migrated save reads back exactly as before with no
+-- crew aboard and turrets inoperable until crew is hired (ADR 0010).
+--
+-- All prior meta/settings/game_state/ship/ship_upgrade/cargo/field_deposit/revealed_contact data is
+-- left untouched. ALTER TABLE ... ADD COLUMN with a constant DEFAULT is supported by the bundled
+-- SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe — same rationale as the
+-- prior additive migrations.
+
+ALTER TABLE ship ADD COLUMN crew INTEGER NOT NULL DEFAULT 0;
+
+UPDATE meta SET save_version = 9 WHERE id = 0;

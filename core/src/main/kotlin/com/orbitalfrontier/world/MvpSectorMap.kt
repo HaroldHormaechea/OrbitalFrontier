@@ -75,7 +75,7 @@ object MvpSectorMap {
                             gate("alpha-to-beta", angleDegrees = 0f, dest = BETA, destGate = "beta-to-alpha"),
                             gate("alpha-to-gamma", angleDegrees = 120f, dest = GAMMA, destGate = "gamma-to-alpha"),
                             // Alpha Station (DEALER): trade desk + a tier-I outfitting desk + a shipyard
-                            // selling the courier hull (UC09 AC#3/#5).
+                            // selling the courier hull (UC09 AC#3/#5) and hiring crew (UC11 AC#2).
                             station(
                                 id = "alpha-station",
                                 displayName = "Alpha Station",
@@ -83,6 +83,7 @@ object MvpSectorMap {
                                 market = ALPHA_MARKET,
                                 outfitMarket = ALPHA_OUTFIT,
                                 shipyard = Shipyard.of(listOf(ShipRoster.SWIFT.id)),
+                                hiresCrew = true,
                             ),
                             // A rich field whose total deposits (70 units) exceed DEFAULT_CAPACITY (50),
                             // so mining it to a full hold still leaves the field partially depleted (UC06).
@@ -256,6 +257,7 @@ object MvpSectorMap {
         kind: StationKind = StationKind.DEALER,
         outfitMarket: OutfitMarket = OutfitMarket.EMPTY,
         shipyard: Shipyard = Shipyard.EMPTY,
+        hiresCrew: Boolean = false,
     ): Station =
         Station(
             id = PoiId(id),
@@ -266,6 +268,7 @@ object MvpSectorMap {
             kind = kind,
             outfitMarket = outfitMarket,
             shipyard = shipyard,
+            hiresCrew = hiresCrew,
         )
 
     private fun asteroidField(

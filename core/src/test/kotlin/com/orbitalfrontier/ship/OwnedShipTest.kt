@@ -8,7 +8,10 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.outfit.InstallResult
 import com.orbitalfrontier.outfit.Loadout
 import com.orbitalfrontier.outfit.SlotCategory
+import com.orbitalfrontier.outfit.StatDelta
+import com.orbitalfrontier.outfit.Upgrade
 import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.outfit.UpgradeId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -119,5 +122,70 @@ class OwnedShipTest {
 
         assertEquals(FuelParams.DEFAULT_TANK_CAPACITY, shrunk.fuel.capacity, 0f)
         assertEquals("the level coerces down to the new capacity", FuelParams.DEFAULT_TANK_CAPACITY, shrunk.fuel.level, 0f)
+    }
+
+    // --- UC11: crew is the single-mutation point [OwnedShip.withCrew], clamped to 0..crewCapacity ---
+
+    /** A crew-quarters slot category count for the starter (the starter ships one CREW_QUARTERS slot). */
+    private val crewSlots = starterType.slotCount(SlotCategory.CREW_QUARTERS)
+
+    /** A crew-quarters upgrade id used only in this test (no crew-quarters part exists in the MVP catalog yet). */
+    private val crewQuartersI = UpgradeId("crew-quarters-i-test")
+
+    /**
+     * A synthetic catalog whose sole part is a CREW_QUARTERS upgrade adding +2 crew capacity. The MVP
+     * catalog ships no crew-quarters part yet, so without this the "shrink crew capacity" branch of
+     * [OwnedShip.withLoadout] would be dead code in tests — this catalog makes it reachable.
+     */
+    private val crewCatalog: UpgradeCatalog =
+        UpgradeCatalog(
+            listOf(
+                Upgrade(
+                    id = crewQuartersI,
+                    category = SlotCategory.CREW_QUARTERS,
+                    displayName = "Crew Quarters I (test)",
+                    price = 200,
+                    statDeltas = StatDelta(crew = 2),
+                ),
+            ),
+        )
+
+    @Test
+    fun `withCrew clamps a request above capacity down to capacity`() {
+        // The starter's base crew capacity is 2 (no crew-quarters part installed).
+        val crewed = OwnedShip.starter().withCrew(5)
+
+        assertEquals("an over-capacity request clamps to capacity", 2, crewed.crew)
+    }
+
+    @Test
+    fun `withCrew clamps a negative request up to zero`() {
+        val crewed = OwnedShip.starter().withCrew(-3)
+
+        assertEquals("a negative request clamps to zero", 0, crewed.crew)
+    }
+
+    @Test
+    fun `withCrew accepts an in-range crew count verbatim`() {
+        val crewed = OwnedShip.starter().withCrew(1)
+
+        assertEquals(1, crewed.crew)
+    }
+
+    @Test
+    fun `removing a crew-quarters part that shrinks capacity clamps crew down to fit`() {
+        // Install the synthetic crew-quarters part (capacity 2 -> 4), crew it to a full 4, then remove
+        // the part: capacity drops back to the base 2 and the 4 crew must clamp down to 2 (never over
+        // capacity — the withLoadout re-clamp, exercised here against a real capacity shrink).
+        val expanded =
+            OwnedShip.starter()
+                .withLoadout(loadoutOf(SlotCategory.CREW_QUARTERS, crewSlots, crewQuartersI), crewCatalog)
+                .withCrew(4, crewCatalog)
+        assertEquals("precondition: crew filled to the expanded capacity of 4", 4, expanded.crew)
+
+        val shrunk = expanded.withLoadout(Loadout.EMPTY, crewCatalog)
+
+        assertEquals("crew clamps down to the new (base) capacity", 2, shrunk.crew)
+        assertTrue("the crew invariant holds (crew <= capacity)", shrunk.crew <= 2)
     }
 }

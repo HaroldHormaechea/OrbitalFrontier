@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "name": "uc10-scan",
-  "seed": 10,
+  "name": "uc11-crew",
+  "seed": 11,
   "dtSeconds": 0.016666668,
   "tickCount": 3,
   "config": {
@@ -37,12 +37,12 @@
     "headingRadians": 0.0,
     "angularVelocity": 0.0,
     "currentSector": "alpha",
-    "dockedStation": null,
+    "dockedStation": "alpha-station",
     "cargoCapacity": 50,
     "cargo": {},
     "fieldDepletion": {},
     "fuel": 100.0,
-    "credits": 0,
+    "credits": 500,
     "ownedShips": [
       {
         "id": 0,
@@ -66,9 +66,9 @@
   },
   "inputEvents": [
     {
-      "type": "scan",
+      "type": "hire",
       "tick": 0,
-      "action": "SCAN"
+      "units": 1
     }
   ]
 }

@@ -401,6 +401,13 @@ data class OwnedShipDto(
     val fuelLevel: Float,
     val fuelCapacity: Float,
     val loadout: Map<String, Map<Int, String>> = emptyMap(),
+    /**
+     * The crew **count** aboard this ship (UC11 AC#1) — a persisted per-ship number (capacity is the
+     * derived stat [com.orbitalfrontier.outfit.ShipStats.crewCapacity], never stored). Defaulted to 0
+     * so every pre-UC11 artifact (recorded before crew existed) decodes back as an uncrewed ship and
+     * the pre-UC11 fixtures replay byte-identically — mirroring the additive v8 -> v9 save migration.
+     */
+    val crew: Int = 0,
 ) {
     /** Reconstruct the domain [OwnedShip]. */
     fun toOwnedShip(): OwnedShip =
@@ -417,6 +424,7 @@ data class OwnedShipDto(
             cargo = Cargo(cargo.mapKeys { ResourceType.valueOf(it.key) }, cargoCapacity),
             fuel = Fuel(level = fuelLevel, capacity = fuelCapacity),
             loadout = parseLoadout(loadout),
+            crew = crew,
         )
 
     companion object {
@@ -439,6 +447,7 @@ data class OwnedShipDto(
                     ship.loadout.slots
                         .mapKeys { (category, _) -> category.name }
                         .mapValues { (_, slots) -> slots.mapValues { (_, upgradeId) -> upgradeId.value } },
+                crew = ship.crew,
             )
 
         /** Rebuild a [Loadout] from its string-keyed form; an unknown category/​blank id is skipped. */

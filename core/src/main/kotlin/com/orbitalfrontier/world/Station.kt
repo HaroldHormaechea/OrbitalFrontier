@@ -48,6 +48,13 @@ data class Station(
      * Authored map data carried with the world, not persisted (ADR 0008).
      */
     val shipyard: Shipyard = Shipyard.EMPTY,
+    /**
+     * Whether this station hires crew (UC11 AC#2). Defaulted to `false` so an existing station — and
+     * every call site authored before UC11 — reads back as "no crew desk"; an authored crew-hiring
+     * station sets it `true`. Like the markets above, this is fixed authored map data carried with the
+     * world, not persisted. [com.orbitalfrontier.crew.Hiring] gates a hire on this flag.
+     */
+    val hiresCrew: Boolean = false,
 ) : Poi, Transponder {
     override val contactKind: ContactKind get() = ContactKind.STATION
 
