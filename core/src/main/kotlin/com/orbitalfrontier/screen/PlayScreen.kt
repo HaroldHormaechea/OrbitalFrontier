@@ -1,10 +1,12 @@
 package com.orbitalfrontier.screen
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.InputAdapter
 import com.badlogic.gdx.InputMultiplexer
 import com.badlogic.gdx.ScreenAdapter
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
@@ -27,6 +29,8 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.crew.TurretOperability
+import com.orbitalfrontier.debugnav.PointAndGo
+import com.orbitalfrontier.debugnav.PointAndGoState
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
@@ -139,6 +143,10 @@ class PlayScreen(
     initialHandedness: Handedness,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
+    // UC25: debug-build flag. When true, the debug-only point-and-go navigation aid (arm toggle +
+    // world-tap teleport) is wired below; when false (release, tests) none of it is constructed, so
+    // release controls, tap handling, and gameplay are byte-for-byte unchanged.
+    private val debug: Boolean = false,
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = ShipMovementModel()
@@ -318,6 +326,16 @@ class PlayScreen(
     private val minimapTapTarget = Actor()
     private val mapDismissActor = Actor()
 
+    // UC25 debug point-and-go (debug builds only). The arm button + panel and the world-tap processor
+    // are constructed in [init] ONLY when [debug] is true, so a release build never builds any of it
+    // and tap handling stays byte-for-byte unchanged. [pointAndGoState] is the pure arm/disarm gate
+    // (defaults OFF so normal taps are never hijacked); [pendingTeleport] is a one-shot world point set
+    // by an armed tap and consumed at the top of the next [render] (last-wins), mirroring [dockRequested].
+    private val pointAndGoPanel: Table? = if (debug) Table() else null
+    private val pointAndGoButton: TextButton? = if (debug) TextButton(POINT_AND_GO_OFF_TEXT, skin.settingsButtonStyle) else null
+    private var pointAndGoState = PointAndGoState()
+    private var pendingTeleport: Vec2? = null
+
     private var handedness = initialHandedness
 
     init {
@@ -434,6 +452,49 @@ class PlayScreen(
         // and catches taps over everything (including the minimap) while the overlay is open.
         stage.addActor(minimapTapTarget)
         stage.addActor(mapDismissActor)
+
+        // UC25: wire the debug-only point-and-go aid. Everything here is gated on [debug], so a release
+        // build constructs none of it and its tap handling / controls are byte-for-byte unchanged.
+        if (debug) {
+            val panel = pointAndGoPanel!!
+            val button = pointAndGoButton!!
+            button.addListener(
+                object : ClickListener() {
+                    override fun clicked(
+                        event: InputEvent?,
+                        x: Float,
+                        y: Float,
+                    ) {
+                        pointAndGoState = pointAndGoState.toggled()
+                        button.setText(if (pointAndGoState.armed) POINT_AND_GO_ON_TEXT else POINT_AND_GO_OFF_TEXT)
+                    }
+                },
+            )
+            panel.add(button).size(DOCK_WIDTH, DOCK_HEIGHT).row()
+            panel.pack()
+            stage.addActor(panel)
+
+            // Appended AFTER the stage (never setProcessors) so flight controls keep first crack at every
+            // touch; this processor only claims a touch while armed. touchDown returns false unless armed
+            // (so normal taps fall through to the controls/stage); while armed it unprojects the tap into
+            // world space via the live camera (UC25 pitfall — accounts for camera/zoom) and stores it as a
+            // one-shot pending teleport (last-wins), consumed at the top of the next render().
+            inputMultiplexer.addProcessor(
+                object : InputAdapter() {
+                    override fun touchDown(
+                        screenX: Int,
+                        screenY: Int,
+                        pointer: Int,
+                        button: Int,
+                    ): Boolean {
+                        if (!pointAndGoState.armed) return false
+                        val unprojected = worldCamera.unproject(Vector3(screenX.toFloat(), screenY.toFloat(), 0f))
+                        pendingTeleport = Vec2(unprojected.x, unprojected.y)
+                        return true
+                    }
+                },
+            )
+        }
     }
 
     override fun show() {
@@ -449,6 +510,26 @@ class PlayScreen(
         // unchanged regardless (MapOverlayLayout.PAUSES_SIMULATION = false).
         val mapOpen = mapOverlayState.isOpen
         val input = joystick.currentInput()
+
+        // UC25 debug point-and-go: consume an armed-tap teleport BEFORE this frame reads the body, so the
+        // frame proceeds from the teleported state (and the docking check below shows the DOCK prompt when
+        // we land in a station's range). The pure [PointAndGo.resolve] maps the tap to a stationary,
+        // sensibly-oriented kinematics; [ShipPhysics.resetTo] is the only sanctioned transform-set path
+        // (ADR 0005). NOT a recorded input and NO autosave.onEvent — a manual debug action must not perturb
+        // the deterministic record/replay harness or autosave (UC25 AC#5). One INFO log, then we fall
+        // through to the normal per-frame flow. pendingTeleport is null on every release build (never set).
+        val teleport = pendingTeleport
+        if (teleport != null) {
+            pendingTeleport = null
+            val resolution =
+                PointAndGo.resolve(teleport, sectorWorld.sector(currentSector).pois, physics.readKinematics())
+            physics.resetTo(resolution.kinematics)
+            logger.info(
+                WORLD_TAG,
+                "Debug point-and-go: teleported to (${resolution.kinematics.position.x}, " +
+                    "${resolution.kinematics.position.y}); target=${resolution.targetPoiId?.value ?: "free space"}",
+            )
+        }
 
         // UC07 fuel burn: the ship draws power every tick (base load even idle, more while thrusting),
         // and that draw burns fuel via THE shared [FuelBurn.step] (same fn the sim/replay path uses).
@@ -711,12 +792,16 @@ class PlayScreen(
             minePanel.isVisible = false
             scanPanel.isVisible = false
             radioPanel.isVisible = false
+            // UC25: hide the debug arm panel with the rest of the controls while the map overlay is open
+            // (no-op on release — the panel is null). Restored in the else branch when the overlay closes.
+            pointAndGoPanel?.isVisible = false
         } else {
             joystick.actor.isVisible = true
             actionCluster.actor.isVisible = true
             // The persistent SCAN panel re-shows when the overlay closes; the range-gated dock/mine/radio
             // context panels restore themselves via their per-frame updaters above.
             scanPanel.isVisible = true
+            pointAndGoPanel?.isVisible = true
         }
         mapDismissActor.isVisible = mapOpen
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
@@ -792,6 +877,7 @@ class PlayScreen(
         positionMinePanel()
         positionScanPanel()
         positionRadioPanel()
+        positionPointAndGoPanel()
 
         // UC23: place the invisible minimap tap target exactly on the drawn minimap panel — same
         // geometry source (MinimapRenderer.panelRect) called with the SAME world-unit args the per-frame
@@ -805,6 +891,20 @@ class PlayScreen(
             )
         minimapTapTarget.setBounds(minimapRect.x, minimapRect.y, minimapRect.width, minimapRect.height)
         mapDismissActor.setBounds(0f, 0f, screenWidth, screenHeight)
+    }
+
+    /**
+     * Centre the debug point-and-go arm panel along the bottom of the screen, between the joystick
+     * (one side) and the action cluster (the other), so it never overlaps a flight control on either
+     * handedness (UC25). No-op on release (the panel is null).
+     */
+    private fun positionPointAndGoPanel() {
+        val panel = pointAndGoPanel ?: return
+        panel.pack()
+        panel.setPosition(
+            (stage.viewport.worldWidth - panel.width) / 2f,
+            bottomControlBand() + MARGIN,
+        )
     }
 
     /** Centre the dock context panel near the top of the screen. */
@@ -1514,6 +1614,11 @@ class PlayScreen(
         const val DOCK_WIDTH = 200f
         const val DOCK_HEIGHT = 56f
         const val DOCK_PROMPT_GAP = 8f
+
+        // UC25: debug point-and-go arm button labels (debug builds only). Distinct ON/OFF text makes the
+        // armed state obvious so the tester knows when taps will teleport (defaults OFF).
+        const val POINT_AND_GO_OFF_TEXT = "P&G: OFF"
+        const val POINT_AND_GO_ON_TEXT = "P&G: ON"
 
         // Vertical gap between the dock panel and the mine panel stacked below it.
         const val MINE_PANEL_GAP = 16f
