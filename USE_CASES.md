@@ -29,7 +29,7 @@ Statuses:
 | 17 | [use-cases/17-starting-cash-50k.md](use-cases/17-starting-cash-50k.md) | Starting cash set to 50k | done | 2026-06-09 |
 | 18 | [use-cases/18-fix-station-refueling.md](use-cases/18-fix-station-refueling.md) | Fix broken station refuelling | done | 2026-06-09 |
 | 19 | [use-cases/19-station-walkaround-prototype.md](use-cases/19-station-walkaround-prototype.md) | Station walk-around (on-foot prototype) | done | 2026-06-09 |
-| 20 | [use-cases/20-station-menu-grid-layout.md](use-cases/20-station-menu-grid-layout.md) | Station menu grid layout (≤4 rows × N columns) | pending | 2026-06-09 |
+| 20 | [use-cases/20-station-menu-grid-layout.md](use-cases/20-station-menu-grid-layout.md) | Station menu grid layout (≤4 rows × N columns) | done | 2026-06-09 |
 | 21 | [use-cases/21-main-menu-start-continue.md](use-cases/21-main-menu-start-continue.md) | Main menu with Start / Continue and overwrite warnings | pending | 2026-06-09 |
 | 22 | [use-cases/22-map-reposition-top-right.md](use-cases/22-map-reposition-top-right.md) | Reposition map to top-right | pending | 2026-06-09 |
 | 23 | [use-cases/23-map-click-to-zoom-overlay.md](use-cases/23-map-click-to-zoom-overlay.md) | Click map to open full-height zoomed overlay | pending | 2026-06-09 |
