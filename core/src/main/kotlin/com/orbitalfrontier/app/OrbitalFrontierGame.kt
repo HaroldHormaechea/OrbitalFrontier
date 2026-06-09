@@ -387,10 +387,11 @@ class OrbitalFrontierGame(
         const val TAG = "App"
 
         /**
-         * Credits a brand-new game starts with (UC08). An authored balancing tunable — enough to make
-         * a first buy-low/sell-high trade run or an early refuel; migrated saves keep their own balance
-         * (the v5 -> v6 column backfills 0), so this applies only to a fresh game. [TUNE]
+         * Credits a brand-new game starts with. The permanent default starting balance (UC17): 50k is
+         * enough to exercise trading, outfitting, and refuelling without grinding first — not a debug/dev
+         * toggle. Migrated saves keep their own balance (the v5 -> v6 column backfills 0), so this applies
+         * only to a fresh game. [TUNE]
          */
-        const val STARTING_CREDITS: Long = 500L
+        const val STARTING_CREDITS: Long = 50_000L
     }
 }
