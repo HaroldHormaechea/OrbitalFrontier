@@ -56,6 +56,10 @@ class StationHubScreen(
     // direct hub action (no dedicated build screen) routed to the play screen's pure StationBuilder.
     private val onBuild: () -> Unit = {},
     buildsStations: Boolean = false,
+    // UC19: optional on-foot walk-around. Defaulted to a no-op so existing call sites / tests need not
+    // supply it; the EXIT SHIP row only fires this intent and is purely additive — every existing
+    // menu/row stays exactly as-is (AC#1).
+    private val onDisembark: () -> Unit = {},
 ) : ScreenAdapter() {
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -160,6 +164,11 @@ class StationHubScreen(
 
         // Shared feedback line for both refuel paths (UC18 AC#1/#4).
         root.add(refuelFeedbackLabel).padBottom(SERVICE_GAP).row()
+
+        // Active EXIT SHIP action (UC19 AC#1): optionally leave the ship and walk the station interior
+        // on foot. Purely additive — every menu above is unchanged and still reachable; this just opens
+        // the walk-around view. The owner re-shows this hub untouched when the player re-boards (AC#7).
+        root.add(serviceButton("EXIT SHIP", onDisembark)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
 
         // The one active control: leave the station and return to flight.
         val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)

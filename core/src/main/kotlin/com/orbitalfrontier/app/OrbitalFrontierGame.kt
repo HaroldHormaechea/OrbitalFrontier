@@ -21,10 +21,12 @@ import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
+import com.orbitalfrontier.screen.StationWalkaroundScreen
 import com.orbitalfrontier.screen.TradeScreen
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationModuleCatalog
+import com.orbitalfrontier.walkaround.StationInterior
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
@@ -59,6 +61,10 @@ class OrbitalFrontierGame(
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
     private var tradeScreen: TradeScreen? = null
+
+    // UC19: the on-foot walk-around screen, kept alive across a shop visit so the avatar's position is
+    // preserved when the trade desk closes and this screen is re-shown. Disposed only on re-board / dispose().
+    private var stationWalkaroundScreen: StationWalkaroundScreen? = null
     private var outfitScreen: OutfitScreen? = null
     private var shipyardScreen: ShipyardScreen? = null
     private var hireScreen: HireScreen? = null
@@ -185,9 +191,73 @@ class OrbitalFrontierGame(
                 // (module choice, expansion) is deferred. The row only shows at a build-capable station.
                 onBuild = { playScreen?.build(StationBuildOrder.FoundStation(StationModuleCatalog.MVP.all.first().id)) },
                 buildsStations = station.buildsStations,
+                // UC19: EXIT SHIP opens the on-foot walk-around for this station. Purely additive — the
+                // hub and the docked WorldState are untouched; re-boarding re-shows this same hub (AC#1/#7).
+                onDisembark = { openWalkaround(station) },
             )
         stationHubScreen = hub
         setScreen(hub)
+    }
+
+    /**
+     * Open the on-foot walk-around for [station] (UC19), owning it so it can be disposed (libGDX only
+     * hide()s the hub). The screen is intentionally decoupled from world/save state: it takes only a
+     * transient [StationInterior] and two callbacks — RE-BOARD returns to the (untouched) hub and
+     * INTERACT opens the existing shop. The walk-around instance is kept alive across a shop visit so
+     * the avatar's position is preserved; it is disposed only on re-board and in [dispose].
+     */
+    private fun openWalkaround(station: Station) {
+        val walkaround =
+            StationWalkaroundScreen(
+                logger = logger,
+                interior = StationInterior.prototype(),
+                onReboard = { returnToHubFromFoot() },
+                onInteract = { openShopFromWalkaround(station) },
+            )
+        stationWalkaroundScreen = walkaround
+        setScreen(walkaround)
+    }
+
+    /**
+     * Re-board from the on-foot mode back to the station hub (UC19 AC#7): re-show the kept-alive hub
+     * and dispose the now-hidden walk-around. The docked [WorldState] was never touched, so the normal
+     * docked state is restored exactly.
+     */
+    private fun returnToHubFromFoot() {
+        stationHubScreen?.let { setScreen(it) }
+        stationWalkaroundScreen?.dispose()
+        stationWalkaroundScreen = null
+    }
+
+    /**
+     * Open the EXISTING station trade desk from on foot (UC19 AC#6): the same [TradeScreen] reached
+     * from the hub menus — no new shop screen. BACK returns to the walk-around (not the hub), re-showing
+     * the kept-alive avatar where it stood. The walk-around screen is left alive (only hidden) so its
+     * avatar position survives the visit.
+     */
+    private fun openShopFromWalkaround(station: Station) {
+        val desk =
+            TradeScreen(
+                logger = logger,
+                stationName = station.displayName,
+                market = station.market,
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
+                onTrade = { order: TradeOrder -> playScreen?.trade(order) },
+                onBack = { returnToWalkaround() },
+            )
+        tradeScreen = desk
+        setScreen(desk)
+    }
+
+    /**
+     * Return from the on-foot shop visit to the walk-around (UC19): re-show the kept-alive walk-around
+     * instance (avatar position preserved — never reconstructed) and dispose the now-hidden trade desk.
+     */
+    private fun returnToWalkaround() {
+        stationWalkaroundScreen?.let { setScreen(it) }
+        tradeScreen?.dispose()
+        tradeScreen = null
     }
 
     /**
@@ -347,6 +417,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose station hub screen on shutdown", e)
         }
         stationHubScreen = null
+        try {
+            stationWalkaroundScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose station walk-around screen on shutdown", e)
+        }
+        stationWalkaroundScreen = null
         try {
             tradeScreen?.dispose()
         } catch (e: Exception) {
