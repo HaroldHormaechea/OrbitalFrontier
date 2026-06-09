@@ -639,6 +639,11 @@ class PlayScreen(
             viewportHeight,
             reservedBottom = bottomControlBand(),
         )
+        // UC22: the relocated top-left settings/handedness button shares its band with the combat-only
+        // ship schematic below, so hide it for the duration of an encounter — handedness isn't changed
+        // mid-combat — keyed on the same combat-active flag that gates the schematic. It reappears when
+        // combat ends. An invisible Scene2D actor also stops receiving touch, so nothing under it leaks.
+        settingsOverlay.actor.isVisible = !combat.active
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
         if (combat.active) {
             val active = fleet.active
