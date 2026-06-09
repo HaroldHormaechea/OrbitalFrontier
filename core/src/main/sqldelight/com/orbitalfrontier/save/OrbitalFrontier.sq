@@ -423,3 +423,47 @@ DELETE FROM station_module WHERE station_id = ?;
 -- transaction, so a plain INSERT (not INSERT OR REPLACE) suffices and there is never a PK collision.
 insertStationModule:
 INSERT INTO station_module(station_id, slot_index, module_type) VALUES (?, ?, ?);
+
+-- Save wipe (UC21): clear the single-slot save so Start can begin a fresh game over an existing save.
+-- These delete-all queries cover EVERY non-meta / non-settings table — all the durable game-state
+-- tables (the header, the fleet, and every per-ship / world / mission / reputation / station table) —
+-- while deliberately leaving `meta` (the save-format version) and `settings` (handedness) intact, so a
+-- wipe resets progress without re-running migrations or losing the player's control preferences. The
+-- repository's clearSave() runs all of these (plus the existing deleteAllMissions / deleteAllReputation)
+-- in ONE transaction, so a wipe is atomic (all-or-nothing).
+
+-- Clear the single-slot save header (current sector / active ship / dock / credits / respawn point).
+deleteGameState:
+DELETE FROM game_state;
+
+-- Clear every owned-ship row (the whole fleet).
+deleteAllShips:
+DELETE FROM ship;
+
+-- Clear every ship's installed-upgrade rows.
+deleteAllShipUpgrades:
+DELETE FROM ship_upgrade;
+
+-- Clear every ship's cargo rows.
+deleteAllCargo:
+DELETE FROM cargo;
+
+-- Clear every ship's combat section-damage rows.
+deleteAllShipSectionDamage:
+DELETE FROM ship_section_damage;
+
+-- Clear every asteroid-field depletion row (so a new game's fields read back pristine).
+deleteAllFieldDeposits:
+DELETE FROM field_deposit;
+
+-- Clear every revealed-hidden-contact row (so a new game starts with nothing scanned).
+deleteAllRevealedContacts:
+DELETE FROM revealed_contact;
+
+-- Clear every player-owned-station row.
+deleteAllOwnedStations:
+DELETE FROM owned_station;
+
+-- Clear every owned-station's module rows.
+deleteAllStationModules:
+DELETE FROM station_module;

@@ -12,10 +12,13 @@ import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
 import com.orbitalfrontier.save.AutosaveController
+import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
+import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
 import com.orbitalfrontier.screen.HireScreen
+import com.orbitalfrontier.screen.MainMenuScreen
 import com.orbitalfrontier.screen.MissionBoardScreen
 import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
@@ -23,6 +26,7 @@ import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.StationWalkaroundScreen
 import com.orbitalfrontier.screen.TradeScreen
+import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationModuleCatalog
@@ -39,10 +43,13 @@ import com.orbitalfrontier.world.WorldState
  * Platform dependencies are constructor-injected (DIP): the [Logger], the [SqlDriverFactory], and
  * the single-writer [SaveExecutor] are supplied by the `android` launcher on device (and by tests/
  * other backends elsewhere), so `core` stays free of Android types (ADR 0001). `create()` builds
- * the persistence stack, resolves **New Game vs. Continue** (UC04 AC#5) by reading the save once at
- * startup before the render loop, builds the [AutosaveController], and hands the initial
- * [WorldState] + repositories + controller + executor to [PlayScreen]. `dispose()` runs a final
- * autosave (drained) so progress is durable on exit (UC04 AC#2).
+ * the persistence stack, reads the save once up front, and shows the **main menu** ([MainMenuScreen],
+ * UC21) before any gameplay: Start begins a new game (double-confirming a wipe when a save exists) and
+ * Continue resumes the save. Picking either runs [enterGame], which resolves the initial dock state
+ * (UC05), builds the [AutosaveController], and hands the [WorldState] + repositories + controller +
+ * executor to [PlayScreen]. `dispose()` runs a final autosave (drained) so progress is durable on exit
+ * (UC04 AC#2). The "New Game vs. Continue" choice (UC04 AC#5) is now an explicit player decision at the
+ * menu rather than an automatic load-or-seed at startup.
  *
  * It also owns the **screen lifecycle for docking** (UC05): the play screen and (while docked) a
  * [StationHubScreen]. The play screen calls back on a dock; this class opens the hub for that
@@ -58,9 +65,17 @@ class OrbitalFrontierGame(
 ) : Game() {
     private var driver: SqlDriver? = null
     private var autosave: AutosaveController? = null
+    private var mainMenuScreen: MainMenuScreen? = null
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
     private var tradeScreen: TradeScreen? = null
+
+    // UC21: persistence + settings captured at create() so the menu's Start/Continue callbacks can run
+    // enterGame() later (the menu defers New-Game-vs-Continue from startup to a player choice). Set once
+    // in create(), before the menu can fire a callback.
+    private lateinit var gameStateRepository: GameStateRepository
+    private lateinit var settingsRepository: SettingsRepository
+    private lateinit var handedness: Handedness
 
     // UC19: the on-foot walk-around screen, kept alive across a shop visit so the avatar's position is
     // preserved when the trade desk closes and this screen is re-shown. Disposed only on re-board / dispose().
@@ -80,28 +95,59 @@ class OrbitalFrontierGame(
 
         val database = OrbitalFrontier(sqlDriver)
 
-        val settingsRepository = SqlDelightSettingsRepository(database, logger)
-        settingsRepository.ensureInitialized()
-        val handedness = settingsRepository.loadHandedness()
+        val settings = SqlDelightSettingsRepository(database, logger)
+        settings.ensureInitialized()
+        settingsRepository = settings
+        handedness = settings.loadHandedness()
 
-        // Resolve New Game vs. Continue once, up front (all reads happen here, before the render loop).
-        val gameStateRepository = SqlDelightGameStateRepository(database, logger)
-        val loaded = gameStateRepository.loadGameState()
-        val worldState =
-            if (loaded != null) {
-                logger.info(TAG, "Continue: restored save (sector=${loaded.currentSector.value})")
-                loaded
-            } else {
-                logger.info(TAG, "New Game: no save present; seeding defaults (credits=$STARTING_CREDITS)")
-                // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
-                // (UC09 — WorldState defaults to Fleet.starter()). A *migrated* save keeps its own
-                // balance (the v5 -> v6 column backfills 0); only a brand-new game gets STARTING_CREDITS.
-                WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS)
-            }
+        // Read the save once, up front, to decide whether Continue is available (UC21 AC#4). The actual
+        // New-Game-vs-Continue decision is now the player's at the menu, not an automatic load-or-seed:
+        // a usable save (non-null) enables Continue and makes Start double-confirm before wiping; a
+        // null one (no save, or a corrupt save the repository degraded to null) disables Continue and
+        // lets Start begin immediately.
+        val repository = SqlDelightGameStateRepository(database, logger)
+        gameStateRepository = repository
+        val loaded = repository.loadGameState()
 
-        // Resolve the initial dock state (UC05 AC#4). A saved dock station that no longer resolves to a
-        // Station in the saved sector (e.g. a stale id after a map change) degrades gracefully to
-        // flight with a WARN rather than crashing — "never stranded" (coding-guidelines § errors).
+        // Show the main menu first, on every launch (UC21 AC#1/#5). Start / Continue route into the
+        // game via enterGame(); only then is the play screen / hub built.
+        val menu =
+            MainMenuScreen(
+                logger = logger,
+                continueEnabled = loaded != null,
+                // Continue: resume the existing save (AC#2). loaded is non-null here (Continue is only
+                // enabled when it is), so the !! is safe.
+                onContinue = {
+                    logger.info(TAG, "Continue: restored save (sector=${loaded!!.currentSector.value})")
+                    enterGame(loaded)
+                },
+                // Start: begin a brand-new game (AC#3). clearSave() is UNCONDITIONAL — a no-op on an
+                // empty DB and a full wipe on a usable OR corrupt save; it is decoupled from the warnings
+                // (the menu model gates those on whether a save exists). It is safe to call at menu time:
+                // there is no AutosaveController yet (the play screen, hence autosaving, is built only in
+                // enterGame() below), so there is no concurrent writer to race with the wipe.
+                onStartNewGame = {
+                    logger.info(TAG, "New Game: wiping any existing save; seeding defaults (credits=$STARTING_CREDITS)")
+                    gameStateRepository.clearSave()
+                    // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
+                    // (UC09 — WorldState defaults to Fleet.starter()).
+                    enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS))
+                },
+            )
+        mainMenuScreen = menu
+        setScreen(menu)
+
+        logger.info(TAG, "Game created; handedness=$handedness; menu shown")
+    }
+
+    /**
+     * Enter gameplay with [worldState] — the shared tail of both Start (a fresh seed) and Continue (the
+     * loaded save). Resolves the initial dock state (UC05 AC#4) — a saved dock station that no longer
+     * resolves to a Station in the saved sector degrades gracefully to flight with a WARN, never
+     * crashing ("never stranded") — builds the [AutosaveController] bound to the live play screen, then
+     * shows the hub (if resumed docked) or the play screen.
+     */
+    private fun enterGame(worldState: WorldState) {
         val resumedStation = resolveDockedStation(worldState)
         val initialWorldState =
             if (worldState.dockedStation != null && resumedStation == null) {
@@ -138,8 +184,6 @@ class OrbitalFrontierGame(
                 onDocked = { station -> openStationHub(station) },
             )
         playScreen = screen
-
-        logger.info(TAG, "Game created; handedness=$handedness")
 
         // Resume on the hub if the load left the ship docked at a resolvable station; otherwise fly.
         if (resumedStation != null) {
@@ -405,6 +449,12 @@ class OrbitalFrontierGame(
 
         // Dispose ALL owned screens explicitly so none leaks GL resources (an inactive one was never
         // hidden/disposed by libGDX, and the active one is only hidden by super.dispose()).
+        try {
+            mainMenuScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose main menu screen on shutdown", e)
+        }
+        mainMenuScreen = null
         try {
             playScreen?.dispose()
         } catch (e: Exception) {
