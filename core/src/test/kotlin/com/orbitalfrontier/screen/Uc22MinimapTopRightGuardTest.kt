@@ -67,9 +67,17 @@ class Uc22MinimapTopRightGuardTest {
     fun `the renderer fits the panel via MinimapLayout, plumbing reservedBottom`() {
         val render = section(RENDERER_SOURCE, "fun render(")
         assertTrue("AC#2/#3: the render() signature accepts reservedBottom", render.contains("reservedBottom: Float"))
+        // UC23 extracted the panel geometry into the renderer's public `panelRect(...)` method — the
+        // single geometry source now shared by this draw and PlayScreen's minimap tap-target — which
+        // delegates to MinimapLayout.panelRect. So render() sizes/places the panel via that shared
+        // method, and the renderer (as a whole) still routes through the pure MinimapLayout geometry.
         assertTrue(
-            "AC#1/#2: the renderer sizes/places the panel through MinimapLayout.panelRect",
-            render.contains("MinimapLayout.panelRect"),
+            "AC#1/#2: render() sizes/places the panel via the shared panelRect(...) method",
+            render.contains("panelRect("),
+        )
+        assertTrue(
+            "AC#1/#2: the renderer still delegates panel geometry to MinimapLayout.panelRect",
+            RENDERER_SOURCE.contains("MinimapLayout.panelRect"),
         )
         assertTrue(
             "AC#2/#3: reservedBottom is plumbed into panelRect (the control clearance)",
