@@ -23,7 +23,10 @@ class PowerModelTest {
     @Test
     fun `drawAt while coasting is the always-on base module load`() {
         assertEquals(params.baseModuleDraw.toDouble(), PowerModel.drawAt(false, params).toDouble(), tolerance)
-        assertEquals(0.5, PowerModel.drawAt(false, params).toDouble(), tolerance)
+        // Pin the FORMULA, not the tuning literal (UC16 re-tunes these numbers): the coasting draw is
+        // exactly the base module load — the 25% share of the total continuous-thrust draw.
+        val totalDraw = (params.baseModuleDraw + params.thrustDraw).toDouble()
+        assertEquals(0.25, params.baseModuleDraw.toDouble() / totalDraw, 1e-4)
     }
 
     @Test
@@ -33,7 +36,10 @@ class PowerModelTest {
             PowerModel.drawAt(true, params).toDouble(),
             tolerance,
         )
-        assertEquals(2.0, PowerModel.drawAt(true, params).toDouble(), tolerance)
+        // Pin the FORMULA, not the tuning literal: the thrust draw is the 75% share of the total
+        // continuous-thrust draw (the 25/75 base:thrust split UC16 preserves).
+        val totalDraw = (params.baseModuleDraw + params.thrustDraw).toDouble()
+        assertEquals(0.75, params.thrustDraw.toDouble() / totalDraw, 1e-4)
     }
 
     @Test
