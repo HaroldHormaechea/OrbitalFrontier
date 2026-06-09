@@ -22,6 +22,7 @@ choose). Decisions that become binding should be promoted to an [ADR](../adr/).
 | Save & Persistence | [save-and-persistence.md](save-and-persistence.md) | in-progress | (cross-cutting) |
 | Power & Energy | [power-and-energy.md](power-and-energy.md) | in-progress | (cross-cutting) |
 | Station Building | [station-building.md](station-building.md) | in-progress (UC15: sim + persistence; UI/world-surfacing deferred) | Improve, deeper |
+| Station Interior (on-foot) | [station-interior.md](station-interior.md) | in-progress (UC19: transient prototype; full interior system deferred) | Improve |
 
 ## Candidate notes (surfaced during design, not yet authored)
 
