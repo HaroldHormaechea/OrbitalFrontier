@@ -77,6 +77,8 @@ import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.PointAndGoPanelPlacement
+import com.orbitalfrontier.screen.controls.UiRect
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
@@ -894,17 +896,34 @@ class PlayScreen(
     }
 
     /**
-     * Centre the debug point-and-go arm panel along the bottom of the screen, between the joystick
-     * (one side) and the action cluster (the other), so it never overlaps a flight control on either
-     * handedness (UC25). No-op on release (the panel is null).
+     * Place the debug point-and-go arm panel on the bottom floor (at [MARGIN], like the joystick and
+     * action cluster), horizontally centred in the inner gap between them so it never overlaps a flight
+     * control on either handedness (UC25). The earlier code anchored the Y from `bottomControlBand()` —
+     * the *top* of the bottom band — which pushed the toggle's hit-rect above the usable world area, so
+     * it drew clipped at the top-centre but was never hittable; [PointAndGoPanelPlacement] floors it
+     * instead. Feeds the controls' live positions with their canonical sizes ([JOYSTICK_SIZE],
+     * [ActionCluster.LAYOUT_WIDTH]) so the placement is handedness-agnostic. No-op on release (null).
      */
     private fun positionPointAndGoPanel() {
         val panel = pointAndGoPanel ?: return
         panel.pack()
-        panel.setPosition(
-            (stage.viewport.worldWidth - panel.width) / 2f,
-            bottomControlBand() + MARGIN,
-        )
+        val placement =
+            PointAndGoPanelPlacement.place(
+                joystick = UiRect(joystick.actor.x, joystick.actor.y, JOYSTICK_SIZE, JOYSTICK_SIZE),
+                actionCluster =
+                    UiRect(
+                        actionCluster.actor.x,
+                        actionCluster.actor.y,
+                        ActionCluster.LAYOUT_WIDTH,
+                        actionCluster.actor.height,
+                    ),
+                panelWidth = panel.width,
+                panelHeight = panel.height,
+                viewportWidth = stage.viewport.worldWidth,
+                viewportHeight = stage.viewport.worldHeight,
+                margin = MARGIN,
+            )
+        panel.setPosition(placement.x, placement.y)
     }
 
     /** Centre the dock context panel near the top of the screen. */
