@@ -627,8 +627,23 @@ class PlayScreen(
             inCombat = combat.active,
         )
         // The minimap renders every transponder POI (gates + stations) plus any revealed hidden
-        // contacts (UC10), keyed by contact kind.
-        minimap.render(sector.pois, ship.position, sector.contentExtent, revealedContacts, viewportWidth, viewportHeight)
+        // contacts (UC10), keyed by contact kind. It anchors top-right (UC22), fitting its size above
+        // the bottom controls; reservedBottom is the worst-case bottom-control top (handedness-agnostic)
+        // so it can never overlap the joystick or action cluster on either side.
+        minimap.render(
+            sector.pois,
+            ship.position,
+            sector.contentExtent,
+            revealedContacts,
+            viewportWidth,
+            viewportHeight,
+            reservedBottom = bottomControlBand(),
+        )
+        // UC22: the relocated top-left settings/handedness button shares its band with the combat-only
+        // ship schematic below, so hide it for the duration of an encounter — handedness isn't changed
+        // mid-combat — keyed on the same combat-active flag that gates the schematic. It reappears when
+        // combat ends. An invisible Scene2D actor also stops receiving touch, so nothing under it leaks.
+        settingsOverlay.actor.isVisible = !combat.active
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
         if (combat.active) {
             val active = fleet.active
@@ -668,10 +683,18 @@ class PlayScreen(
         actionCluster.actor.setSize(clusterWidth, actionCluster.actor.prefHeight)
         actionCluster.actor.setPosition(sideX(layout.actionClusterSide, screenWidth, clusterWidth), MARGIN)
 
+        // UC22: the minimap now owns the top-right corner, so the settings/handedness button moves to
+        // the top-LEFT band — the clear vertical gap between the HUD readout block at the top
+        // (HUD_BLOCK_HEIGHT) and the worst-case left-edge control cluster at the bottom
+        // (bottomControlBand()). It is centred in that band so the clearance is symmetric on both sides
+        // (≥ 16 world units at supported sizes), and the worst-case band is handedness-agnostic, so the
+        // button stays put when the player flips handedness.
         settingsOverlay.actor.setSize(SETTINGS_WIDTH, SETTINGS_HEIGHT)
+        val leftBandBottom = bottomControlBand()
+        val leftBandTop = screenHeight - HUD_BLOCK_HEIGHT
         settingsOverlay.actor.setPosition(
-            screenWidth - MARGIN - SETTINGS_WIDTH,
-            screenHeight - MARGIN - SETTINGS_HEIGHT,
+            MARGIN,
+            (leftBandBottom + leftBandTop) / 2f - SETTINGS_HEIGHT / 2f,
         )
 
         positionDockPanel()
@@ -792,6 +815,14 @@ class PlayScreen(
         screenWidth: Float,
         widgetWidth: Float,
     ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
+
+    /**
+     * The world-space top of the bottom control band (UC22): the higher of the joystick and the action
+     * cluster, sitting at [MARGIN] above the screen floor. Handedness-agnostic — it always uses the
+     * worst-case (tallest) of the two controls, so it bounds whichever control ends up on a given side.
+     * Used both to reserve the minimap's bottom clearance and to anchor the top-left settings band.
+     */
+    private fun bottomControlBand(): Float = MARGIN + maxOf(JOYSTICK_SIZE, ActionCluster.LAYOUT_HEIGHT)
 
     /**
      * Run UC13 combat for this frame: an edge-triggered natural-encounter spawn on the outside→inside
@@ -1368,6 +1399,13 @@ class PlayScreen(
         const val JOYSTICK_SIZE = 220f
         const val SETTINGS_WIDTH = 200f
         const val SETTINGS_HEIGHT = 56f
+
+        // UC22: world-space height of the top-left HUD readout block (HudRenderer's three scaled text
+        // lines plus the combat "IN COMBAT" cue), measured down from the top. The settings/handedness
+        // button is centred in the band below this and above the bottom controls, so it clears the HUD
+        // even during a combat encounter and keeps a symmetric gap (≥ 16 world units at supported sizes)
+        // from both neighbours.
+        const val HUD_BLOCK_HEIGHT = 104f
         const val DOCK_WIDTH = 200f
         const val DOCK_HEIGHT = 56f
         const val DOCK_PROMPT_GAP = 8f

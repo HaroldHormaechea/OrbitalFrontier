@@ -34,10 +34,21 @@ class ActionCluster(skin: PlaceholderControlsSkin) {
     /** True while the FIRE button is held this frame (UC13 AC#1) — drives the combat tick's fire intent. */
     fun isFirePressed(): Boolean = fireButton.isPressed
 
-    private companion object {
+    companion object {
         const val PLACEHOLDER_BUTTON_COUNT = 2
         const val BUTTON_SIZE = 96f
         const val FIRE_SIZE = 96f
         const val BUTTON_PAD = 8f
+
+        /**
+         * The cluster's laid-out height in world units — the single source of truth for both the Table
+         * rows built in [init] and the bottom-band reservation the minimap keeps above the controls
+         * (UC22). Each row is its button size plus padding on both sides: one FIRE row above
+         * [PLACEHOLDER_BUTTON_COUNT] equal placeholder rows. Derived from the same constants that build
+         * the Table so the two can never drift; equals `3 * (96 + 2*8) = 336` for the current layout — a
+         * value the UC22 guard test asserts against the actor's real `prefHeight`.
+         */
+        const val LAYOUT_HEIGHT =
+            (FIRE_SIZE + 2f * BUTTON_PAD) + PLACEHOLDER_BUTTON_COUNT * (BUTTON_SIZE + 2f * BUTTON_PAD)
     }
 }
