@@ -18,24 +18,31 @@ import org.junit.Test
  *  - a non-negative `dt` is required (fail-fast on a programmer error).
  */
 class FuelBurnTest {
-    private val power = PowerParams() // base 0.5, thrust 1.5 ⇒ coast 0.5/s, thrust 2.0/s
+    // Default power tuning (UC16-calibrated): coast draw == baseModuleDraw, thrust draw ==
+    // baseModuleDraw + thrustDraw. Expected burns below are derived from these fields, not frozen
+    // literals, so a future re-tune doesn't re-break the formula assertions.
+    private val power = PowerParams()
     private val dt = 0.5f
     private val tolerance = 1e-6
 
     @Test
     fun `coasting burns the base draw times dt`() {
-        val after = FuelBurn.step(Fuel(level = 50f, capacity = 100f), thrusting = false, powerParams = power, dt = dt)
+        val start = Fuel(level = 50f, capacity = 100f)
+        val after = FuelBurn.step(start, thrusting = false, powerParams = power, dt = dt)
 
-        // 0.5 units/s * 0.5 s = 0.25 units.
-        assertEquals(49.75, after.level.toDouble(), tolerance)
+        // coasting burns baseModuleDraw · dt (the always-on hotel load).
+        val expected = start.level - power.baseModuleDraw * dt
+        assertEquals(expected.toDouble(), after.level.toDouble(), tolerance)
     }
 
     @Test
     fun `thrusting burns the higher draw times dt`() {
-        val after = FuelBurn.step(Fuel(level = 50f, capacity = 100f), thrusting = true, powerParams = power, dt = dt)
+        val start = Fuel(level = 50f, capacity = 100f)
+        val after = FuelBurn.step(start, thrusting = true, powerParams = power, dt = dt)
 
-        // (0.5 + 1.5) units/s * 0.5 s = 1.0 unit.
-        assertEquals(49.0, after.level.toDouble(), tolerance)
+        // thrusting burns (baseModuleDraw + thrustDraw) · dt.
+        val expected = start.level - (power.baseModuleDraw + power.thrustDraw) * dt
+        assertEquals(expected.toDouble(), after.level.toDouble(), tolerance)
     }
 
     @Test
@@ -49,7 +56,10 @@ class FuelBurnTest {
 
     @Test
     fun `a near-empty tank clamps at zero rather than going negative`() {
-        val after = FuelBurn.step(Fuel(level = 0.1f, capacity = 100f), thrusting = true, powerParams = power, dt = dt)
+        // Start with strictly less fuel than a single thrust step would burn, so the step overshoots
+        // empty regardless of the tuning numbers — derived from the draw, not a frozen 0.1 literal.
+        val oneStepBurn = (power.baseModuleDraw + power.thrustDraw) * dt
+        val after = FuelBurn.step(Fuel(level = oneStepBurn * 0.5f, capacity = 100f), thrusting = true, powerParams = power, dt = dt)
 
         assertEquals("burning past empty clamps at zero (never stranded)", 0f, after.level)
     }

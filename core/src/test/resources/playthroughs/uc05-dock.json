@@ -20,8 +20,8 @@
   },
   "powerConfig": {
     "reactorOutput": 2.0,
-    "baseModuleDraw": 0.5,
-    "thrustDraw": 1.5
+    "baseModuleDraw": 0.013888889,
+    "thrustDraw": 0.041666668
   },
   "fuelConfig": {
     "lowFuelThreshold": 0.2,

@@ -25,6 +25,10 @@ object ShipRoster {
      * base cargo/fuel capacities reference [Cargo.DEFAULT_CAPACITY] / [FuelParams.DEFAULT_TANK_CAPACITY]
      * directly (single source of truth) and its movement profile is the identity, so
      * [com.orbitalfrontier.outfit.ShipStats] derives the pre-UC09 numbers unchanged.
+     *
+     * The Wayfarer is also the **fuel-duration calibration reference** (UC16): fuel draw is tuned in
+     * [com.orbitalfrontier.power.PowerParams] so its full tank drains in ~30 min of continuous
+     * thrust, and every other ship shares that per-second draw against its own tank size.
      */
     val STARTER: ShipType =
         ShipType(
