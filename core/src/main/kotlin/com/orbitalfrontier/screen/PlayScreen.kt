@@ -5,6 +5,7 @@ import com.badlogic.gdx.InputMultiplexer
 import com.badlogic.gdx.ScreenAdapter
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Label
@@ -59,6 +60,8 @@ import com.orbitalfrontier.render.AsteroidFieldRenderer
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
 import com.orbitalfrontier.render.HudRenderer
+import com.orbitalfrontier.render.MapOverlayRenderer
+import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
@@ -160,6 +163,13 @@ class PlayScreen(
     // so no POI can render as nothing; gate/asteroid renderers above now draw only their rings.
     private val worldObjectRenderer = WorldObjectRenderer()
     private val minimap = MinimapRenderer()
+
+    // UC23: the click-to-zoom full-height map overlay. [mapOverlayState] is the pure open/closed toggle
+    // (libGDX-free, JVM-testable); [mapOverlay] is its GL renderer (mirrors the minimap). The overlay is
+    // LIVE — opening it does NOT pause the simulation (MapOverlayLayout.PAUSES_SIMULATION = false), so
+    // the per-frame sim/autosave/combat below run unchanged whether or not the map is open.
+    private var mapOverlayState = MapOverlayState()
+    private val mapOverlay = MapOverlayRenderer()
 
     // Combat visuals (UC13): hostiles + projectiles in world space, and the per-section HUD ship
     // schematic. Both only read state and draw nothing while combat is inactive.
@@ -298,6 +308,16 @@ class PlayScreen(
     private val radioPanel = Table()
     private var radioAcceptRequested = false
 
+    // UC23 map-overlay tap targets — invisible Scene2D actors (they draw nothing; the overlay visuals
+    // are drawn by [mapOverlay] after stage.draw()). [minimapTapTarget] sits exactly on the drawn
+    // minimap panel (bounds from the shared MinimapRenderer.panelRect — one geometry source for draw +
+    // touch) and toggles the overlay open on a tap. [mapDismissActor] is a full-screen catch-all added
+    // LAST (top z) and visible only while the overlay is open; any tap on it dismisses the overlay
+    // (AC#5 — the player can never be trapped) and is consumed (ClickListener.touchDown returns true) so
+    // it never leaks through to a flight control underneath.
+    private val minimapTapTarget = Actor()
+    private val mapDismissActor = Actor()
+
     private var handedness = initialHandedness
 
     init {
@@ -374,6 +394,34 @@ class PlayScreen(
         radioPanel.pack()
         radioPanel.isVisible = false
 
+        // UC23: tap the minimap to open the zoomed overlay. While the overlay is open the full-screen
+        // dismiss actor sits on top and intercepts taps, so this listener only ever runs closed -> open.
+        minimapTapTarget.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    mapOverlayState = mapOverlayState.toggled()
+                }
+            },
+        )
+        // Any tap while the overlay is open dismisses it (AC#5 — no trap). Hidden (and so untouchable)
+        // while the overlay is closed; its visibility is driven each frame in render().
+        mapDismissActor.isVisible = false
+        mapDismissActor.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    mapOverlayState = mapOverlayState.dismissed()
+                }
+            },
+        )
+
         actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
@@ -382,6 +430,10 @@ class PlayScreen(
         stage.addActor(minePanel)
         stage.addActor(scanPanel)
         stage.addActor(radioPanel)
+        // UC23: the minimap tap target, then the full-screen dismiss actor LAST so it has the top z-order
+        // and catches taps over everything (including the minimap) while the overlay is open.
+        stage.addActor(minimapTapTarget)
+        stage.addActor(mapDismissActor)
     }
 
     override fun show() {
@@ -392,6 +444,10 @@ class PlayScreen(
 
     override fun render(delta: Float) {
         val dt = delta.coerceIn(MIN_DT, MAX_DT)
+        // UC23: whether the zoomed map overlay is open this frame. It gates only the HUD control
+        // visibility + the overlay draw below — the simulation/step/autosave/combat are LIVE and run
+        // unchanged regardless (MapOverlayLayout.PAUSES_SIMULATION = false).
+        val mapOpen = mapOverlayState.isOpen
         val input = joystick.currentInput()
 
         // UC07 fuel burn: the ship draws power every tick (base load even idle, more while thrusting),
@@ -643,7 +699,26 @@ class PlayScreen(
         // ship schematic below, so hide it for the duration of an encounter — handedness isn't changed
         // mid-combat — keyed on the same combat-active flag that gates the schematic. It reappears when
         // combat ends. An invisible Scene2D actor also stops receiving touch, so nothing under it leaks.
-        settingsOverlay.actor.isVisible = !combat.active
+        // UC23: also hide it — and every gameplay control — while the zoomed map overlay is open, so
+        // nothing shows through / under the 80%-opaque backdrop and no stray tap reaches a flight control
+        // (an invisible actor receives no touch; the full-screen dismiss actor on top catches taps). Only
+        // the controls hide — the simulation keeps running (the overlay is LIVE).
+        settingsOverlay.actor.isVisible = !combat.active && !mapOpen
+        if (mapOpen) {
+            joystick.actor.isVisible = false
+            actionCluster.actor.isVisible = false
+            dockPanel.isVisible = false
+            minePanel.isVisible = false
+            scanPanel.isVisible = false
+            radioPanel.isVisible = false
+        } else {
+            joystick.actor.isVisible = true
+            actionCluster.actor.isVisible = true
+            // The persistent SCAN panel re-shows when the overlay closes; the range-gated dock/mine/radio
+            // context panels restore themselves via their per-frame updaters above.
+            scanPanel.isVisible = true
+        }
+        mapDismissActor.isVisible = mapOpen
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
         if (combat.active) {
             val active = fleet.active
@@ -657,6 +732,22 @@ class PlayScreen(
 
         stage.act(dt)
         stage.draw()
+
+        // UC23: the zoomed map overlay is drawn LAST, on top of the gameplay and the (now-hidden) HUD
+        // controls — a full-screen dim backdrop (scene faintly visible, AC#3) plus a full-height map
+        // panel showing more sector area than the minimap (AC#2/#4). It is a pure overlay: the sim above
+        // already ran this frame, so opening the map neither pauses nor corrupts game state (AC#6; the
+        // LIVE-in-combat tradeoff is documented in docs/design/world-and-sector.md).
+        if (mapOpen) {
+            mapOverlay.render(
+                sector.pois,
+                ship.position,
+                sector.contentExtent,
+                revealedContacts,
+                viewportWidth,
+                viewportHeight,
+            )
+        }
     }
 
     override fun resize(
@@ -701,6 +792,19 @@ class PlayScreen(
         positionMinePanel()
         positionScanPanel()
         positionRadioPanel()
+
+        // UC23: place the invisible minimap tap target exactly on the drawn minimap panel — same
+        // geometry source (MinimapRenderer.panelRect) called with the SAME world-unit args the per-frame
+        // draw uses (stage world size == pixel viewport / UiScale.factor) — so tapping the visible
+        // minimap opens the overlay. The dismiss actor covers the whole stage so any tap dismisses it.
+        val minimapRect =
+            minimap.panelRect(
+                vpWidth = screenWidth,
+                vpHeight = screenHeight,
+                reservedBottom = bottomControlBand(),
+            )
+        minimapTapTarget.setBounds(minimapRect.x, minimapRect.y, minimapRect.width, minimapRect.height)
+        mapDismissActor.setBounds(0f, 0f, screenWidth, screenHeight)
     }
 
     /** Centre the dock context panel near the top of the screen. */
@@ -1380,6 +1484,7 @@ class PlayScreen(
         asteroidFieldRenderer.dispose()
         worldObjectRenderer.dispose()
         minimap.dispose()
+        mapOverlay.dispose()
         hostileRenderer.dispose()
         shipSchematicRenderer.dispose()
         physics.dispose()

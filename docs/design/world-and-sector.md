@@ -135,6 +135,33 @@ the same Open/Closed seam, extended by one `ContactKind` value (ADR 0009).
   base scan), `alpha-smuggler` at 600 wu (revealed only with `SCANNER_I`), and `alpha-ghost` at
   800 wu (outside even the upgraded range — the scan-doesn't-reveal-everything case).
 
+**Click-to-zoom map overlay (implemented UC23).** The top-right HUD minimap (UC22) stays the always-on
+element; tapping it opens a larger inspection **overlay** — a full-screen dim backdrop (drawn at ~0.8
+alpha, so the scene behind stays faintly visible) plus a **full-height**, horizontally-centred map
+panel that shows *more sector area* than the minimap (a genuine zoom-out-for-detail: the mapped world
+radius is the sector content extent × `MapOverlayLayout.AREA_MULTIPLIER` = 2.0, projected onto a far
+larger panel, so markers spread out and more of the sector is in view). The overlay reuses the minimap's
+`Contact`/`when(contactKind)` marker seam and its **exact** visibility filter — a `Transponder` always
+draws; a hidden contact only once revealed — so it honours UC10 and never surfaces an unscanned contact.
+A clearly-marked seam after the marker loop is reserved for UC24 marker labels (no text in UC23).
+
+- **Open/dismiss is unambiguous (no trap, AC#5).** Opening is a tap on the minimap; **any** tap while
+  the overlay is open dismisses it back to normal play with the HUD intact. Mechanically a full-screen
+  invisible "dismiss" actor sits on top of everything while open and consumes the tap, so the player can
+  never be stranded inside the overlay, and the minimap's own tap target only ever fires closed → open.
+  The geometry of the minimap tap target is the **same** `MinimapRenderer.panelRect` the minimap draw
+  uses (one source for draw + touch), so the tappable region always matches the visible minimap.
+- **The overlay is LIVE — opening the map does not pause the game** (`MapOverlayLayout.PAUSES_SIMULATION
+  = false`; the AC#6 "define and apply consistent behaviour" decision). This matches the rest of the
+  game, which has **no general pause** — docking hands off to a separate screen (movement freezes only
+  because `PlayScreen` isn't rendered), but in-flight HUD layers never stop the simulation. **Explicit
+  LIVE-in-combat tradeoff:** opening the map mid-combat does **not** suspend the fight — hostiles keep
+  firing and the encounter keeps stepping, so the player takes **unavoidable damage** while the map is
+  up, and flight input is effectively suspended because the controls are occluded/hidden behind the
+  backdrop. This is the deliberate, consistent choice (a pure inspection layer, not a tactical pause);
+  the player dismisses the map to resume flying/fighting. Revisit only if combat playtesting shows the
+  no-pause map is punishing enough to warrant a combat-only exception.
+
 **Encounters:**
 - **Natural/ambient** — encounters that simply exist in the living world (traffic,
   patrols, pirates roaming), in the spirit of Starsector / X4.
