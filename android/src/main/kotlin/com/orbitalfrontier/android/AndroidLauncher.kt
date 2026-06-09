@@ -3,6 +3,7 @@ package com.orbitalfrontier.android
 import android.os.Bundle
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
+import com.orbitalfrontier.BuildConfig
 import com.orbitalfrontier.app.OrbitalFrontierGame
 
 /**
@@ -32,7 +33,12 @@ class AndroidLauncher : AndroidApplication() {
         val sqlDriverFactory = AndroidSqlDriverFactory(applicationContext)
         saveExecutor = AndroidSaveExecutor(logger)
 
-        initialize(OrbitalFrontierGame(logger, sqlDriverFactory, saveExecutor), configuration)
+        // UC25: BuildConfig.DEBUG is true only for the debug variant, so the debug-only point-and-go
+        // navigation aid is armed-capable on debug builds and entirely inert on release.
+        initialize(
+            OrbitalFrontierGame(logger, sqlDriverFactory, saveExecutor, debug = BuildConfig.DEBUG),
+            configuration,
+        )
     }
 
     override fun onDestroy() {

@@ -62,6 +62,10 @@ class OrbitalFrontierGame(
     private val logger: Logger,
     private val sqlDriverFactory: SqlDriverFactory,
     private val saveExecutor: SaveExecutor,
+    // UC25: debug-build flag (the launcher passes BuildConfig.DEBUG). Forwarded to PlayScreen, which
+    // wires the debug-only point-and-go navigation aid only when true. Defaults false so non-Android
+    // backends / tests stay release-safe.
+    private val debug: Boolean = false,
 ) : Game() {
     private var driver: SqlDriver? = null
     private var autosave: AutosaveController? = null
@@ -182,6 +186,7 @@ class OrbitalFrontierGame(
                 initialHandedness = handedness,
                 initialWorldState = initialWorldState,
                 onDocked = { station -> openStationHub(station) },
+                debug = debug,
             )
         playScreen = screen
 

@@ -30,6 +30,13 @@ android {
     namespace = "com.orbitalfrontier"
     compileSdk = 35
 
+    // UC25: generate BuildConfig so the debug-only point-and-go navigation aid can gate on
+    // BuildConfig.DEBUG (AGP 8+ defaults this off). DEBUG is true only for the debug variant, so
+    // the release build compiles the feature out entirely.
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.orbitalfrontier"
         minSdk = 24
