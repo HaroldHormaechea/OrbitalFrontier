@@ -17,8 +17,11 @@ import com.orbitalfrontier.world.Transponder
  * A small screen-space HUD minimap of the current sector's transponder-broadcasting POIs (jump
  * gates and stations) plus the ship's marker (UC03 AC#6; UC05 AC#1).
  *
- * Drawn in screen space (like [StarfieldRenderer]/[HudRenderer]) as a square panel in the
- * bottom-right corner. World positions (sector centre = origin) are scaled into the panel by the
+ * Drawn in screen space (like [StarfieldRenderer]/[HudRenderer]) as a square panel anchored in the
+ * top-right corner (UC22 — the conventional minimap location, clear of the bottom action controls).
+ * Its size fits the space above the controls via [MinimapLayout.panelRect] (world units), so it never
+ * overlaps the action cluster/joystick in any supported size or orientation. World positions
+ * (sector centre = origin) are scaled into the panel by the
  * sector's `contentExtent`, so the content area fills the minimap regardless of sector size; markers
  * outside the extent are clamped to the panel edge so the ship is always visible (the sector is
  * unbounded, AC#2). Reads state only — no simulation here (coding-guidelines § simulation vs render).
@@ -45,18 +48,31 @@ class MinimapRenderer(
         revealedContacts: Set<PoiId>,
         viewportWidth: Float,
         viewportHeight: Float,
+        reservedBottom: Float,
     ) {
-        // Base panel/padding constants scaled at the use site (ADR 0015) — UiScale.factor stays the
-        // single knob; the panel keeps the same screen corner, just larger.
-        val size = sizePx * uiScale
-        val margin = marginPx * uiScale
+        // Fit-to-corner placement is computed in WORLD units by the pure, libGDX-free MinimapLayout
+        // (the same space PlayScreen.layoutControls lays the controls out in — no px↔world seam), then
+        // scaled back up by UiScale.factor (ADR 0015) for the actual screen-space draw. reservedBottom
+        // is the world height of the worst-case bottom controls, so the panel can never overlap them.
+        val rect =
+            MinimapLayout.panelRect(
+                vpWidth = viewportWidth / uiScale,
+                vpHeight = viewportHeight / uiScale,
+                reservedBottom = reservedBottom,
+                margin = marginPx,
+                maxSize = sizePx,
+                minSize = MIN_SIZE,
+                gap = CONTROL_GAP,
+            )
+        val size = rect.width * uiScale
+        val originX = rect.x * uiScale
+        val originY = rect.y * uiScale
         val padding = PADDING * uiScale
 
-        val originX = viewportWidth - margin - size
-        val originY = margin
         val centerX = originX + size / 2f
         val centerY = originY + size / 2f
-        // Map a world radius of contentExtent onto half the panel (minus padding for the markers).
+        // Map a world radius of contentExtent onto half the panel (minus padding for the markers); the
+        // markers and clampToPanel derive from the fitted size, so content tracks the panel unchanged.
         val half = size / 2f - padding
         val scale = if (contentExtent > 0f) half / contentExtent else 0f
 
@@ -133,6 +149,13 @@ class MinimapRenderer(
     private companion object {
         const val DEFAULT_SIZE = 180f
         const val DEFAULT_MARGIN = 24f
+
+        // Fit-to-corner bounds (world units, UC22). The panel side is the height free above the bottom
+        // controls, clamped to [MIN_SIZE, DEFAULT_SIZE] and kept CONTROL_GAP clear of those controls.
+        // At the minimum supported size (1080px landscape ≈ 540 world units, UiScale.factor = 2) the
+        // fitted side lands between these bounds, so the panel stays clear of the action cluster.
+        const val MIN_SIZE = 120f
+        const val CONTROL_GAP = 16f
         const val PADDING = 12f
         const val GATE_MARKER_RADIUS = 4f
         const val STATION_MARKER_RADIUS = 4f
