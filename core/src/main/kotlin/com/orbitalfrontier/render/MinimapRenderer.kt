@@ -41,6 +41,28 @@ class MinimapRenderer(
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
 
+    /**
+     * The minimap panel rectangle in **world units** for the given world-unit viewport and reserved
+     * bottom-control band — the single geometry source shared by this renderer's [render] draw and
+     * [com.orbitalfrontier.screen.PlayScreen]'s invisible minimap tap-target actor (UC23), so the tap
+     * target lands exactly on the drawn panel. Wraps the renderer's own size/margin and the
+     * fit-to-corner [MIN_SIZE]/[CONTROL_GAP] bounds; pure delegation to [MinimapLayout.panelRect].
+     */
+    fun panelRect(
+        vpWidth: Float,
+        vpHeight: Float,
+        reservedBottom: Float,
+    ): MinimapLayout.Rect =
+        MinimapLayout.panelRect(
+            vpWidth = vpWidth,
+            vpHeight = vpHeight,
+            reservedBottom = reservedBottom,
+            margin = marginPx,
+            maxSize = sizePx,
+            minSize = MIN_SIZE,
+            gap = CONTROL_GAP,
+        )
+
     fun render(
         pois: List<Poi>,
         shipPosition: Vec2,
@@ -55,14 +77,10 @@ class MinimapRenderer(
         // scaled back up by UiScale.factor (ADR 0015) for the actual screen-space draw. reservedBottom
         // is the world height of the worst-case bottom controls, so the panel can never overlap them.
         val rect =
-            MinimapLayout.panelRect(
+            panelRect(
                 vpWidth = viewportWidth / uiScale,
                 vpHeight = viewportHeight / uiScale,
                 reservedBottom = reservedBottom,
-                margin = marginPx,
-                maxSize = sizePx,
-                minSize = MIN_SIZE,
-                gap = CONTROL_GAP,
             )
         val size = rect.width * uiScale
         val originX = rect.x * uiScale
