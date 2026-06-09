@@ -34,4 +34,4 @@ Statuses:
 | 22 | [use-cases/22-map-reposition-top-right.md](use-cases/22-map-reposition-top-right.md) | Reposition map to top-right | done | 2026-06-09 |
 | 23 | [use-cases/23-map-click-to-zoom-overlay.md](use-cases/23-map-click-to-zoom-overlay.md) | Click map to open full-height zoomed overlay | done | 2026-06-09 |
 | 24 | [use-cases/24-map-item-labels.md](use-cases/24-map-item-labels.md) | Show name labels for map items | done | 2026-06-09 |
-| 25 | [use-cases/25-debug-point-and-go-navigation.md](use-cases/25-debug-point-and-go-navigation.md) | Debug point-and-go navigation (debug builds only) | pending | 2026-06-09 |
+| 25 | [use-cases/25-debug-point-and-go-navigation.md](use-cases/25-debug-point-and-go-navigation.md) | Debug point-and-go navigation (debug builds only) | done | 2026-06-09 |

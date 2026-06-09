@@ -43,6 +43,18 @@ class Uc17StartingCreditsTest {
      */
     private val gameSource: String by lazy { readGameSource() }
 
+    /**
+     * [gameSource] with Kotlin comments (block `/* … */` and line `// …`) stripped, so the debug-gate
+     * guard below inspects actual CODE only. A doc/comment merely *mentioning* `BuildConfig.DEBUG`
+     * (e.g. the UC25 note that the launcher forwards the debug build flag) is prose, not a gate on the
+     * starting balance, and must not trip the guard — only a real code-level gate should.
+     */
+    private val gameCode: String by lazy {
+        gameSource
+            .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""//[^\n]*"""), "")
+    }
+
     @Test
     fun `AC1_AC4 - new-game starting credits is a single clearly-named constant equal to 50,000`() {
         val declarations = STARTING_CREDITS_DECL.findAll(gameSource).toList()
@@ -69,10 +81,11 @@ class Uc17StartingCreditsTest {
             "AC#2: STARTING_CREDITS must be a plain compile-time const (the permanent default), not a runtime toggle",
             STARTING_CREDITS_DECL.containsMatchIn(gameSource),
         )
-        // …and the starting balance must not be gated behind any debug/dev build flag.
+        // …and the starting balance must not be gated behind any debug/dev build flag. Scanned over
+        // comment-stripped CODE so a doc note merely naming BuildConfig.DEBUG (UC25) is not a gate.
         assertTrue(
             "AC#2: the starting balance must not be gated behind a debug/dev/BuildConfig flag",
-            DEBUG_GATE.containsMatchIn(gameSource).not(),
+            DEBUG_GATE.containsMatchIn(gameCode).not(),
         )
     }
 
