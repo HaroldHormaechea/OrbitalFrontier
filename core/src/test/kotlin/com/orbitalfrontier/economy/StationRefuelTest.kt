@@ -197,9 +197,12 @@ class StationRefuelTest {
         data class Case(val credits: Long, val fuel: Fuel, val price: Long)
         val cases =
             listOf(
-                Case(30, tank(50f), 6), // credits-bound
-                Case(10_000, tank(93f), 6), // tank-bound
-                Case(63, tank(0f), 7), // exact credits divide
+                // credits-bound
+                Case(30, tank(50f), 6),
+                // tank-bound
+                Case(10_000, tank(93f), 6),
+                // exact credits divide
+                Case(63, tank(0f), 7),
             )
         for (c in cases) {
             val result = StationRefuel.resolve(c.credits, c.fuel, c.price, StationRefuelAction.BUY)
