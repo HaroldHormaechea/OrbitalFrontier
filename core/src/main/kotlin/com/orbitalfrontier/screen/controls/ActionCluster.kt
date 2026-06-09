@@ -50,5 +50,14 @@ class ActionCluster(skin: PlaceholderControlsSkin) {
          */
         const val LAYOUT_HEIGHT =
             (FIRE_SIZE + 2f * BUTTON_PAD) + PLACEHOLDER_BUTTON_COUNT * (BUTTON_SIZE + 2f * BUTTON_PAD)
+
+        /**
+         * The cluster's laid-out width in world units — every row is a single button (the widest being
+         * FIRE at [FIRE_SIZE]) plus padding on both sides, so the Table packs to `96 + 2*8 = 112`. The
+         * single width source for the point-and-go panel's placement reservation
+         * ([com.orbitalfrontier.screen.controls.PointAndGoPanelPlacement]); verified equal to the actor's
+         * live `prefWidth`.
+         */
+        const val LAYOUT_WIDTH = FIRE_SIZE + 2f * BUTTON_PAD
     }
 }

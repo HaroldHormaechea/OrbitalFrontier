@@ -138,6 +138,33 @@ class Uc25PointAndGoGuardTest {
         )
     }
 
+    // --- bug fix: the panel Y is floored via PointAndGoPanelPlacement, not bottomControlBand() -------
+
+    @Test
+    fun `positionPointAndGoPanel delegates placement to PointAndGoPanelPlacement_place`() {
+        val placement = section(PLAY_SCREEN_SOURCE, "private fun positionPointAndGoPanel(")
+        assertTrue(
+            "bug fix: positionPointAndGoPanel computes the panel rect via the pure placement helper",
+            placement.contains("PointAndGoPanelPlacement.place("),
+        )
+    }
+
+    @Test
+    fun `positionPointAndGoPanel no longer derives the panel Y from bottomControlBand`() {
+        val placement = section(PLAY_SCREEN_SOURCE, "private fun positionPointAndGoPanel(")
+        // The bug was anchoring the panel Y to bottomControlBand() (the TOP of the bottom band), which
+        // floated the toggle's hit-rect above the usable world area. The fix floors it at MARGIN via
+        // PointAndGoPanelPlacement instead, so the placement function must not reference the band at all.
+        assertFalse(
+            "bug fix: the panel placement must not be anchored to bottomControlBand() any more",
+            placement.contains("bottomControlBand()"),
+        )
+        assertTrue(
+            "bug fix: the panel is floored at the bottom MARGIN (passed through to the placement helper)",
+            placement.contains("margin = MARGIN"),
+        )
+    }
+
     // --- AC#4: the arm panel hides with the other controls while the map overlay is open ------------
 
     @Test
