@@ -13,6 +13,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.layout.GridCell
+import com.orbitalfrontier.screen.layout.MenuGrid
 
 /**
  * The station-hub screen shown while the ship is docked (UC05 AC#3).
@@ -72,6 +74,12 @@ class StationHubScreen(
     // path is a silent no-op. Empty until the first tap.
     private val refuelFeedbackLabel = Label("", skin.labelStyle)
 
+    // UC20: the action buttons live in a child grid capped at MenuGrid.DEFAULT_MAX_ROWS rows, growing
+    // into extra columns as items are added. Held as a field so [resize] can re-fit the column width
+    // to the live viewport. [gridColumns] caches the column count so resize need not recount items.
+    private val grid = Table()
+    private var gridColumns = 0
+
     init {
         val root = Table()
         root.setFillParent(true)
@@ -83,6 +91,12 @@ class StationHubScreen(
             root.add(Label("FACTION: $factionName", skin.labelStyle)).padBottom(SERVICE_GAP).row()
         }
         root.add(Label("STATION SERVICES", skin.labelStyle)).padBottom(SERVICE_GAP).row()
+
+        // UC20: collect every action button in display order, each built EXACTLY as before (same label,
+        // same click listener → same action), then arrange them into a capped grid below. The order is
+        // the historical one: TRADE, OUTFIT, SHIPS, CREW, MISSIONS, BUILD (build-capable only), the two
+        // refuel buttons, EXIT SHIP, UNDOCK. UNDOCK now folds into the uniform grid (no padTop emphasis).
+        val buttons = ArrayList<TextButton>()
 
         // Active TRADE service (UC08): opens the station trade desk. The play screen owns the pure
         // Trading.resolve; this button just fires the intent so the game switches to the TradeScreen.
@@ -98,40 +112,38 @@ class StationHubScreen(
                 }
             },
         )
-        root.add(tradeButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(tradeButton)
 
         // Active OUTFIT service (UC09 AC#2/#3/#4): opens the outfitting desk (buy/install upgrades; at a
         // junkyard, also remove/sell used parts). The play screen owns the pure Outfitting resolver.
-        root.add(serviceButton("OUTFIT", onOutfit)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(serviceButton("OUTFIT", onOutfit))
 
         // Active SHIPS service (UC09 AC#5): opens the shipyard / ship-switch screen (buy a ship where a
         // shipyard exists; switch the active ship anywhere while docked). Pure FleetResolver behind it.
-        root.add(serviceButton("SHIPS", onShipyard)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(serviceButton("SHIPS", onShipyard))
 
         // Active CREW service (UC11 AC#2): opens the crew-hire desk (hire crew where the station hires
         // them; the desk shows crew/capacity + turret operability anywhere). Pure Hiring behind it.
-        root.add(serviceButton("CREW", onCrew)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(serviceButton("CREW", onCrew))
 
         // Active MISSIONS service (UC12 AC#2/#3): opens the station mission board (accept board offers,
         // turn in active missions). The play screen owns the pure Missions.resolve + MissionGenerator;
         // this button just fires the intent so the game switches to the MissionBoardScreen.
-        root.add(serviceButton("MISSIONS", onMissions)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(serviceButton("MISSIONS", onMissions))
 
         // Active BUILD service (UC15 AC#1): only at a build-capable station. Founds/expands a personal
         // station via the play screen's pure StationBuilder. Per ADR 0014 there is NO dedicated build
         // screen yet — the action fires a default build order directly; the full build UI is deferred.
         if (buildsStations) {
-            root.add(serviceButton("BUILD", onBuild)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+            buttons.add(serviceButton("BUILD", onBuild))
         }
 
-        // Active refuel services. The play screen owns both pure resolvers; these rows show the current
-        // tank and two DISTINCTLY-LABELLED buttons (UC18 has two refuel concepts, so the UI must not
-        // conflate them): "Refuel (H₂)" converts hydrogen cargo into fuel (UC07 AC#5, Refueling.resolve)
-        // and "Buy Fuel (credits)" pays the docked station for fuel (UC18, StationRefuel.resolve). Each
-        // fires its intent, shows the returned feedback line, then re-reads the tank readout.
-        fuelLabel.setText(fuelStatus())
-        root.add(fuelLabel).padBottom(SERVICE_GAP).row()
-
+        // Active refuel services. The play screen owns both pure resolvers; these are two DISTINCTLY-
+        // LABELLED buttons (UC18 has two refuel concepts, so the UI must not conflate them):
+        // "Refuel (H₂)" converts hydrogen cargo into fuel (UC07 AC#5, Refueling.resolve) and
+        // "Buy Fuel (credits)" pays the docked station for fuel (UC18, StationRefuel.resolve). Each
+        // fires its intent, shows the returned feedback line, then re-reads the tank readout. The
+        // listeners are UNCHANGED so the UC18 feedback guard stays green.
         val refuelButton = TextButton("Refuel (H₂)", skin.settingsButtonStyle)
         refuelButton.addListener(
             object : ClickListener() {
@@ -145,7 +157,7 @@ class StationHubScreen(
                 }
             },
         )
-        root.add(refuelButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(refuelButton)
 
         val buyFuelButton = TextButton("Buy Fuel (credits)", skin.settingsButtonStyle)
         buyFuelButton.addListener(
@@ -160,17 +172,14 @@ class StationHubScreen(
                 }
             },
         )
-        root.add(buyFuelButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
-
-        // Shared feedback line for both refuel paths (UC18 AC#1/#4).
-        root.add(refuelFeedbackLabel).padBottom(SERVICE_GAP).row()
+        buttons.add(buyFuelButton)
 
         // Active EXIT SHIP action (UC19 AC#1): optionally leave the ship and walk the station interior
         // on foot. Purely additive — every menu above is unchanged and still reachable; this just opens
         // the walk-around view. The owner re-shows this hub untouched when the player re-boards (AC#7).
-        root.add(serviceButton("EXIT SHIP", onDisembark)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+        buttons.add(serviceButton("EXIT SHIP", onDisembark))
 
-        // The one active control: leave the station and return to flight.
+        // The one active control: leave the station and return to flight. Now a uniform grid cell.
         val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)
         undockButton.addListener(
             object : ClickListener() {
@@ -183,10 +192,57 @@ class StationHubScreen(
                 }
             },
         )
-        root.add(undockButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padTop(UNDOCK_GAP).row()
+        buttons.add(undockButton)
+
+        // Fuel readout (UC07) sits full-width ABOVE the grid; the refuel feedback line (UC18) sits
+        // full-width BELOW it. Both are status text, not buttons, so they stay out of the grid.
+        fuelLabel.setText(fuelStatus())
+        root.add(fuelLabel).padBottom(SERVICE_GAP).row()
+
+        layOutGrid(buttons)
+        root.add(grid).row()
+
+        // Shared feedback line for both refuel paths (UC18 AC#1/#4).
+        root.add(refuelFeedbackLabel).padBottom(SERVICE_GAP).row()
 
         stage.addActor(root)
     }
+
+    /**
+     * Arrange [buttons] into [grid], capped at [MenuGrid.DEFAULT_MAX_ROWS] rows and growing into extra
+     * columns (UC20). Fill is column-major, so only the last column may be short; short positions get
+     * an empty filler cell to keep the grid rectangular. Column width is fitted to the live viewport.
+     */
+    private fun layOutGrid(buttons: List<TextButton>) {
+        val itemCount = buttons.size
+        val columns = MenuGrid.columnCount(itemCount)
+        val rows = MenuGrid.rowCount(itemCount)
+        gridColumns = columns
+
+        grid.clearChildren()
+        val width = currentCellWidth()
+        for (r in 0 until rows) {
+            for (c in 0 until columns) {
+                val index = MenuGrid.indexAt(GridCell(r, c))
+                if (index < itemCount) {
+                    grid.add(buttons[index]).size(width, GRID_BTN_HEIGHT).pad(GRID_GAP)
+                } else {
+                    grid.add().size(width, GRID_BTN_HEIGHT).pad(GRID_GAP)
+                }
+            }
+            grid.row()
+        }
+    }
+
+    /** Column width fitted to the live viewport, clamped to [MIN_BTN_WIDTH]..[MAX_BTN_WIDTH]. */
+    private fun currentCellWidth(): Float =
+        MenuGrid.cellWidth(
+            stage.viewport.worldWidth - 2 * MARGIN,
+            gridColumns,
+            GRID_GAP,
+            MIN_BTN_WIDTH,
+            MAX_BTN_WIDTH,
+        )
 
     /** A labelled service button that fires [onTap] when clicked (UC09 hub services). */
     private fun serviceButton(
@@ -225,6 +281,13 @@ class StationHubScreen(
         height: Int,
     ) {
         stage.viewport.update(width, height, true)
+        // UC20 AC#5: re-fit each grid cell to the new viewport width so the menu never clips or
+        // overflows when the screen size / orientation changes.
+        val cellWidth = currentCellWidth()
+        for (cell in grid.cells) {
+            cell.width(cellWidth)
+        }
+        grid.invalidateHierarchy()
     }
 
     override fun hide() {
@@ -243,9 +306,14 @@ class StationHubScreen(
         const val MARGIN = 32f
         const val TITLE_GAP = 24f
         const val SERVICE_GAP = 12f
-        const val UNDOCK_GAP = 32f
-        const val UNDOCK_WIDTH = 220f
-        const val UNDOCK_HEIGHT = 64f
+
+        // UC20 grid cell metrics (rename of the old UNDOCK_* button sizing). Buttons are uniform
+        // GRID_BTN_HEIGHT tall; width is fitted live to the viewport, clamped to MIN..MAX; GRID_GAP
+        // pads every cell on all sides (and is the inter-/outer-column spacing used in cellWidth).
+        const val GRID_BTN_HEIGHT = 64f
+        const val MIN_BTN_WIDTH = 88f
+        const val MAX_BTN_WIDTH = 220f
+        const val GRID_GAP = 8f
         const val BG_R = 0.04f
         const val BG_G = 0.06f
         const val BG_B = 0.10f
