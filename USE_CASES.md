@@ -25,3 +25,12 @@ Statuses:
 | 13 | [use-cases/13-real-time-combat.md](use-cases/13-real-time-combat.md) | Real-time combat | done | 2026-06-08 |
 | 14 | [use-cases/14-factions-and-reputation.md](use-cases/14-factions-and-reputation.md) | Factions & reputation (post-MVP) | done | 2026-06-08 |
 | 15 | [use-cases/15-station-building.md](use-cases/15-station-building.md) | Station building (post-MVP stretch) | done | 2026-06-08 |
+| 16 | [use-cases/16-fuel-duration-tuning.md](use-cases/16-fuel-duration-tuning.md) | Fuel duration tuning (~30 min under propulsion) | pending | 2026-06-09 |
+| 17 | [use-cases/17-starting-cash-50k.md](use-cases/17-starting-cash-50k.md) | Starting cash set to 50k | pending | 2026-06-09 |
+| 18 | [use-cases/18-fix-station-refueling.md](use-cases/18-fix-station-refueling.md) | Fix broken station refuelling | pending | 2026-06-09 |
+| 19 | [use-cases/19-station-walkaround-prototype.md](use-cases/19-station-walkaround-prototype.md) | Station walk-around (on-foot prototype) | pending | 2026-06-09 |
+| 20 | [use-cases/20-station-menu-grid-layout.md](use-cases/20-station-menu-grid-layout.md) | Station menu grid layout (≤4 rows × N columns) | pending | 2026-06-09 |
+| 21 | [use-cases/21-main-menu-start-continue.md](use-cases/21-main-menu-start-continue.md) | Main menu with Start / Continue and overwrite warnings | pending | 2026-06-09 |
+| 22 | [use-cases/22-map-reposition-top-right.md](use-cases/22-map-reposition-top-right.md) | Reposition map to top-right | pending | 2026-06-09 |
+| 23 | [use-cases/23-map-click-to-zoom-overlay.md](use-cases/23-map-click-to-zoom-overlay.md) | Click map to open full-height zoomed overlay | pending | 2026-06-09 |
+| 24 | [use-cases/24-map-item-labels.md](use-cases/24-map-item-labels.md) | Show name labels for map items | pending | 2026-06-09 |
