@@ -34,6 +34,9 @@ import com.orbitalfrontier.economy.MiningParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationRefuel
+import com.orbitalfrontier.economy.StationRefuelAction
+import com.orbitalfrontier.economy.StationRefuelStatus
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.faction.Reputation
@@ -1125,15 +1128,18 @@ class PlayScreen(
 
     /**
      * Convert hydrogen cargo into fuel via the pure [Refueling.resolve] (UC07 AC#5) — the station hub's
-     * REFUEL button routes here (mirroring [undock]). On a successful transfer it folds the new fuel +
-     * cargo back in, logs one INFO line, and autosaves the event so the refuel is durable; a no-op tap
-     * (no hydrogen / full tank) changes nothing and is not persisted.
+     * "Refuel (H₂)" button routes here (mirroring [undock]). On a successful transfer it folds the new
+     * fuel + cargo back in, logs one INFO line, and autosaves the event so the refuel is durable; a
+     * no-op tap (no hydrogen / full tank) changes nothing and is not persisted.
+     *
+     * Returns a short feedback line for the hub to display (UC18 AC#1/#4: the conversion path no longer
+     * fails silently). The returned text is informational only — state changes happen here.
      */
-    fun refuel() {
+    fun refuel(): String {
         val result = Refueling.resolve(fuel, cargo, RefuelAction.REFUEL, fuelParams)
         if (result.transferredUnits <= 0) {
             logger.info(ECONOMY_TAG, "Refuel requested but nothing transferred (no hydrogen, or tank full)")
-            return
+            return if (fuel.remainingCapacity < 1f) "Tank full" else "No hydrogen to convert"
         }
         fuel = result.fuel
         cargo = result.cargo
@@ -1143,6 +1149,46 @@ class PlayScreen(
         )
         // Refuelling is a key world event (mirrors mining/dock) — persist it now.
         autosave.onEvent("refuel")
+        return "Converted ${result.transferredUnits} H₂ to fuel"
+    }
+
+    /**
+     * Buy fuel for credits at the **docked** station via the pure [StationRefuel.resolve] (UC18) — the
+     * additive sibling of the hydrogen-conversion [refuel]. The station hub's "Buy Fuel (credits)"
+     * button routes here. The fuel price is the docked station's authored HYDROGEN buy price (credits
+     * per fuel unit, reconstructed from the world map per ADR 0007); when not docked, the station is
+     * unresolvable, or it sells no hydrogen, the price is null and the resolver reports
+     * [StationRefuelStatus.UNAVAILABLE].
+     *
+     * On a successful purchase ([StationRefuelStatus.REFUELED]) it folds the new credits + fuel back in,
+     * logs one INFO line, and autosaves the event so the purchase is durable. Every other status
+     * (FULL / BROKE / UNAVAILABLE / NONE) is a deterministic no-op that changes nothing and is not
+     * persisted (UC18 AC#1/#3/#4). Returns a short feedback line for the hub to display.
+     */
+    fun buyFuel(): String {
+        val price =
+            dockedStation?.let {
+                sectorWorld.sector(currentSector).station(it)?.market?.offerFor(ResourceType.HYDROGEN)?.buyPrice
+            }
+        val result = StationRefuel.resolve(credits, fuel, price, StationRefuelAction.BUY)
+        return when (result.status) {
+            StationRefuelStatus.REFUELED -> {
+                credits = result.credits
+                fuel = result.fuel
+                logger.info(
+                    ECONOMY_TAG,
+                    "Bought ${result.unitsBought} fuel for ${result.unitsBought * (price ?: 0L)} credits; " +
+                        "tank ${fuel.level}/${fuel.capacity}, credits=$credits",
+                )
+                // Buying fuel is a key world event (mirrors trade/refuel) — persist it now.
+                autosave.onEvent("buyFuel")
+                "Refueled ${result.unitsBought} units"
+            }
+            StationRefuelStatus.FULL -> "Tank full"
+            StationRefuelStatus.BROKE -> "Insufficient credits"
+            StationRefuelStatus.UNAVAILABLE -> "No fuel sold here"
+            StationRefuelStatus.NONE -> ""
+        }
     }
 
     /**

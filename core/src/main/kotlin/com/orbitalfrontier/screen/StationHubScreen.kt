@@ -41,7 +41,11 @@ class StationHubScreen(
     private val onShipyard: () -> Unit,
     private val onCrew: () -> Unit,
     private val onMissions: () -> Unit,
-    private val onRefuel: () -> Unit,
+    // UC07 hydrogen-conversion refuel; UC18 adds a credits-based fuel purchase. Each returns a short
+    // feedback line the hub shows so neither refuel path fails silently (UC18 AC#1/#4). [onBuyFuel]
+    // defaults to an empty no-op so existing call sites / tests need not supply it.
+    private val onRefuel: () -> String,
+    private val onBuyFuel: () -> String = { "" },
     private val fuelStatus: () -> String,
     // UC14: optional owning-faction display name; null for an unaligned station. Purely cosmetic and
     // defaulted so existing call sites / tests need not supply it (must not crash when absent).
@@ -56,8 +60,13 @@ class StationHubScreen(
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
-    // Fuel readout (UC07): seeded from the current tank and refreshed in place after each REFUEL tap.
+    // Fuel readout (UC07): seeded from the current tank and refreshed in place after each refuel tap.
     private val fuelLabel = Label("", skin.labelStyle)
+
+    // Refuel feedback line (UC18 AC#1/#4): shows the outcome of the last refuel/buy-fuel tap (e.g.
+    // "Refueled N units", "Tank full", "Insufficient credits", "No fuel sold here") so neither refuel
+    // path is a silent no-op. Empty until the first tap.
+    private val refuelFeedbackLabel = Label("", skin.labelStyle)
 
     init {
         val root = Table()
@@ -111,11 +120,15 @@ class StationHubScreen(
             root.add(serviceButton("BUILD", onBuild)).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
         }
 
-        // Active REFUEL service (UC07 AC#5): the play screen owns the pure Refueling.resolve; this row
-        // shows the current tank and a button that fires the intent, then re-reads the readout.
+        // Active refuel services. The play screen owns both pure resolvers; these rows show the current
+        // tank and two DISTINCTLY-LABELLED buttons (UC18 has two refuel concepts, so the UI must not
+        // conflate them): "Refuel (H₂)" converts hydrogen cargo into fuel (UC07 AC#5, Refueling.resolve)
+        // and "Buy Fuel (credits)" pays the docked station for fuel (UC18, StationRefuel.resolve). Each
+        // fires its intent, shows the returned feedback line, then re-reads the tank readout.
         fuelLabel.setText(fuelStatus())
         root.add(fuelLabel).padBottom(SERVICE_GAP).row()
-        val refuelButton = TextButton("REFUEL", skin.settingsButtonStyle)
+
+        val refuelButton = TextButton("Refuel (H₂)", skin.settingsButtonStyle)
         refuelButton.addListener(
             object : ClickListener() {
                 override fun clicked(
@@ -123,12 +136,30 @@ class StationHubScreen(
                     x: Float,
                     y: Float,
                 ) {
-                    onRefuel()
+                    refuelFeedbackLabel.setText(onRefuel())
                     fuelLabel.setText(fuelStatus())
                 }
             },
         )
         root.add(refuelButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        val buyFuelButton = TextButton("Buy Fuel (credits)", skin.settingsButtonStyle)
+        buyFuelButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    refuelFeedbackLabel.setText(onBuyFuel())
+                    fuelLabel.setText(fuelStatus())
+                }
+            },
+        )
+        root.add(buyFuelButton).size(UNDOCK_WIDTH, UNDOCK_HEIGHT).padBottom(SERVICE_GAP).row()
+
+        // Shared feedback line for both refuel paths (UC18 AC#1/#4).
+        root.add(refuelFeedbackLabel).padBottom(SERVICE_GAP).row()
 
         // The one active control: leave the station and return to flight.
         val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)

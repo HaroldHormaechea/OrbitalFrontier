@@ -170,9 +170,12 @@ class OrbitalFrontierGame(
                 // MISSIONS opens the station mission board for this station (UC12); ACCEPT / TURN IN taps
                 // route back to the play screen's pure Missions.resolve.
                 onMissions = { openMissionBoard(station) },
-                // REFUEL routes to the play screen's pure Refueling.resolve (UC07 AC#5); the hub re-reads
-                // the readout after the tap. Both default to a no-op/empty if the play screen is gone.
-                onRefuel = { playScreen?.refuel() },
+                // "Refuel (H₂)" routes to the play screen's pure Refueling.resolve (UC07 AC#5) and
+                // "Buy Fuel (credits)" to the pure StationRefuel.resolve (UC18); each returns a feedback
+                // line the hub shows, and the hub re-reads the readout after the tap. All default to an
+                // empty no-op if the play screen is gone.
+                onRefuel = { playScreen?.refuel() ?: "" },
+                onBuyFuel = { playScreen?.buyFuel() ?: "" },
                 fuelStatus = { playScreen?.fuelStatusLine() ?: "" },
                 // UC14: the station's owning faction (cosmetic), resolved from the authored catalog.
                 factionName = station.factionId?.let { Factions.byId(it)?.displayName },
