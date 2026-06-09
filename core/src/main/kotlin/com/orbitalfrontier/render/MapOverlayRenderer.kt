@@ -3,12 +3,16 @@ package com.orbitalfrontier.render
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
+import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.g2d.GlyphLayout
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.world.Contact
 import com.orbitalfrontier.world.ContactKind
+import com.orbitalfrontier.world.Named
 import com.orbitalfrontier.world.Poi
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.Transponder
@@ -34,6 +38,14 @@ class MapOverlayRenderer(
 ) : Disposable {
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
+
+    // UC24 name labels: a screen-space text pass over the markers. The built-in BitmapFont is scaled by
+    // uiScale (like HudRenderer) at a slightly larger base than the minimap's labels — the roomy zoomed
+    // panel can afford bigger, more legible names (AC#4). GlyphLayout measures each name once per draw to
+    // centre the label over its marker; the name is read straight off the POI (no per-frame allocation).
+    private val batch = SpriteBatch()
+    private val labelFont = BitmapFont().apply { data.setScale(uiScale * LABEL_FONT_SCALE) }
+    private val glyphLayout = GlyphLayout()
 
     fun render(
         pois: List<Poi>,
@@ -106,9 +118,23 @@ class MapOverlayRenderer(
         shapeRenderer.circle(sp.x * uiScale, sp.y * uiScale, SHIP_MARKER_RADIUS * uiScale)
         shapeRenderer.end()
 
-        // === UC24 SEAM ===
-        // Marker labels (text) belong here, after the marker loop and before the border: UC24 will draw
-        // each contact's name beside its marker. Intentionally left empty for UC23 — no text in this UC.
+        // Name labels (UC24): re-walk the same markers and draw each labelled POI's name centred just
+        // above its projected marker, so the label tracks the marker. The overlay is roomy, so
+        // MapLabels.shouldLabel labels every visible named contact here (not just stations); the marker
+        // draw above is untouched.
+        batch.projectionMatrix = projection
+        labelFont.color = LABEL_COLOR
+        batch.begin()
+        for (poi in pois) {
+            if (!MapLabels.shouldLabel(poi, revealedContacts, MapLabels.Surface.OVERLAY)) continue
+            val lp = MapOverlayLayout.project(rect, contentExtent, poi.position)
+            val lx = lp.x * uiScale
+            val ly = lp.y * uiScale
+            glyphLayout.setText(labelFont, (poi as Named).displayName)
+            val labelY = ly + STATION_MARKER_RADIUS * uiScale + LABEL_GAP * uiScale + glyphLayout.height
+            labelFont.draw(batch, glyphLayout, lx - glyphLayout.width / 2f, labelY)
+        }
+        batch.end()
 
         // Panel border.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
@@ -121,6 +147,8 @@ class MapOverlayRenderer(
 
     override fun dispose() {
         shapeRenderer.dispose()
+        batch.dispose()
+        labelFont.dispose()
     }
 
     private companion object {
@@ -129,6 +157,11 @@ class MapOverlayRenderer(
         const val STATION_MARKER_RADIUS = 6f
         const val CONTACT_MARKER_RADIUS = 6f
         const val SHIP_MARKER_RADIUS = 5f
+
+        // UC24 labels: a smaller base than the HUD font (×uiScale) but larger than the minimap's labels —
+        // the roomy zoomed panel affords bigger names. LABEL_GAP is the world-unit marker→baseline gap.
+        const val LABEL_FONT_SCALE = 0.8f
+        const val LABEL_GAP = 4f
 
         // Dim full-screen backdrop at the AC#3 opacity, so the gameplay behind stays faintly visible.
         val BACKDROP_COLOR = Color(0.02f, 0.03f, 0.06f, MapOverlayLayout.BACKDROP_ALPHA)
@@ -143,5 +176,8 @@ class MapOverlayRenderer(
         val STATION_COLOR = Color(0.5f, 1f, 0.6f, 1f)
         val CONTACT_COLOR = Color(1f, 0.4f, 0.4f, 1f)
         val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
+
+        // Label text: a soft near-white, legible at full alpha over the opaque overlay panel (AC#4).
+        val LABEL_COLOR = Color(0.9f, 0.95f, 1f, 1f)
     }
 }

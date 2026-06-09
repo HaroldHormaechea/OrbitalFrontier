@@ -3,12 +3,16 @@ package com.orbitalfrontier.render
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
+import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.g2d.GlyphLayout
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.world.Contact
 import com.orbitalfrontier.world.ContactKind
+import com.orbitalfrontier.world.Named
 import com.orbitalfrontier.world.Poi
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.Transponder
@@ -40,6 +44,15 @@ class MinimapRenderer(
 ) : Disposable {
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
+
+    // UC24 name labels: a screen-space text pass over the markers. The built-in BitmapFont is scaled by
+    // uiScale (like HudRenderer) but at a smaller base — labels should read as secondary annotations on
+    // the small HUD minimap, not compete with the HUD readouts. GlyphLayout measures each name once per
+    // draw so the label can be centred over its marker; no per-frame String/StringBuilder is allocated
+    // (the name is read straight off the POI), protecting the 60 FPS budget (AC#4, AC perf).
+    private val batch = SpriteBatch()
+    private val labelFont = BitmapFont().apply { data.setScale(uiScale * LABEL_FONT_SCALE) }
+    private val glyphLayout = GlyphLayout()
 
     /**
      * The minimap panel rectangle in **world units** for the given world-unit viewport and reserved
@@ -138,6 +151,21 @@ class MinimapRenderer(
         shapeRenderer.circle(sx, sy, SHIP_MARKER_RADIUS * uiScale)
         shapeRenderer.end()
 
+        // Name labels (UC24): re-walk the same markers and draw each labelled POI's name centred just
+        // above its marker, so the label tracks the (clamped) marker position. MapLabels.shouldLabel
+        // gates this to stations on the cluttered minimap; the marker draw above is untouched.
+        batch.projectionMatrix = projection
+        labelFont.color = LABEL_COLOR
+        batch.begin()
+        for (poi in pois) {
+            if (!MapLabels.shouldLabel(poi, revealedContacts, MapLabels.Surface.MINIMAP)) continue
+            val (lx, ly) = clampToPanel(centerX, centerY, half, poi.position, scale)
+            glyphLayout.setText(labelFont, (poi as Named).displayName)
+            val labelY = ly + STATION_MARKER_RADIUS * uiScale + LABEL_GAP * uiScale + glyphLayout.height
+            labelFont.draw(batch, glyphLayout, lx - glyphLayout.width / 2f, labelY)
+        }
+        batch.end()
+
         // Panel border.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
         shapeRenderer.color = BORDER_COLOR
@@ -162,6 +190,8 @@ class MinimapRenderer(
 
     override fun dispose() {
         shapeRenderer.dispose()
+        batch.dispose()
+        labelFont.dispose()
     }
 
     private companion object {
@@ -179,6 +209,11 @@ class MinimapRenderer(
         const val STATION_MARKER_RADIUS = 4f
         const val CONTACT_MARKER_RADIUS = 4f
         const val SHIP_MARKER_RADIUS = 3f
+
+        // UC24 labels: a smaller base than the HUD font (which is ×uiScale) so minimap names read as
+        // secondary annotations; LABEL_GAP is the world-unit clearance between marker and label baseline.
+        const val LABEL_FONT_SCALE = 0.6f
+        const val LABEL_GAP = 3f
         val PANEL_COLOR = Color(0.05f, 0.07f, 0.12f, 0.55f)
         val BORDER_COLOR = Color(0.4f, 0.5f, 0.65f, 0.9f)
         val GATE_COLOR = Color(0.4f, 0.85f, 1f, 1f)
@@ -187,5 +222,8 @@ class MinimapRenderer(
         // Revealed hidden contacts (UC10): a hostile-leaning red, distinct from gates/stations/ship.
         val CONTACT_COLOR = Color(1f, 0.4f, 0.4f, 1f)
         val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
+
+        // Label text: a soft near-white, legible over the translucent panel without glaring (AC#4).
+        val LABEL_COLOR = Color(0.9f, 0.95f, 1f, 1f)
     }
 }
