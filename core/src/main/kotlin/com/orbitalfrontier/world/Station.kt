@@ -28,7 +28,7 @@ import com.orbitalfrontier.ship.Shipyard
 data class Station(
     override val id: PoiId,
     override val position: Vec2,
-    val displayName: String,
+    override val displayName: String,
     /** Radius (world-units) of the circle around [position] within which the ship can dock. */
     val dockingRadius: Float = DEFAULT_DOCKING_RADIUS,
     /** This station's fixed buy/sell prices (UC08); [StationMarket.EMPTY] when it has no trade desk. */
@@ -74,7 +74,7 @@ data class Station(
      * [StationKind] (ADR 0014). [com.orbitalfrontier.station.StationBuilder] gates a build on this flag.
      */
     val buildsStations: Boolean = false,
-) : Poi, Transponder {
+) : Poi, Transponder, Named {
     override val contactKind: ContactKind get() = ContactKind.STATION
 
     init {
