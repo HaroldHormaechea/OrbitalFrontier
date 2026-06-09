@@ -321,6 +321,32 @@ class SqlDelightGameStateRepository(
         }
     }
 
+    override fun clearSave() {
+        try {
+            // Every durable game-state table is cleared in ONE transaction so a wipe is atomic — a
+            // failure rolls back all of it, leaving the last good save intact (mirrors saveGameState's
+            // all-or-nothing guarantee, UC04 AC#3). `meta` (save-format version) and `settings`
+            // (handedness) are deliberately NOT touched: the wipe resets progress only (UC21).
+            queries.transaction {
+                queries.deleteGameState()
+                queries.deleteAllShips()
+                queries.deleteAllShipUpgrades()
+                queries.deleteAllCargo()
+                queries.deleteAllShipSectionDamage()
+                queries.deleteAllFieldDeposits()
+                queries.deleteAllRevealedContacts()
+                queries.deleteAllMissions()
+                queries.deleteAllReputation()
+                queries.deleteAllOwnedStations()
+                queries.deleteAllStationModules()
+            }
+            logger.info(TAG, "Cleared save (settings + meta kept)")
+        } catch (e: Exception) {
+            // Graceful degradation: keep whatever was there, log, do not crash the app.
+            logger.error(TAG, "Failed to clear save; last good save kept", e)
+        }
+    }
+
     /**
      * Group every ship's persisted section-damage rows by ship id (UC13): section name -> current HP. An
      * unknown section name (enum changed) is skipped with a WARN — the rest of the ship's damage still

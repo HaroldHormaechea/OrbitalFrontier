@@ -31,4 +31,14 @@ interface GameStateRepository {
 
     /** Whether a save exists (Continue is available). Never throws; an error degrades to `false`. */
     fun hasSave(): Boolean
+
+    /**
+     * Wipe the single-slot save (UC21): remove all durable game-state rows — the save header, the whole
+     * fleet, and every per-ship / world / mission / reputation / station table — while keeping `settings`
+     * (handedness) and `meta` (the save-format version) intact, so Start can begin a fresh game over an
+     * existing save without re-running migrations or resetting control preferences. Idempotent: a no-op
+     * on an already-empty DB, and a full wipe on a usable OR corrupt save. Like [saveGameState] it runs
+     * in one transaction and is corruption-safe — a failure is logged and **never thrown**.
+     */
+    fun clearSave()
 }

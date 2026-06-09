@@ -125,5 +125,9 @@ class AutosaveControllerTest {
         }
 
         override fun hasSave(): Boolean = saved.isNotEmpty()
+
+        override fun clearSave() {
+            saved.clear()
+        }
     }
 }
