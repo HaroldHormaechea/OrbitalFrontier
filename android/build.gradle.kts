@@ -84,6 +84,13 @@ android {
 
     // .so files are unpacked here by copyAndroidNatives (kept under build/, not committed).
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/jniLibs"))
+
+    // UC27: the libGDX game assets (the design-system art atlas + page PNG) live in the repo-root
+    // ./assets/ folder — the conventional libGDX asset root, shared with future desktop/iOS backends —
+    // which is NOT one of AGP's default asset source dirs. Register it so orbital.atlas / orbital.png are
+    // packaged into the APK and Gdx.files.internal("orbital.atlas") resolves on device (AC#1). The
+    // androidResources.noCompress list above already keeps .atlas/.png uncompressed.
+    sourceSets["main"].assets.srcDir(rootProject.file("assets"))
 }
 
 // Extract each natives-<abi> jar's .so files into build/generated/jniLibs/<abi>/ so AGP packages
