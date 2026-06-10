@@ -10,9 +10,8 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
-import com.badlogic.gdx.scenes.scene2d.ui.Table
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.combat.Combat
@@ -77,8 +76,6 @@ import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
-import com.orbitalfrontier.screen.controls.PointAndGoPanelPlacement
-import com.orbitalfrontier.screen.controls.UiRect
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
@@ -284,39 +281,22 @@ class PlayScreen(
     private val settingsOverlay: SettingsOverlay
     private val inputMultiplexer = InputMultiplexer(stage)
 
-    // Context dock control (UC05): an "IN RANGE: <name>" prompt above a DOCK button, shown only while
-    // a station is dockable. A one-shot [dockRequested] flag set by the button's tap is consumed on
-    // the next frame, so the dock commits inside the deterministic per-frame flow (after the step).
-    private val dockPrompt = Label("", skin.labelStyle)
-    private val dockButton = TextButton("DOCK", skin.settingsButtonStyle)
-    private val dockPanel = Table()
+    // UC26: every player action now lives on the bottom-corner action arc ([actionCluster]) instead of in
+    // standalone context panels. The contextual actions still latch the same one-shot intents the panels
+    // did, set by the arc button's tap callback (wired in [init]) and consumed inside the deterministic
+    // per-frame flow (after the step) so the game-state effect is byte-identical (UC26 AC#8):
+    //  - DOCK (UC05): edge-triggered — [dockRequested] commits the dock on the next render.
+    //  - MINE (UC06): a *held* action — the render loop reads [ActionCluster.isMinePressed] each frame.
+    //  - SCAN (UC10): edge-triggered — [scanRequested] reveals contacts on the next render.
+    //  - RADIO accept (UC12): edge-triggered — [radioAcceptRequested] accepts the in-range offer.
     private var dockRequested = false
-
-    // Context mine control (UC06): a "MINE: <units>/<capacity>" prompt above a MINE button, shown only
-    // while an asteroid field is in range. Unlike docking (an edge-triggered tap), mining is a *held*
-    // action — each frame the field is in range and the button is pressed, one [Mining.resolve] tick
-    // runs. We therefore read [mineButton]'s pressed state per frame rather than latching a one-shot.
-    private val minePrompt = Label("", skin.labelStyle)
-    private val mineButton = TextButton("MINE", skin.settingsButtonStyle)
-    private val minePanel = Table()
-
-    // Scan control (UC10): unlike dock/mine (proximity-gated context buttons), an active scan is a
-    // player ability available anytime in flight, so the SCAN button is persistent (not range-gated).
-    // A one-shot [scanRequested] flag set by the tap is consumed on the next frame, so the reveal
-    // commits inside the deterministic per-frame flow (after the step), mirroring the DOCK button.
-    private val scanButton = TextButton("SCAN", skin.settingsButtonStyle)
-    private val scanPanel = Table()
     private var scanRequested = false
-
-    // Radio context control (UC12): a "RADIO: <offer>" prompt above an ACCEPT button, shown only while
-    // an un-taken ship-radio mission broadcast is in range (range-based, mirroring the dock/mine context
-    // panels). Like DOCK, ACCEPT is edge-triggered: the tap sets a one-shot flag consumed on the next
-    // frame, so the accept commits inside the deterministic per-frame flow. The offer accepted is the
-    // first surfaced this frame (the panel only shows when one is available).
-    private val radioPrompt = Label("", skin.labelStyle)
-    private val radioButton = TextButton("ACCEPT", skin.settingsButtonStyle)
-    private val radioPanel = Table()
     private var radioAcceptRequested = false
+
+    // UC26 context readout: the decision-relevant info the retired DOCK/MINE/RADIO panels showed (station
+    // name, cargo fill, mission reward) relocated to a single status line near the arc, rebuilt each frame
+    // from the same availability the arc buttons are gated on, so nothing essential is lost (UC26 risk).
+    private val contextReadout = Label("", skin.labelStyle)
 
     // UC23 map-overlay tap targets — invisible Scene2D actors (they draw nothing; the overlay visuals
     // are drawn by [mapOverlay] after stage.draw()). [minimapTapTarget] sits exactly on the drawn
@@ -328,13 +308,12 @@ class PlayScreen(
     private val minimapTapTarget = Actor()
     private val mapDismissActor = Actor()
 
-    // UC25 debug point-and-go (debug builds only). The arm button + panel and the world-tap processor
-    // are constructed in [init] ONLY when [debug] is true, so a release build never builds any of it
-    // and tap handling stays byte-for-byte unchanged. [pointAndGoState] is the pure arm/disarm gate
-    // (defaults OFF so normal taps are never hijacked); [pendingTeleport] is a one-shot world point set
-    // by an armed tap and consumed at the top of the next [render] (last-wins), mirroring [dockRequested].
-    private val pointAndGoPanel: Table? = if (debug) Table() else null
-    private val pointAndGoButton: TextButton? = if (debug) TextButton(POINT_AND_GO_OFF_TEXT, skin.settingsButtonStyle) else null
+    // UC25 debug point-and-go (debug builds only). UC26 moved its arm toggle onto the action arc (a
+    // debug-only arc button), but the world-tap processor is still constructed in [init] ONLY when
+    // [debug] is true, so a release build never builds any of it and tap handling stays byte-for-byte
+    // unchanged. [pointAndGoState] is the pure arm/disarm gate (defaults OFF so normal taps are never
+    // hijacked); [pendingTeleport] is a one-shot world point set by an armed tap and consumed at the top
+    // of the next [render] (last-wins), mirroring [dockRequested].
     private var pointAndGoState = PointAndGoState()
     private var pendingTeleport: Vec2? = null
 
@@ -352,67 +331,18 @@ class PlayScreen(
                 layoutControls()
             }
 
-        dockButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    // Edge-triggered intent; the dock commits on the next frame's render (post-step).
-                    dockRequested = true
-                }
-            },
-        )
-        dockPanel.add(dockPrompt).padBottom(DOCK_PROMPT_GAP).row()
-        dockPanel.add(dockButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
-        dockPanel.pack()
-        // Hidden until a station is in range; an invisible Scene2D actor receives no touches, so it
-        // cannot be tapped (and does not affect flight controls) while undocked and out of range.
-        dockPanel.isVisible = false
-
-        // Mine panel mirrors the dock panel. No ClickListener: mining is held, so the render loop reads
-        // mineButton.isPressed each frame rather than reacting to a discrete tap.
-        minePanel.add(minePrompt).padBottom(DOCK_PROMPT_GAP).row()
-        minePanel.add(mineButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
-        minePanel.pack()
-        minePanel.isVisible = false
-
-        // Scan button (UC10): edge-triggered like DOCK (the reveal commits on the next frame), but
-        // persistent — an active scan is not proximity-gated, so the panel stays visible in flight.
-        scanButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    // Edge-triggered intent; the scan commits on the next frame's render (post-step).
-                    scanRequested = true
-                }
-            },
-        )
-        scanPanel.add(scanButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
-        scanPanel.pack()
-
-        // Radio panel mirrors the dock panel (UC12): a prompt above an edge-triggered ACCEPT button,
-        // shown only while a radio mission offer is in range. Hidden (and so untouchable) otherwise.
-        radioButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    // Edge-triggered intent; the accept commits on the next frame's render (post-step).
-                    radioAcceptRequested = true
-                }
-            },
-        )
-        radioPanel.add(radioPrompt).padBottom(DOCK_PROMPT_GAP).row()
-        radioPanel.add(radioButton).size(DOCK_WIDTH, DOCK_HEIGHT).row()
-        radioPanel.pack()
-        radioPanel.isVisible = false
+        // UC26: wire the arc's edge-triggered taps to the same one-shot intents the retired context
+        // panels set. Each callback runs on the UI thread between frames (like the old ClickListeners);
+        // the flag is consumed inside the deterministic per-frame flow, so the game-state effect is
+        // byte-identical (UC26 AC#8). MINE/FIRE are held and read directly each frame (no callback).
+        actionCluster.onDock = { dockRequested = true }
+        actionCluster.onScan = { scanRequested = true }
+        actionCluster.onAcceptRadio = { radioAcceptRequested = true }
+        // SCAN is persistent in flight (not proximity-gated, UC10); the render loop keeps it available.
+        actionCluster.setActionAvailable(ActionCluster.Action.SCAN, true)
+        // The context readout is decorative — hidden until an action surfaces info, never hittable.
+        contextReadout.touchable = Touchable.disabled
+        contextReadout.isVisible = false
 
         // UC23: tap the minimap to open the zoomed overlay. While the overlay is open the full-screen
         // dismiss actor sits on top and intercepts taps, so this listener only ever runs closed -> open.
@@ -442,39 +372,26 @@ class PlayScreen(
             },
         )
 
-        actionCluster.actor.pack()
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
+        stage.addActor(contextReadout)
         stage.addActor(settingsOverlay.actor)
-        stage.addActor(dockPanel)
-        stage.addActor(minePanel)
-        stage.addActor(scanPanel)
-        stage.addActor(radioPanel)
         // UC23: the minimap tap target, then the full-screen dismiss actor LAST so it has the top z-order
         // and catches taps over everything (including the minimap) while the overlay is open.
         stage.addActor(minimapTapTarget)
         stage.addActor(mapDismissActor)
 
-        // UC25: wire the debug-only point-and-go aid. Everything here is gated on [debug], so a release
-        // build constructs none of it and its tap handling / controls are byte-for-byte unchanged.
+        // UC25/UC26: wire the debug-only point-and-go aid. Everything here is gated on [debug], so a
+        // release build constructs none of it. UC26 moved its arm toggle onto the action arc; the
+        // world-tap processor below is byte-for-byte unchanged.
         if (debug) {
-            val panel = pointAndGoPanel!!
-            val button = pointAndGoButton!!
-            button.addListener(
-                object : ClickListener() {
-                    override fun clicked(
-                        event: InputEvent?,
-                        x: Float,
-                        y: Float,
-                    ) {
-                        pointAndGoState = pointAndGoState.toggled()
-                        button.setText(if (pointAndGoState.armed) POINT_AND_GO_ON_TEXT else POINT_AND_GO_OFF_TEXT)
-                    }
-                },
-            )
-            panel.add(button).size(DOCK_WIDTH, DOCK_HEIGHT).row()
-            panel.pack()
-            stage.addActor(panel)
+            // The point-and-go arc button (debug only): tapping it toggles the arm state and reflects it
+            // on the button label, exactly as the old standalone toggle did.
+            actionCluster.setActionAvailable(ActionCluster.Action.POINT_AND_GO, true)
+            actionCluster.onPointAndGoToggle = {
+                pointAndGoState = pointAndGoState.toggled()
+                actionCluster.setPointAndGoArmed(pointAndGoState.armed)
+            }
 
             // Appended AFTER the stage (never setProcessors) so flight controls keep first crack at every
             // touch; this processor only claims a touch while armed. touchDown returns false unless armed
@@ -590,7 +507,7 @@ class PlayScreen(
         // screen is active the ship is always undocked (a dock hands off to the hub), so a successful
         // resolve yields the station id and we switch screens.
         val available = Docking.availableStation(sectorWorld, currentSector, ship.position)
-        updateDockPanel(available)
+        actionCluster.setActionAvailable(ActionCluster.Action.DOCK, available != null)
         if (dockRequested) {
             dockRequested = false
             if (available != null) {
@@ -610,8 +527,8 @@ class PlayScreen(
         // never automatic). No per-frame logging — only the discrete cargo-full / field-depleted
         // transitions trigger an event autosave (which logs once), protecting the 60 FPS budget.
         val field = Mining.availableField(sectorWorld, currentSector, ship.position)
-        updateMinePanel(field)
-        if (field != null && mineButton.isPressed) {
+        actionCluster.setActionAvailable(ActionCluster.Action.MINE, field != null)
+        if (field != null && actionCluster.isMinePressed()) {
             val wasFull = cargo.isFull
             val result =
                 Mining.resolve(
@@ -679,7 +596,12 @@ class PlayScreen(
             } else {
                 emptyList()
             }
-        updateRadioPanel(radioOffers.firstOrNull())
+        val radioOffer = radioOffers.firstOrNull()
+        actionCluster.setActionAvailable(ActionCluster.Action.RADIO, radioOffer != null)
+        // UC26: refresh the arc layout for this frame's available set, then the relocated status readout.
+        // Both are cheap, dirty-gated no-ops when nothing changed (60 FPS budget).
+        actionCluster.relayout()
+        updateContextReadout(available, field, radioOffer)
         if (radioAcceptRequested) {
             radioAcceptRequested = false
             val offer = radioOffers.firstOrNull()
@@ -787,23 +709,17 @@ class PlayScreen(
         // (an invisible actor receives no touch; the full-screen dismiss actor on top catches taps). Only
         // the controls hide — the simulation keeps running (the overlay is LIVE).
         settingsOverlay.actor.isVisible = !combat.active && !mapOpen
+        // UC26: the whole action arc (FIRE + every contextual button) and the context readout hide with
+        // the rest of the controls only while the map overlay is open — NOT during combat, so FIRE stays
+        // visible and enabled throughout an encounter (UC26 AC#3/#6). The arc's own per-action availability
+        // (set above) governs which contextual buttons show when the overlay is closed.
         if (mapOpen) {
             joystick.actor.isVisible = false
             actionCluster.actor.isVisible = false
-            dockPanel.isVisible = false
-            minePanel.isVisible = false
-            scanPanel.isVisible = false
-            radioPanel.isVisible = false
-            // UC25: hide the debug arm panel with the rest of the controls while the map overlay is open
-            // (no-op on release — the panel is null). Restored in the else branch when the overlay closes.
-            pointAndGoPanel?.isVisible = false
+            contextReadout.isVisible = false
         } else {
             joystick.actor.isVisible = true
             actionCluster.actor.isVisible = true
-            // The persistent SCAN panel re-shows when the overlay closes; the range-gated dock/mine/radio
-            // context panels restore themselves via their per-frame updaters above.
-            scanPanel.isVisible = true
-            pointAndGoPanel?.isVisible = true
         }
         mapDismissActor.isVisible = mapOpen
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
@@ -857,9 +773,13 @@ class PlayScreen(
         joystick.actor.setSize(JOYSTICK_SIZE, JOYSTICK_SIZE)
         joystick.actor.setPosition(sideX(layout.movementStickSide, screenWidth, JOYSTICK_SIZE), MARGIN)
 
-        val clusterWidth = actionCluster.actor.prefWidth
-        actionCluster.actor.setSize(clusterWidth, actionCluster.actor.prefHeight)
-        actionCluster.actor.setPosition(sideX(layout.actionClusterSide, screenWidth, clusterWidth), MARGIN)
+        // UC26: anchor the fixed-footprint action arc in its corner and pivot it on that corner. The
+        // footprint is constant (independent of the visible button count), so this position and the
+        // minimap reservation never drift as contextual buttons appear/disappear.
+        actionCluster.actor.setSize(actionCluster.prefWidth, actionCluster.prefHeight)
+        actionCluster.actor.setPosition(sideX(layout.actionClusterSide, screenWidth, actionCluster.prefWidth), MARGIN)
+        actionCluster.setSide(layout.actionClusterSide)
+        actionCluster.relayout()
 
         // UC22: the minimap now owns the top-right corner, so the settings/handedness button moves to
         // the top-LEFT band — the clear vertical gap between the HUD readout block at the top
@@ -875,11 +795,7 @@ class PlayScreen(
             (leftBandBottom + leftBandTop) / 2f - SETTINGS_HEIGHT / 2f,
         )
 
-        positionDockPanel()
-        positionMinePanel()
-        positionScanPanel()
-        positionRadioPanel()
-        positionPointAndGoPanel()
+        positionContextReadout()
 
         // UC23: place the invisible minimap tap target exactly on the drawn minimap panel — same
         // geometry source (MinimapRenderer.panelRect) called with the SAME world-unit args the per-frame
@@ -896,140 +812,45 @@ class PlayScreen(
     }
 
     /**
-     * Place the debug point-and-go arm panel on the bottom floor (at [MARGIN], like the joystick and
-     * action cluster), horizontally centred in the inner gap between them so it never overlaps a flight
-     * control on either handedness (UC25). The earlier code anchored the Y from `bottomControlBand()` —
-     * the *top* of the bottom band — which pushed the toggle's hit-rect above the usable world area, so
-     * it drew clipped at the top-centre but was never hittable; [PointAndGoPanelPlacement] floors it
-     * instead. Feeds the controls' live positions with their canonical sizes ([JOYSTICK_SIZE],
-     * [ActionCluster.LAYOUT_WIDTH]) so the placement is handedness-agnostic. No-op on release (null).
+     * Centre the relocated context readout (UC26) horizontally in the clear bottom band between the two
+     * corner controls, floored at [MARGIN]. Re-run on layout changes and after a text change so it stays
+     * centred as its width varies. The arc and joystick own the bottom corners; the readout sits in the
+     * gap between them, so it overlaps neither control nor the top-right minimap (UC26 AC#9).
      */
-    private fun positionPointAndGoPanel() {
-        val panel = pointAndGoPanel ?: return
-        panel.pack()
-        val placement =
-            PointAndGoPanelPlacement.place(
-                joystick = UiRect(joystick.actor.x, joystick.actor.y, JOYSTICK_SIZE, JOYSTICK_SIZE),
-                actionCluster =
-                    UiRect(
-                        actionCluster.actor.x,
-                        actionCluster.actor.y,
-                        ActionCluster.LAYOUT_WIDTH,
-                        actionCluster.actor.height,
-                    ),
-                panelWidth = panel.width,
-                panelHeight = panel.height,
-                viewportWidth = stage.viewport.worldWidth,
-                viewportHeight = stage.viewport.worldHeight,
-                margin = MARGIN,
-            )
-        panel.setPosition(placement.x, placement.y)
-    }
-
-    /** Centre the dock context panel near the top of the screen. */
-    private fun positionDockPanel() {
-        dockPanel.pack()
-        dockPanel.setPosition(
-            (stage.viewport.worldWidth - dockPanel.width) / 2f,
-            stage.viewport.worldHeight - MARGIN - dockPanel.height,
+    private fun positionContextReadout() {
+        contextReadout.pack()
+        contextReadout.setPosition(
+            (stage.viewport.worldWidth - contextReadout.width) / 2f,
+            MARGIN,
         )
     }
 
     /**
-     * Centre the mine context panel just below where the dock panel sits, so the two never overlap on
-     * the rare frame a station and an asteroid field are both in range.
+     * Rebuild the context readout from this frame's available contextual actions (UC26): the station
+     * name (DOCK), cargo fill (MINE) and mission reward (RADIO) the retired panels used to show, joined
+     * into one status line and shown only while at least one is available. No allocation on the common
+     * path where nothing is in range — preserves the 60 FPS budget (coding-guidelines § performance).
      */
-    private fun positionMinePanel() {
-        minePanel.pack()
-        minePanel.setPosition(
-            (stage.viewport.worldWidth - minePanel.width) / 2f,
-            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height,
-        )
-    }
-
-    /**
-     * Centre the persistent SCAN panel below the dock/mine context slots (UC10), so it never overlaps
-     * the dock/mine prompts on the rare frame a station or field is also in range. Its slot is reserved
-     * whether or not those context panels are currently visible, keeping the SCAN button at a stable
-     * position in flight.
-     */
-    private fun positionScanPanel() {
-        scanPanel.pack()
-        scanPanel.setPosition(
-            (stage.viewport.worldWidth - scanPanel.width) / 2f,
-            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height -
-                MINE_PANEL_GAP - scanPanel.height,
-        )
-    }
-
-    /**
-     * Centre the radio context panel just below the scan panel (UC12), so it never overlaps the
-     * dock/mine/scan slots on the rare frame several are active at once. Like the dock panel it is only
-     * visible while a radio offer is in range (see [updateRadioPanel]).
-     */
-    private fun positionRadioPanel() {
-        radioPanel.pack()
-        radioPanel.setPosition(
-            (stage.viewport.worldWidth - radioPanel.width) / 2f,
-            stage.viewport.worldHeight - MARGIN - dockPanel.height - MINE_PANEL_GAP - minePanel.height -
-                MINE_PANEL_GAP - scanPanel.height - MINE_PANEL_GAP - radioPanel.height,
-        )
-    }
-
-    /**
-     * Show or hide the context dock control for the frame's in-range station (UC05): visible with an
-     * "IN RANGE: <name>" prompt when [available] is non-null, hidden otherwise. Re-centres after a
-     * text change so the panel stays centred as its width varies. No allocation on the common
-     * (out-of-range) path — keeps the 60 FPS budget (coding-guidelines § performance).
-     */
-    private fun updateDockPanel(available: Station?) {
-        if (available == null) {
-            if (dockPanel.isVisible) dockPanel.isVisible = false
+    private fun updateContextReadout(
+        station: Station?,
+        field: AsteroidField?,
+        offer: Mission?,
+    ) {
+        if (station == null && field == null && offer == null) {
+            if (contextReadout.isVisible) contextReadout.isVisible = false
             return
         }
-        dockPanel.isVisible = true
-        val prompt = "IN RANGE: ${available.displayName}"
-        if (!dockPrompt.textEquals(prompt)) {
-            dockPrompt.setText(prompt)
-            positionDockPanel()
-        }
-    }
-
-    /**
-     * Show or hide the context mine control for the frame's in-range field (UC06): visible with a
-     * "MINE <used>/<capacity>" cargo readout when [field] is non-null, hidden otherwise. Re-centres
-     * after a text change so the panel stays centred as its width varies. The text is rebuilt only
-     * while a field is in range (not on the common out-of-range path), keeping the 60 FPS budget.
-     */
-    private fun updateMinePanel(field: AsteroidField?) {
-        if (field == null) {
-            if (minePanel.isVisible) minePanel.isVisible = false
-            return
-        }
-        minePanel.isVisible = true
-        val prompt = "MINE ${cargo.usedUnits}/${cargo.capacity}"
-        if (!minePrompt.textEquals(prompt)) {
-            minePrompt.setText(prompt)
-            positionMinePanel()
-        }
-    }
-
-    /**
-     * Show or hide the radio context control for the frame's in-range mission broadcast (UC12): visible
-     * with a "RADIO: <reward>cr" prompt when [offer] is non-null, hidden otherwise. Re-centres after a
-     * text change so the panel stays centred as its width varies. The text is rebuilt only while an offer
-     * is in range (not the common out-of-range path), keeping the 60 FPS budget.
-     */
-    private fun updateRadioPanel(offer: Mission?) {
-        if (offer == null) {
-            if (radioPanel.isVisible) radioPanel.isVisible = false
-            return
-        }
-        radioPanel.isVisible = true
-        val prompt = "RADIO: ${offer.rewardCredits}cr mining"
-        if (!radioPrompt.textEquals(prompt)) {
-            radioPrompt.setText(prompt)
-            positionRadioPanel()
+        val parts =
+            buildList {
+                if (station != null) add("IN RANGE: ${station.displayName}")
+                if (field != null) add("MINE ${cargo.usedUnits}/${cargo.capacity}")
+                if (offer != null) add("RADIO: ${offer.rewardCredits}cr mining")
+            }
+        contextReadout.isVisible = true
+        val text = parts.joinToString("   •   ")
+        if (!contextReadout.textEquals(text)) {
+            contextReadout.setText(text)
+            positionContextReadout()
         }
     }
 
@@ -1630,17 +1451,6 @@ class PlayScreen(
         // even during a combat encounter and keeps a symmetric gap (≥ 16 world units at supported sizes)
         // from both neighbours.
         const val HUD_BLOCK_HEIGHT = 104f
-        const val DOCK_WIDTH = 200f
-        const val DOCK_HEIGHT = 56f
-        const val DOCK_PROMPT_GAP = 8f
-
-        // UC25: debug point-and-go arm button labels (debug builds only). Distinct ON/OFF text makes the
-        // armed state obvious so the tester knows when taps will teleport (defaults OFF).
-        const val POINT_AND_GO_OFF_TEXT = "P&G: OFF"
-        const val POINT_AND_GO_ON_TEXT = "P&G: ON"
-
-        // Vertical gap between the dock panel and the mine panel stacked below it.
-        const val MINE_PANEL_GAP = 16f
 
         // Real seconds per courier model tick on the device (UC12). The model timer is tick-based; the
         // device fires one [Missions.advance] per this many accumulated dt seconds so the countdown is
