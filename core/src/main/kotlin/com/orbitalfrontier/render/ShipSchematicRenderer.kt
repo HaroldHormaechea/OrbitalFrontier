@@ -1,7 +1,8 @@
 package com.orbitalfrontier.render
 
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.combat.SectionDamage
@@ -9,26 +10,30 @@ import com.orbitalfrontier.combat.SectionDamages
 import com.orbitalfrontier.combat.ShipSection
 
 /**
- * The HUD **ship schematic** (UC13 AC#3): a small stack of per-section health bars — one per
+ * The HUD **ship schematic** (UC13 AC#3): a small vertical stack of per-section module blocks — one per
  * [ShipSection] — shown only while a combat encounter is live, so the player sees which components are
- * damaged (engine/turret/weapon disabled, hull failing). Each bar fills to the section's current-HP
- * fraction and shifts colour green→amber→red as it drops; a fully-destroyed section reads as a dark
- * empty bar.
+ * damaged. UC27 (AC#6): each block is the design-system `module-healthy` / `module-warn` / `module-critical`
+ * sprite, picked by the section's current-HP fraction (healthy → warn → critical as it drops; a destroyed
+ * section reads as critical).
  *
- * Drawn in screen space with a [ShapeRenderer] (mirrors [HudRenderer]'s screen-space text). Placeholder
- * programmatic art — no labels yet (the built-in font is the HudRenderer's; the bar order is the fixed
- * [ShipSection] declaration order). It only **reads** the damage + derived max HP (render reads state).
+ * Drawn in screen space with a [SpriteBatch] (mirrors [HudRenderer]'s screen-space draw). The shared
+ * [GameAssets] atlas is **borrowed** (never disposed here); the three state regions are resolved once at
+ * construction. It only **reads** the damage + derived max HP (render reads state).
  *
- * [uiScale] (ADR 0015) magnifies the schematic: every base layout constant (margin, bar size, gaps) is
- * multiplied by it at its use site, and the top offset matches HudRenderer's scaled three text lines so
- * the schematic still sits just below them. Constants stay authored at base (×1) — [UiScale.factor] is
- * the single knob.
+ * [uiScale] (ADR 0015) magnifies the schematic: every base layout constant (margin, block size, gaps) is
+ * multiplied by it at its use site, and the top offset matches HudRenderer's scaled three text lines so the
+ * schematic still sits just below them. Constants stay authored at base (×1) — [UiScale.factor] is the knob.
  */
 class ShipSchematicRenderer(
+    private val assets: GameAssets,
     private val uiScale: Float = UiScale.factor,
 ) : Disposable {
-    private val shapeRenderer = ShapeRenderer()
+    private val batch = SpriteBatch()
     private val projection = Matrix4()
+
+    private val healthyRegion: TextureRegion = assets.region(AtlasRegions.MODULE_HEALTHY)
+    private val warnRegion: TextureRegion = assets.region(AtlasRegions.MODULE_WARN)
+    private val criticalRegion: TextureRegion = assets.region(AtlasRegions.MODULE_CRITICAL)
 
     /**
      * Draw the schematic at the screen's left edge, below the HUD text lines. [sectionDamage] is the
@@ -41,44 +46,36 @@ class ShipSchematicRenderer(
         viewportHeight: Float,
     ) {
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
-        shapeRenderer.projectionMatrix = projection
+        batch.projectionMatrix = projection
 
         // Base layout constants scaled at the use site — UiScale.factor stays the single knob.
         val left = MARGIN * uiScale
-        val barWidth = BAR_WIDTH * uiScale
-        val barHeight = BAR_HEIGHT * uiScale
-        val barGap = BAR_GAP * uiScale
+        val blockWidth = BLOCK_WIDTH * uiScale
+        val blockHeight = BLOCK_HEIGHT * uiScale
+        val blockGap = BLOCK_GAP * uiScale
         var top = viewportHeight - TOP_OFFSET * uiScale
 
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        batch.begin()
+        batch.color = Color.WHITE
         for (section in ShipSection.entries) {
             val maxHp = maxSectionHp[section] ?: 0
             val fraction =
                 if (maxHp <= 0) 0f else SectionDamages.currentHp(sectionDamage, section, maxHp).toFloat() / maxHp
-
-            // Background track.
-            shapeRenderer.color = TRACK_COLOR
-            shapeRenderer.rect(left, top - barHeight, barWidth, barHeight)
-
-            // Filled portion, coloured by remaining fraction.
-            if (fraction > 0f) {
-                shapeRenderer.color = colorFor(fraction)
-                shapeRenderer.rect(left, top - barHeight, barWidth * fraction, barHeight)
-            }
-            top -= barHeight + barGap
+            batch.draw(regionFor(fraction), left, top - blockHeight, blockWidth, blockHeight)
+            top -= blockHeight + blockGap
         }
-        shapeRenderer.end()
+        batch.end()
     }
 
-    private fun colorFor(fraction: Float): Color =
+    private fun regionFor(fraction: Float): TextureRegion =
         when {
-            fraction > HEALTHY_THRESHOLD -> HEALTHY_COLOR
-            fraction > WARN_THRESHOLD -> WARN_COLOR
-            else -> CRITICAL_COLOR
+            fraction > HEALTHY_THRESHOLD -> healthyRegion
+            fraction > WARN_THRESHOLD -> warnRegion
+            else -> criticalRegion
         }
 
     override fun dispose() {
-        shapeRenderer.dispose()
+        batch.dispose()
     }
 
     private companion object {
@@ -86,14 +83,10 @@ class ShipSchematicRenderer(
 
         // Below the three HUD text lines (speed/heading/fuel) drawn from the top.
         const val TOP_OFFSET = 96f
-        const val BAR_WIDTH = 120f
-        const val BAR_HEIGHT = 12f
-        const val BAR_GAP = 4f
+        const val BLOCK_WIDTH = 120f
+        const val BLOCK_HEIGHT = 16f
+        const val BLOCK_GAP = 4f
         const val HEALTHY_THRESHOLD = 0.6f
         const val WARN_THRESHOLD = 0.3f
-        val TRACK_COLOR = Color(0.15f, 0.15f, 0.18f, 0.8f)
-        val HEALTHY_COLOR = Color(0.4f, 0.85f, 0.45f, 1f)
-        val WARN_COLOR = Color(0.9f, 0.8f, 0.3f, 1f)
-        val CRITICAL_COLOR = Color(0.9f, 0.35f, 0.3f, 1f)
     }
 }

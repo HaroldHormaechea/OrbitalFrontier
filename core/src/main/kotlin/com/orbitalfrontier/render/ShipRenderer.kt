@@ -1,56 +1,72 @@
 package com.orbitalfrontier.render
 
 import com.badlogic.gdx.graphics.Camera
-import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.g2d.TextureRegion
+import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.ship.ShipKinematics
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Draws the player ship as a programmatic placeholder sprite — a filled triangle whose nose
- * points along the hull heading — in world space, using the follow camera's projection.
+ * Draws the player ship as the design-system `ship-player` sprite (UC27 AC#4) — centred on the hull
+ * position and rotated about its centre to the hull heading — in world space, using the follow camera's
+ * projection. Replaces the old generated triangle; it only reads [ShipKinematics] (no simulation here).
  *
- * A placeholder until real art exists; it only reads [ShipKinematics] (no simulation here).
+ * The shared [GameAssets] atlas is **borrowed** (never disposed here); this renderer owns only its own
+ * [SpriteBatch]. The ship region is resolved once at construction.
+ *
+ * **Heading alignment ([ROTATION_OFFSET_DEGREES]).** [ShipKinematics.headingRadians] uses the math
+ * convention (0 rad = +x / right). The delivered ship art is authored **nose-up** (+y), so the sprite must
+ * be rotated by −90° on top of the heading to make its nose track the heading. This offset is the single
+ * knob to correct alignment after the mandatory visual-gate inspection (AC#11) — a sprite re-authored
+ * nose-right would only need this constant changed to 0, with no structural change.
  */
 class ShipRenderer(
+    private val assets: GameAssets,
     private val sizeWorldUnits: Float = DEFAULT_SIZE,
 ) : Disposable {
-    private val shapeRenderer = ShapeRenderer()
+    private val batch = SpriteBatch()
+    private val region: TextureRegion = assets.region(AtlasRegions.SHIP_PLAYER)
 
     fun render(
         camera: Camera,
         kinematics: ShipKinematics,
     ) {
-        val heading = kinematics.headingRadians
         val px = kinematics.position.x
         val py = kinematics.position.y
+        val size = sizeWorldUnits * 2f
+        val rotationDeg = kinematics.headingRadians * MathUtils.radiansToDegrees + ROTATION_OFFSET_DEGREES
 
-        val noseX = px + cos(heading) * sizeWorldUnits
-        val noseY = py + sin(heading) * sizeWorldUnits
-        val leftX = px + cos(heading + REAR_ANGLE) * sizeWorldUnits * REAR_SCALE
-        val leftY = py + sin(heading + REAR_ANGLE) * sizeWorldUnits * REAR_SCALE
-        val rightX = px + cos(heading - REAR_ANGLE) * sizeWorldUnits * REAR_SCALE
-        val rightY = py + sin(heading - REAR_ANGLE) * sizeWorldUnits * REAR_SCALE
-
-        shapeRenderer.projectionMatrix = camera.combined
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        shapeRenderer.color = HULL_COLOR
-        shapeRenderer.triangle(noseX, noseY, leftX, leftY, rightX, rightY)
-        shapeRenderer.end()
+        batch.projectionMatrix = camera.combined
+        batch.begin()
+        // x,y = bottom-left; origin (centre) at sizeWorldUnits so it rotates about the hull position.
+        batch.draw(
+            region,
+            px - sizeWorldUnits,
+            py - sizeWorldUnits,
+            sizeWorldUnits,
+            sizeWorldUnits,
+            size,
+            size,
+            1f,
+            1f,
+            rotationDeg,
+        )
+        batch.end()
     }
 
     override fun dispose() {
-        shapeRenderer.dispose()
+        batch.dispose()
     }
 
     private companion object {
+        /** Half-extent of the ship sprite in world units — unchanged from the old placeholder (AC#4). */
         const val DEFAULT_SIZE = 18f
 
-        // Rear corners sit ~140° either side of the nose, slightly inboard, for an arrow shape.
-        const val REAR_ANGLE = 2.443f // ~140° in radians
-        const val REAR_SCALE = 0.8f
-        val HULL_COLOR = Color(0.85f, 0.9f, 1f, 1f)
+        /**
+         * Degrees added to the heading so the nose-up-authored sprite tracks the math-convention heading.
+         * The one knob for post-visual-gate heading correction (AC#11). −90° = sprite authored nose-up.
+         */
+        const val ROTATION_OFFSET_DEGREES = -90f
     }
 }

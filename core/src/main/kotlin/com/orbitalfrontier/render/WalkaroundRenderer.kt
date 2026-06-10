@@ -2,6 +2,8 @@ package com.orbitalfrontier.render
 
 import com.badlogic.gdx.graphics.Camera
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Rect
@@ -9,16 +11,27 @@ import com.orbitalfrontier.walkaround.Avatar
 import com.orbitalfrontier.walkaround.StationInterior
 
 /**
- * Programmer-art renderer for the on-foot station interior (UC19), mirroring [ShipRenderer]: it only
- * reads pure [StationInterior] / [Avatar] state and draws it in world space using the screen's
- * injected camera. No simulation here.
+ * Renderer for the on-foot station interior (UC19), mirroring [ShipRenderer]: it only reads pure
+ * [StationInterior] / [Avatar] state and draws it in world space using the screen's injected camera.
+ * No simulation here.
  *
- * Deliberately low-fidelity (AC: programmer-art is acceptable): filled boxes for the walkable
- * landing/corridor/room with outlined walls, a box for the ship, a box for the shopkeeper, and the
- * avatar as a ball with a small dot showing its facing direction (AC#3).
+ * UC27 (AC#7): the walkaround prototype now draws the design-system sprites — `floor-tile` filling each
+ * walkable area, `wall-tile` framing its edges so the boundary reads as walls, `npc-shopkeeper` for the
+ * shopkeeper, and `avatar-player` for the player avatar. The docked **ship** in the bay has no dedicated
+ * interior sprite in the bundle, so it stays a programmer-art block on the [ShapeRenderer] (drawn between
+ * the floor and the characters). The shared [GameAssets] atlas is **borrowed** (never disposed here); this
+ * renderer owns its own batch + shape renderer and the regions are resolved once at construction.
  */
-class WalkaroundRenderer : Disposable {
+class WalkaroundRenderer(
+    private val assets: GameAssets,
+) : Disposable {
+    private val batch = SpriteBatch()
     private val shapeRenderer = ShapeRenderer()
+
+    private val floorRegion: TextureRegion = assets.region(AtlasRegions.FLOOR_TILE)
+    private val wallRegion: TextureRegion = assets.region(AtlasRegions.WALL_TILE)
+    private val shopkeeperRegion: TextureRegion = assets.region(AtlasRegions.NPC_SHOPKEEPER)
+    private val avatarRegion: TextureRegion = assets.region(AtlasRegions.AVATAR_PLAYER)
 
     fun render(
         camera: Camera,
@@ -26,48 +39,51 @@ class WalkaroundRenderer : Disposable {
         avatar: Avatar,
         avatarRadius: Float,
     ) {
-        shapeRenderer.projectionMatrix = camera.combined
-
-        // Filled pass: walkable floor, ship + shopkeeper boxes, avatar ball + facing dot.
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-
-        shapeRenderer.color = FLOOR_COLOR
+        // Pass 1 (sprites): the floor under everything, then the wall frame around each walkable area.
+        batch.projectionMatrix = camera.combined
+        batch.begin()
         for (area in interior.walkableAreas) {
-            fillRect(area)
+            // Stretch the floor tile to fill the area (programmer-art prototype; tiling deferred).
+            batch.draw(floorRegion, area.minX, area.minY, area.width, area.height)
         }
+        for (area in interior.walkableAreas) {
+            drawWallFrame(area)
+        }
+        batch.end()
 
+        // Pass 2 (shapes): the docked ship block (no interior sprite in the bundle).
+        shapeRenderer.projectionMatrix = camera.combined
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         shapeRenderer.color = SHIP_COLOR
         fillBox(interior.shipPosition.x, interior.shipPosition.y, SHIP_SIZE)
-
-        shapeRenderer.color = SHOPKEEPER_COLOR
-        fillBox(interior.shopkeeperPosition.x, interior.shopkeeperPosition.y, SHOPKEEPER_SIZE)
-
-        shapeRenderer.color = AVATAR_COLOR
-        shapeRenderer.circle(avatar.position.x, avatar.position.y, avatarRadius, CIRCLE_SEGMENTS)
-
-        // Facing dot sits just inside the rim along the facing direction (AC#3/#4).
-        val dotX = avatar.position.x + avatar.facing.x * avatarRadius * FACING_DOT_OFFSET
-        val dotY = avatar.position.y + avatar.facing.y * avatarRadius * FACING_DOT_OFFSET
-        shapeRenderer.color = FACING_DOT_COLOR
-        shapeRenderer.circle(dotX, dotY, avatarRadius * FACING_DOT_SCALE, CIRCLE_SEGMENTS)
-
         shapeRenderer.end()
 
-        // Line pass: outline each walkable area so the outer walls read as walls (AC#8 boundaries).
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
-        shapeRenderer.color = WALL_COLOR
-        for (area in interior.walkableAreas) {
-            outlineRect(area)
-        }
-        shapeRenderer.end()
+        // Pass 3 (sprites): the characters on top — shopkeeper, then the player avatar.
+        batch.begin()
+        drawCentered(shopkeeperRegion, interior.shopkeeperPosition.x, interior.shopkeeperPosition.y, SHOPKEEPER_SIZE)
+        // The avatar sprite is drawn centred at twice its collision radius (matches the old ball footprint).
+        drawCentered(avatarRegion, avatar.position.x, avatar.position.y, avatarRadius * 2f)
+        batch.end()
     }
 
-    private fun fillRect(rect: Rect) {
-        shapeRenderer.rect(rect.minX, rect.minY, rect.width, rect.height)
+    /** Draw [region] centred on ([cx], [cy]) at the given full [size] (width = height). */
+    private fun drawCentered(
+        region: TextureRegion,
+        cx: Float,
+        cy: Float,
+        size: Float,
+    ) {
+        batch.draw(region, cx - size / 2f, cy - size / 2f, size, size)
     }
 
-    private fun outlineRect(rect: Rect) {
-        shapeRenderer.rect(rect.minX, rect.minY, rect.width, rect.height)
+    /** Draw the wall tile as four edge strips around [area] so its boundary reads as walls (AC#7). */
+    private fun drawWallFrame(area: Rect) {
+        val t = WALL_THICKNESS
+        // Bottom, top, left, right strips (stretched wall tile).
+        batch.draw(wallRegion, area.minX, area.minY, area.width, t)
+        batch.draw(wallRegion, area.minX, area.maxY - t, area.width, t)
+        batch.draw(wallRegion, area.minX, area.minY, t, area.height)
+        batch.draw(wallRegion, area.maxX - t, area.minY, t, area.height)
     }
 
     private fun fillBox(
@@ -79,20 +95,17 @@ class WalkaroundRenderer : Disposable {
     }
 
     override fun dispose() {
+        batch.dispose()
         shapeRenderer.dispose()
     }
 
     private companion object {
         const val SHIP_SIZE = 60f
         const val SHOPKEEPER_SIZE = 28f
-        const val CIRCLE_SEGMENTS = 24
-        const val FACING_DOT_OFFSET = 0.6f
-        const val FACING_DOT_SCALE = 0.3f
-        val FLOOR_COLOR = Color(0.18f, 0.20f, 0.26f, 1f)
-        val WALL_COLOR = Color(0.55f, 0.60f, 0.75f, 1f)
+
+        /** Wall-tile strip thickness (world units) framing each walkable area. */
+        const val WALL_THICKNESS = 8f
+
         val SHIP_COLOR = Color(0.70f, 0.78f, 0.95f, 1f)
-        val SHOPKEEPER_COLOR = Color(0.95f, 0.80f, 0.45f, 1f)
-        val AVATAR_COLOR = Color(0.45f, 0.85f, 0.65f, 1f)
-        val FACING_DOT_COLOR = Color(0.05f, 0.10f, 0.08f, 1f)
     }
 }

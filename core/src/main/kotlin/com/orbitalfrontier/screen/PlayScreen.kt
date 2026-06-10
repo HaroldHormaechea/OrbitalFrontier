@@ -60,6 +60,7 @@ import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
+import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
 import com.orbitalfrontier.render.HudRenderer
@@ -139,6 +140,9 @@ class PlayScreen(
     saveExecutor: SaveExecutor,
     private val autosave: AutosaveController,
     private val sectorWorld: SectorWorld,
+    // UC27: the shared design-system art atlas, loaded once by the game and BORROWED here — the renderers
+    // and the control skin draw from it but never dispose it (the game owns its lifecycle, AC#1).
+    private val gameAssets: GameAssets,
     initialHandedness: Handedness,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
@@ -161,15 +165,15 @@ class PlayScreen(
     private val physics = ShipPhysics(spawn = initialWorldState.ship)
 
     private val starfield = StarfieldRenderer()
-    private val shipRenderer = ShipRenderer()
+    private val shipRenderer = ShipRenderer(gameAssets)
     private val hudRenderer = HudRenderer()
     private val gateRenderer = GateRenderer()
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
 
     // ADR 0015: the one in-world renderer that draws a base glyph for EVERY POI (stations included),
     // so no POI can render as nothing; gate/asteroid renderers above now draw only their rings.
-    private val worldObjectRenderer = WorldObjectRenderer()
-    private val minimap = MinimapRenderer()
+    private val worldObjectRenderer = WorldObjectRenderer(gameAssets)
+    private val minimap = MinimapRenderer(gameAssets)
 
     // UC23: the click-to-zoom full-height map overlay. [mapOverlayState] is the pure open/closed toggle
     // (libGDX-free, JVM-testable); [mapOverlay] is its GL renderer (mirrors the minimap). The overlay is
@@ -180,8 +184,8 @@ class PlayScreen(
 
     // Combat visuals (UC13): hostiles + projectiles in world space, and the per-section HUD ship
     // schematic. Both only read state and draw nothing while combat is inactive.
-    private val hostileRenderer = HostileRenderer()
-    private val shipSchematicRenderer = ShipSchematicRenderer()
+    private val hostileRenderer = HostileRenderer(gameAssets)
+    private val shipSchematicRenderer = ShipSchematicRenderer(gameAssets)
 
     // Mining tunables (UC06). Authored defaults; the same params feed the pure [Mining.resolve] each
     // frame so live mining matches the replay harness exactly.

@@ -48,6 +48,7 @@ object Palette {
     val DANGER: Color = Color.valueOf("e0563f") // hull breach, loss, critical
 
     // ---- SEMANTIC ALIASES (reach for these) ----
+
     /** App backdrop / deepest-space clear colour (the flight screen). */
     val SURFACE_APP: Color = VOID_900
 

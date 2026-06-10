@@ -10,6 +10,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.WalkaroundRenderer
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.MovementJoystick
@@ -43,13 +44,15 @@ import com.orbitalfrontier.walkaround.WalkaroundParams
 class StationWalkaroundScreen(
     private val logger: Logger,
     private val interior: StationInterior,
+    // UC27: the shared design-system art atlas, BORROWED (owned + disposed by the game, not here).
+    private val gameAssets: GameAssets,
     private val onReboard: () -> Unit,
     private val onInteract: () -> Unit,
     private val params: WalkaroundParams = WalkaroundParams(),
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = WalkaroundModel()
-    private val renderer = WalkaroundRenderer()
+    private val renderer = WalkaroundRenderer(gameAssets)
 
     private val skin = PlaceholderControlsSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
