@@ -36,3 +36,6 @@ Thumbs.db
 # libGDX packed assets (regenerated)
 assets/**/*.atlas
 assets/**/packed/
+
+# Dev-team QA visual-verification scratch (screenshots; not source)
+qa-artifacts/
