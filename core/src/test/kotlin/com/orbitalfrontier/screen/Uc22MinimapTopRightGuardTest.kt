@@ -136,10 +136,12 @@ class Uc22MinimapTopRightGuardTest {
             "AC#3: LAYOUT_HEIGHT is a const reservation source on ActionCluster",
             ACTION_CLUSTER_SOURCE.contains("const val LAYOUT_HEIGHT"),
         )
-        // It must be COMPUTED from the same constants that build the Table rows, not a hardcoded literal,
-        // so the reservation can never silently drift from the real laid-out cluster height.
+        // It must be COMPUTED from the constants that define the arc footprint, not a hardcoded literal,
+        // so the reservation can never silently drift from the real laid-out cluster height. UC26 replaced
+        // the old stacked-Table derivation (FIRE_SIZE/BUTTON_PAD/rows) with the arc footprint: the
+        // (RADIUS + BUTTON_DIAMETER) square that bounds the full sweep regardless of visible-button count.
         val layoutHeight = section(ACTION_CLUSTER_SOURCE, "const val LAYOUT_HEIGHT")
-        for (token in listOf("FIRE_SIZE", "BUTTON_PAD", "PLACEHOLDER_BUTTON_COUNT", "BUTTON_SIZE")) {
+        for (token in listOf("RADIUS", "BUTTON_DIAMETER")) {
             assertTrue("AC#3: LAYOUT_HEIGHT must be derived from $token", layoutHeight.contains(token))
         }
     }
