@@ -1,6 +1,5 @@
 package com.orbitalfrontier.render
 
-import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Matrix4
@@ -27,7 +26,11 @@ class HudRenderer(
     private val uiScale: Float = UiScale.factor,
 ) : Disposable {
     private val batch = SpriteBatch()
-    private val font = BitmapFont().apply { data.setScale(uiScale) }
+    private val font =
+        BitmapFont().apply {
+            data.setScale(uiScale)
+            color = TEXT_COLOR
+        }
     private val line = StringBuilder(24)
     private val projection = Matrix4()
 
@@ -60,19 +63,21 @@ class HudRenderer(
         line.setLength(0)
         line.append("FUEL ").append(fuelLevel.roundToInt()).append('/').append(fuelCapacity.roundToInt())
         if (lowFuel) line.append("  LOW")
-        // Red cue while low; reset to white afterwards so other lines stay neutral next frame.
-        font.color = if (lowFuel) Color.RED else Color.WHITE
+        // UC27: design-system tokens — amber "warning" caution while low, reset to the steel readout text
+        // colour afterwards so other lines stay neutral next frame (AC#8).
+        font.color = if (lowFuel) Palette.WARNING else TEXT_COLOR
         font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 2f)
-        font.color = Color.WHITE
+        font.color = TEXT_COLOR
 
-        // UC13: a red "IN COMBAT" cue while an encounter is live, drawn alongside the per-section ship
+        // UC13: an "IN COMBAT" cue while an encounter is live, drawn alongside the per-section ship
         // schematic ([com.orbitalfrontier.render.ShipSchematicRenderer]); the schematic carries the detail.
+        // UC27: the design-system "danger" signal colour (AC#8).
         if (inCombat) {
             line.setLength(0)
             line.append("IN COMBAT")
-            font.color = Color.RED
+            font.color = Palette.DANGER
             font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 3f)
-            font.color = Color.WHITE
+            font.color = TEXT_COLOR
         }
 
         batch.end()
@@ -95,5 +100,9 @@ class HudRenderer(
 
         // Degree sign; the placeholder built-in font may render it as a blank — acceptable for now.
         const val DEGREE = '°'
+
+        // UC27: high-emphasis steel readout colour for normal HUD text (AC#8); status lines override
+        // with the amber "warning" / red "danger" signal tokens at their use site.
+        val TEXT_COLOR = Palette.STEEL_050
     }
 }

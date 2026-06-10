@@ -11,6 +11,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.GameAssets
+import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.WalkaroundRenderer
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.MovementJoystick
@@ -54,7 +55,7 @@ class StationWalkaroundScreen(
     private val model = WalkaroundModel()
     private val renderer = WalkaroundRenderer(gameAssets)
 
-    private val skin = PlaceholderControlsSkin()
+    private val skin = PlaceholderControlsSkin(gameAssets)
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val joystick = MovementJoystick(skin)
 
@@ -116,7 +117,7 @@ class StationWalkaroundScreen(
         worldCamera.position.set(avatar.position.x, avatar.position.y, 0f)
         worldCamera.update()
 
-        Gdx.gl.glClearColor(BG_R, BG_G, BG_B, 1f)
+        Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         renderer.render(worldCamera, interior, avatar, params.avatarRadius)
@@ -179,8 +180,5 @@ class StationWalkaroundScreen(
         const val JOYSTICK_SIZE = 220f
         const val BUTTON_WIDTH = 220f
         const val BUTTON_HEIGHT = 64f
-        const val BG_R = 0.04f
-        const val BG_G = 0.06f
-        const val BG_B = 0.10f
     }
 }

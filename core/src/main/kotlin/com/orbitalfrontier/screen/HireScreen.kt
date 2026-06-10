@@ -13,6 +13,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
 
@@ -124,7 +125,7 @@ class HireScreen(
     }
 
     override fun render(delta: Float) {
-        Gdx.gl.glClearColor(BG_R, BG_G, BG_B, 1f)
+        Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
         stage.act(delta)
         stage.draw()
@@ -160,8 +161,5 @@ class HireScreen(
         const val BUTTON_WIDTH = 220f
         const val BUTTON_HEIGHT = 64f
         const val BACK_GAP = 24f
-        const val BG_R = 0.04f
-        const val BG_G = 0.06f
-        const val BG_B = 0.10f
     }
 }

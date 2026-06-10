@@ -67,6 +67,7 @@ import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
+import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
@@ -275,7 +276,7 @@ class PlayScreen(
     private var combatTickAccumulator = 0f
     private val combatParams = CombatParams()
 
-    private val skin = PlaceholderControlsSkin()
+    private val skin = PlaceholderControlsSkin(gameAssets)
 
     // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
     // unitsPerPixel; this is UI-only and does NOT touch the world camera (the playfield stays 1:1).
@@ -663,7 +664,8 @@ class PlayScreen(
         worldCamera.position.set(ship.position.x, ship.position.y, 0f)
         worldCamera.update()
 
-        Gdx.gl.glClearColor(BG_R, BG_G, BG_B, 1f)
+        // UC27: deepest-space backdrop from the design-system palette (void-900, AC#8).
+        Gdx.gl.glClearColor(Palette.SURFACE_APP.r, Palette.SURFACE_APP.g, Palette.SURFACE_APP.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         val viewportWidth = Gdx.graphics.width.toFloat()
@@ -1467,8 +1469,5 @@ class PlayScreen(
         // too. [MAX_COMBAT_TICKS_PER_FRAME] caps catch-up ticks after a stall. [TUNE]
         const val COMBAT_DT = 1f / 30f
         const val MAX_COMBAT_TICKS_PER_FRAME = 5
-        const val BG_R = 0.02f
-        const val BG_G = 0.02f
-        const val BG_B = 0.05f
     }
 }
