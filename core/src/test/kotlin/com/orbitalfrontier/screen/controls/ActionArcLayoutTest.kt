@@ -48,20 +48,10 @@ class ActionArcLayoutTest {
         }
     }
 
-    @Test
-    fun `no two visible button rects overlap at the worst-case full count`() {
-        for (side in ScreenSide.entries) {
-            val arc = arc(side, MAX_BUTTONS)
-            for (i in arc.buttons.indices) {
-                for (j in i + 1 until arc.buttons.size) {
-                    assertFalse(
-                        "side=$side: button $i and $j must not overlap",
-                        arc.buttons[i].overlaps(arc.buttons[j]),
-                    )
-                }
-            }
-        }
-    }
+    // Note: the buttons render as CIRCLES of diameter D, so the non-overlap contract is the centre-to-
+    // centre chord (>= D + MIN_GAP, asserted above), NOT the axis-aligned bounding boxes — two circles
+    // whose centres are > D apart on a diagonal still have overlapping square bounding boxes, which is
+    // expected and harmless. The chord invariant is the one the on-device hit-test relies on.
 
     // --- AC#1/#9: every button rect is inside [MARGIN, viewport - MARGIN] on both axes ---------------
 
