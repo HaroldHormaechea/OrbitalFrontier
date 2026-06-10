@@ -12,8 +12,12 @@ import com.orbitalfrontier.world.Station
  *
  * [forPoi] is a **compiler-exhaustive `when`** over the sealed [Poi] hierarchy: adding a new POI subtype
  * will not compile until it is given a glyph here (coding-guidelines § O, Open/Closed). That is what
- * makes "an object with no in-world renderer" impossible by construction — the bug this fixes (stations
- * had no world renderer and so drew as nothing) cannot recur silently.
+ * makes "an object with no in-world renderer" impossible by construction — the bug this guards against
+ * (stations had no world renderer and so drew as nothing) cannot recur silently.
+ *
+ * UC27: each glyph now names an atlas region ([AtlasRegions]) instead of a generated shape/colour, so the
+ * delivered design-system art replaces the placeholder primitives (AC#4). World-unit sizes are unchanged
+ * (gate 28 / station 22 / asteroid 26 / contact 16), keeping positions/collision/camera identical.
  *
  * **Hot-path discipline (60 FPS, ADR 0006 perf budget):** [forPoi] is called per-POI per-frame, so the
  * glyphs for the fixed POI kinds are **cached constants** — no per-frame allocation. The single exception
@@ -36,36 +40,28 @@ object WorldGlyphs {
         }
 
     /**
-     * A station's glyph: the shared [STATION_BOX] look, stamped with this station's display name as its
-     * [WorldGlyph.label]. The only per-call allocation in [forPoi] (label varies per station).
+     * A station's glyph: the shared [STATION_GLYPH] sprite, stamped with this station's display name as its
+     * [WorldGlyph.label] (the ADR-0015 station-label contract). The only per-call allocation in [forPoi].
      */
-    private fun stationGlyph(station: Station): WorldGlyph = STATION_BOX.copy(label = station.displayName)
+    private fun stationGlyph(station: Station): WorldGlyph = STATION_GLYPH.copy(label = station.displayName)
 
     // Cached, constant glyphs per fixed POI kind — reused every frame (no allocation in the hot path).
-    // Colours/sizes reproduce the markers the per-type renderers used to draw, so the authored look is
-    // preserved as those renderers slim to ring-only overlays (GateRenderer/AsteroidFieldRenderer).
+    // Sizes (half-extents in world units) reproduce the markers the per-type renderers used to draw, so
+    // gameplay geometry is preserved as those renderers slim to ring-only overlays (Gate/AsteroidField).
 
-    /** Jump gate: the cyan filled diamond GateRenderer used to draw (MARKER_SIZE = 28). */
-    private val GATE_GLYPH =
-        WorldGlyph(GlyphShape.DIAMOND, red = 0.4f, green = 0.85f, blue = 1f, alpha = 1f, sizeWorldUnits = 28f)
+    /** Jump gate: the design-system gate sprite, at the gate's authored world size (28). */
+    private val GATE_GLYPH = WorldGlyph(AtlasRegions.JUMP_GATE, sizeWorldUnits = 28f)
 
-    /** Asteroid field: the tan rock cluster AsteroidFieldRenderer used to draw (base ROCK_SIZE = 26). */
-    private val ASTEROID_GLYPH =
-        WorldGlyph(GlyphShape.ROCK_CLUSTER, red = 0.55f, green = 0.5f, blue = 0.42f, alpha = 1f, sizeWorldUnits = 26f)
+    /** Asteroid field: the design-system asteroid-field sprite (size 26). */
+    private val ASTEROID_GLYPH = WorldGlyph(AtlasRegions.ASTEROID_FIELD, sizeWorldUnits = 26f)
 
-    /**
-     * Station: a green filled box (the colour the minimap already uses for a STATION contact). New
-     * in-world marker — stations previously had no world renderer, which is the bug this fixes. The
-     * shared template; [stationGlyph] stamps the per-station label on a copy.
-     */
-    private val STATION_BOX =
-        WorldGlyph(GlyphShape.BOX, red = 0.5f, green = 1f, blue = 0.6f, alpha = 1f, sizeWorldUnits = 22f)
+    /** Station: the design-system station sprite (size 22). Shared template; [stationGlyph] adds the label. */
+    private val STATION_GLYPH = WorldGlyph(AtlasRegions.STATION, sizeWorldUnits = 22f)
 
     /**
-     * Hidden contact (once revealed): a red placeholder box (the minimap's revealed-contact colour). Per
-     * product decision, a revealed hidden contact DOES get an in-world box — only *unrevealed* ones are
-     * skipped (by [WorldObjectRenderer]'s visibility predicate), not skipped here.
+     * Hidden contact (once revealed): the design-system revealed-contact sprite (size 16). Per product
+     * decision, a revealed hidden contact DOES draw in-world — only *unrevealed* ones are skipped (by
+     * [WorldObjectRenderer]'s visibility predicate), not skipped here.
      */
-    private val HIDDEN_CONTACT_GLYPH =
-        WorldGlyph(GlyphShape.BOX, red = 1f, green = 0.4f, blue = 0.4f, alpha = 1f, sizeWorldUnits = 16f)
+    private val HIDDEN_CONTACT_GLYPH = WorldGlyph(AtlasRegions.CONTACT_HIDDEN, sizeWorldUnits = 16f)
 }

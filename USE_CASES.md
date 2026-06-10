@@ -36,3 +36,4 @@ Statuses:
 | 24 | [use-cases/24-map-item-labels.md](use-cases/24-map-item-labels.md) | Show name labels for map items | done | 2026-06-09 |
 | 25 | [use-cases/25-debug-point-and-go-navigation.md](use-cases/25-debug-point-and-go-navigation.md) | Debug point-and-go navigation (debug builds only) | done | 2026-06-09 |
 | 26 | [use-cases/26-bottom-right-action-arc.md](use-cases/26-bottom-right-action-arc.md) | Semicircular bottom-right action cluster | done | 2026-06-10 |
+| 27 | [use-cases/27-integrate-design-system-art.md](use-cases/27-integrate-design-system-art.md) | Integrate design-system art atlas and palette | done | 2026-06-10 |

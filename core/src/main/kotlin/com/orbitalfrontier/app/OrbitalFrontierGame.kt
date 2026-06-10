@@ -11,6 +11,7 @@ import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
+import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
@@ -69,6 +70,10 @@ class OrbitalFrontierGame(
 ) : Game() {
     private var driver: SqlDriver? = null
     private var autosave: AutosaveController? = null
+
+    // UC27: the single shared design-system art atlas (AC#1). Loaded once on the GL thread in create()
+    // and disposed exactly once in dispose(); every screen/renderer/skin gets a BORROWED reference.
+    private var gameAssets: GameAssets? = null
     private var mainMenuScreen: MainMenuScreen? = null
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
@@ -94,6 +99,10 @@ class OrbitalFrontierGame(
     private val sectorWorld: SectorWorld = MvpSectorMap.build()
 
     override fun create() {
+        // UC27: load the shared art atlas once, here on the GL thread (a live GL context exists by
+        // create()). Borrowed by every screen/renderer/skin; disposed once in dispose() (AC#1).
+        gameAssets = GameAssets.load()
+
         val sqlDriver = sqlDriverFactory.create()
         driver = sqlDriver
 
@@ -183,6 +192,7 @@ class OrbitalFrontierGame(
                 saveExecutor = saveExecutor,
                 autosave = controller,
                 sectorWorld = sectorWorld,
+                gameAssets = requireNotNull(gameAssets) { "GameAssets must be loaded in create() before enterGame()" },
                 initialHandedness = handedness,
                 initialWorldState = initialWorldState,
                 onDocked = { station -> openStationHub(station) },
@@ -260,6 +270,7 @@ class OrbitalFrontierGame(
             StationWalkaroundScreen(
                 logger = logger,
                 interior = StationInterior.prototype(),
+                gameAssets = requireNotNull(gameAssets) { "GameAssets must be loaded before openWalkaround()" },
                 onReboard = { returnToHubFromFoot() },
                 onInteract = { openShopFromWalkaround(station) },
             )
@@ -508,6 +519,15 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose mission board screen on shutdown", e)
         }
         missionBoardScreen = null
+
+        // UC27: dispose the shared atlas only AFTER every screen (which borrowed it) is disposed, so no
+        // live screen can draw from a freed texture. Single owner, single dispose (AC#1).
+        try {
+            gameAssets?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose game assets on shutdown", e)
+        }
+        gameAssets = null
 
         try {
             driver?.close()

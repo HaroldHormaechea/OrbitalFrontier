@@ -12,23 +12,42 @@ import com.badlogic.gdx.scenes.scene2d.ui.Touchpad
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.badlogic.gdx.utils.Disposable
+import com.orbitalfrontier.render.AtlasRegions
+import com.orbitalfrontier.render.GameAssets
+import com.orbitalfrontier.render.Palette
 
 /**
- * Programmatically-generated Scene2D styles for the placeholder on-screen controls.
+ * Scene2D styles for the on-screen controls.
  *
- * There is no art/skin asset pipeline yet (use-case 01 is structure + behaviour), so the
- * touchpad, action buttons and settings button are drawn from generated solid shapes plus the
- * built-in [BitmapFont]. Owns every [Texture] and the font it creates and disposes them all.
+ * UC27: when a shared [GameAssets] atlas is supplied the touchpad (joystick base/knob) and the action-arc
+ * glyph buttons are drawn from the **design-system sprites** (AC#2/#3); when it is absent (`null`) they fall
+ * back to the original generated solid shapes, so the screens that only use this skin for labels / the
+ * settings button (and JVM contexts without a GL atlas) keep working unchanged. The non-sprite styles
+ * (settings button, labels) adopt the design-system [Palette] either way (AC#8). The built-in [BitmapFont]
+ * is retained (custom fonts deferred).
+ *
+ * **Texture ownership.** The atlas is **borrowed** — its region drawables are never disposed here. This skin
+ * owns and disposes only the generated [Texture]s it creates (the fallback shapes + the settings-button
+ * rects) and its [font]. So [dispose] releases the font + retained generated textures, never the shared
+ * atlas (UC27 pitfall: single atlas owner, no double-dispose).
  */
-class PlaceholderControlsSkin : Disposable {
+class PlaceholderControlsSkin(
+    private val gameAssets: GameAssets? = null,
+) : Disposable {
     private val textures = ArrayList<Texture>()
 
     val font: BitmapFont = BitmapFont()
 
     val touchpadStyle: Touchpad.TouchpadStyle =
         Touchpad.TouchpadStyle().apply {
-            background = circle(CONTROL_SIZE, Color(1f, 1f, 1f, 0.12f))
-            knob = circle(KNOB_SIZE, Color(0.8f, 0.85f, 1f, 0.55f))
+            if (gameAssets != null) {
+                // Borrowed atlas regions — not added to `textures`, so never disposed here (AC#3).
+                background = TextureRegionDrawable(gameAssets.region(AtlasRegions.JOYSTICK_BASE))
+                knob = TextureRegionDrawable(gameAssets.region(AtlasRegions.JOYSTICK_KNOB))
+            } else {
+                background = circle(CONTROL_SIZE, Color(1f, 1f, 1f, 0.12f))
+                knob = circle(KNOB_SIZE, Color(0.8f, 0.85f, 1f, 0.55f))
+            }
         }
 
     val actionButtonStyle: ImageButton.ImageButtonStyle =
@@ -40,32 +59,48 @@ class PlaceholderControlsSkin : Disposable {
     val settingsButtonStyle: TextButton.TextButtonStyle =
         TextButton.TextButtonStyle().apply {
             font = this@PlaceholderControlsSkin.font
-            fontColor = Color.WHITE
-            up = rect(Color(0.2f, 0.22f, 0.3f, 0.7f))
-            down = rect(Color(0.35f, 0.38f, 0.5f, 0.85f))
+            fontColor = Palette.TEXT_STRONG
+            // Design-system steel surfaces (kept slightly translucent so they read over the scene).
+            up = rect(Color(Palette.STEEL_600).apply { a = 0.85f })
+            down = rect(Color(Palette.STEEL_500).apply { a = 0.95f })
         }
 
-    /** Plain white text style for placeholder labels (the in-range dock prompt + station-hub text). */
+    /** Plain text style for placeholder labels (the in-range dock prompt + station-hub text). */
     val labelStyle: Label.LabelStyle =
-        Label.LabelStyle(this@PlaceholderControlsSkin.font, Color.WHITE)
+        Label.LabelStyle(this@PlaceholderControlsSkin.font, Palette.TEXT_STRONG)
 
-    /**
-     * The generated placeholder glyph drawn inside each circular arc-action button (UC26). There is no
-     * art pipeline yet (use-case clarification), so each action gets a cheap, distinct shape drawn over
-     * the same translucent circle — enough to tell the buttons apart on-device.
-     */
+    /** The action-arc glyph buttons (UC26). Each maps to an `action-*` atlas region when art is available. */
     enum class ActionGlyph { FIRE, DOCK, MINE, SCAN, RADIO, POINT_AND_GO }
 
     /**
-     * A circular [ImageButton] style for one arc action: the shared translucent circle (matching
-     * [actionButtonStyle]) with a generated per-action [glyph] drawn on top. The pressed (down) variant
-     * brightens both the circle and the glyph so a held FIRE/MINE reads as active. Owns its textures
-     * (disposed with the skin).
+     * A circular [ImageButton] style for one arc action. With the atlas (AC#2) it draws the delivered
+     * `action-*` glyph sprite; pressed (down) is a **brighter tint of the same region** so a held FIRE/MINE
+     * reads as active, while the actual FIRE logic in [ActionCluster] is untouched. Without the atlas it
+     * falls back to the original generated glyph. Atlas drawables are borrowed (disposed with the atlas,
+     * not here); generated ones are owned by this skin.
      */
     fun actionGlyphStyle(glyph: ActionGlyph): ImageButton.ImageButtonStyle =
-        ImageButton.ImageButtonStyle().apply {
-            imageUp = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.30f), Color(1f, 1f, 1f, 0.7f), glyph)
-            imageDown = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.6f), Color(1f, 1f, 1f, 0.95f), glyph)
+        if (gameAssets != null) {
+            val region = gameAssets.region(regionFor(glyph))
+            ImageButton.ImageButtonStyle().apply {
+                imageUp = TextureRegionDrawable(region).tint(GLYPH_UP_TINT)
+                imageDown = TextureRegionDrawable(region).tint(GLYPH_DOWN_TINT)
+            }
+        } else {
+            ImageButton.ImageButtonStyle().apply {
+                imageUp = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.30f), Color(1f, 1f, 1f, 0.7f), glyph)
+                imageDown = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.6f), Color(1f, 1f, 1f, 0.95f), glyph)
+            }
+        }
+
+    private fun regionFor(glyph: ActionGlyph): String =
+        when (glyph) {
+            ActionGlyph.FIRE -> AtlasRegions.ACTION_FIRE
+            ActionGlyph.DOCK -> AtlasRegions.ACTION_DOCK
+            ActionGlyph.MINE -> AtlasRegions.ACTION_MINE
+            ActionGlyph.SCAN -> AtlasRegions.ACTION_SCAN
+            ActionGlyph.RADIO -> AtlasRegions.ACTION_RADIO
+            ActionGlyph.POINT_AND_GO -> AtlasRegions.ACTION_POINT_AND_GO
         }
 
     private fun circle(
@@ -83,9 +118,8 @@ class PlaceholderControlsSkin : Disposable {
     }
 
     /**
-     * The shared translucent circle of [circle] with a generated [glyph] painted on top in [glyphColor].
-     * Pure pixmap drawing (no art assets) — a distinct simple shape per action so the buttons are
-     * tellable apart; the exact iconography is placeholder and can be replaced when an art pipeline lands.
+     * The fallback generated glyph (used only when no atlas is supplied): the shared translucent circle
+     * with a simple per-action shape painted on top so the buttons stay tellable apart on a JVM/no-art path.
      */
     private fun circleWithGlyph(
         diameter: Int,
@@ -163,5 +197,10 @@ class PlaceholderControlsSkin : Disposable {
         const val KNOB_SIZE = 96
         const val ACTION_SIZE = 120
         const val RECT_SIZE = 16
+
+        // Atlas action-glyph tints: rest slightly dimmed, pressed at full brightness so a held button
+        // reads as brighter (AC#2) without needing a second sprite.
+        val GLYPH_UP_TINT: Color = Color(0.78f, 0.78f, 0.78f, 1f)
+        val GLYPH_DOWN_TINT: Color = Color.WHITE
     }
 }

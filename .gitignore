@@ -37,5 +37,11 @@ Thumbs.db
 assets/**/*.atlas
 assets/**/packed/
 
+# UC27: the delivered design-system atlas is a committed source asset, NOT a regenerated pack —
+# un-ignore it (and its page PNG) so it ships in the repo and the APK. Keep the generic rule above
+# so any future *packed* atlas under assets/ stays ignored.
+!assets/orbital.atlas
+!assets/orbital.png
+
 # Dev-team QA visual-verification scratch (screenshots; not source)
 qa-artifacts/

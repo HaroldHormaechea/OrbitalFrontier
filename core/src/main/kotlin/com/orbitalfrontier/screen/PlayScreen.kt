@@ -60,12 +60,14 @@ import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
+import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
 import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
+import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
@@ -139,6 +141,9 @@ class PlayScreen(
     saveExecutor: SaveExecutor,
     private val autosave: AutosaveController,
     private val sectorWorld: SectorWorld,
+    // UC27: the shared design-system art atlas, loaded once by the game and BORROWED here — the renderers
+    // and the control skin draw from it but never dispose it (the game owns its lifecycle, AC#1).
+    private val gameAssets: GameAssets,
     initialHandedness: Handedness,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
@@ -161,15 +166,15 @@ class PlayScreen(
     private val physics = ShipPhysics(spawn = initialWorldState.ship)
 
     private val starfield = StarfieldRenderer()
-    private val shipRenderer = ShipRenderer()
+    private val shipRenderer = ShipRenderer(gameAssets)
     private val hudRenderer = HudRenderer()
     private val gateRenderer = GateRenderer()
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
 
     // ADR 0015: the one in-world renderer that draws a base glyph for EVERY POI (stations included),
     // so no POI can render as nothing; gate/asteroid renderers above now draw only their rings.
-    private val worldObjectRenderer = WorldObjectRenderer()
-    private val minimap = MinimapRenderer()
+    private val worldObjectRenderer = WorldObjectRenderer(gameAssets)
+    private val minimap = MinimapRenderer(gameAssets)
 
     // UC23: the click-to-zoom full-height map overlay. [mapOverlayState] is the pure open/closed toggle
     // (libGDX-free, JVM-testable); [mapOverlay] is its GL renderer (mirrors the minimap). The overlay is
@@ -180,8 +185,8 @@ class PlayScreen(
 
     // Combat visuals (UC13): hostiles + projectiles in world space, and the per-section HUD ship
     // schematic. Both only read state and draw nothing while combat is inactive.
-    private val hostileRenderer = HostileRenderer()
-    private val shipSchematicRenderer = ShipSchematicRenderer()
+    private val hostileRenderer = HostileRenderer(gameAssets)
+    private val shipSchematicRenderer = ShipSchematicRenderer(gameAssets)
 
     // Mining tunables (UC06). Authored defaults; the same params feed the pure [Mining.resolve] each
     // frame so live mining matches the replay harness exactly.
@@ -271,7 +276,7 @@ class PlayScreen(
     private var combatTickAccumulator = 0f
     private val combatParams = CombatParams()
 
-    private val skin = PlaceholderControlsSkin()
+    private val skin = PlaceholderControlsSkin(gameAssets)
 
     // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
     // unitsPerPixel; this is UI-only and does NOT touch the world camera (the playfield stays 1:1).
@@ -659,7 +664,8 @@ class PlayScreen(
         worldCamera.position.set(ship.position.x, ship.position.y, 0f)
         worldCamera.update()
 
-        Gdx.gl.glClearColor(BG_R, BG_G, BG_B, 1f)
+        // UC27: deepest-space backdrop from the design-system palette (void-900, AC#8).
+        Gdx.gl.glClearColor(Palette.SURFACE_APP.r, Palette.SURFACE_APP.g, Palette.SURFACE_APP.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         val viewportWidth = Gdx.graphics.width.toFloat()
@@ -1463,8 +1469,5 @@ class PlayScreen(
         // too. [MAX_COMBAT_TICKS_PER_FRAME] caps catch-up ticks after a stall. [TUNE]
         const val COMBAT_DT = 1f / 30f
         const val MAX_COMBAT_TICKS_PER_FRAME = 5
-        const val BG_R = 0.02f
-        const val BG_G = 0.02f
-        const val BG_B = 0.05f
     }
 }

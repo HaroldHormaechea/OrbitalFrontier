@@ -1,7 +1,7 @@
 package com.orbitalfrontier.render
 
 import com.badlogic.gdx.graphics.Camera
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
+import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.world.Contact
 import com.orbitalfrontier.world.Poi
@@ -9,26 +9,29 @@ import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.Transponder
 
 /**
- * The one reusable in-world renderer for **every** POI (ADR 0015): it iterates the whole
- * `sector.pois` list and draws each POI's base [WorldGlyph] (resolved by [WorldGlyphs.forPoi]) in world
- * space, using the follow camera's projection (mirrors [ShipRenderer]/[GateRenderer]).
+ * The one reusable in-world renderer for **every** POI (ADR 0015): it iterates the whole `sector.pois`
+ * list and draws each POI's base [WorldGlyph] (resolved by [WorldGlyphs.forPoi]) in world space, using the
+ * follow camera's projection (mirrors [ShipRenderer]).
  *
  * Because resolution is the compiler-exhaustive [WorldGlyphs.forPoi] and drawing is this single loop,
  * "a POI with no in-world graphic" is impossible by construction — the bug this fixes (stations had a
- * minimap marker but no world renderer, so drew as nothing) cannot recur. Stations get their box glyph
- * through this path; the bespoke [GateRenderer]/[AsteroidFieldRenderer] now draw only their rings.
+ * minimap marker but no world renderer, so drew as nothing) cannot recur. Stations get their sprite glyph
+ * through this path; the bespoke [GateRenderer]/[AsteroidFieldRenderer] still draw only their gameplay rings.
+ *
+ * UC27: the glyph is now a design-system atlas sprite (AC#4), drawn with a [SpriteBatch] centred on the
+ * POI at its world-unit size (no rotation — these objects are non-directional). The shared [GameAssets]
+ * atlas is **borrowed** (never disposed here); this renderer owns only its own batch. Region lookups are
+ * memoised in [GameAssets], so the per-POI hot path stays allocation-free (60 FPS, ADR 0006).
  *
  * **Visibility** mirrors the minimap (coding-guidelines § O, the [Contact] seam): a POI is skipped only
  * when it is a non-broadcasting [Contact] (a [com.orbitalfrontier.world.HiddenContact]) whose id is not
  * yet revealed. Gates/stations ([Transponder]) and asteroid fields (plain [Poi]) always draw; a revealed
- * hidden contact draws its placeholder box (per product decision — every object has a graphic).
- *
- * Render reads state only — no simulation here (coding-guidelines § simulation vs render). All current
- * glyph shapes are filled primitives, so a single [ShapeRenderer.ShapeType.Filled] batch covers them;
- * colours are set per glyph via the float overload (no per-frame `Color` allocation).
+ * hidden contact draws its sprite. Render reads state only — no simulation here.
  */
-class WorldObjectRenderer : Disposable {
-    private val shapeRenderer = ShapeRenderer()
+class WorldObjectRenderer(
+    private val assets: GameAssets,
+) : Disposable {
+    private val batch = SpriteBatch()
 
     fun render(
         camera: Camera,
@@ -36,13 +39,13 @@ class WorldObjectRenderer : Disposable {
         revealedContacts: Set<PoiId>,
     ) {
         if (pois.isEmpty()) return
-        shapeRenderer.projectionMatrix = camera.combined
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        batch.projectionMatrix = camera.combined
+        batch.begin()
         for (poi in pois) {
             if (!isVisible(poi, revealedContacts)) continue
             drawGlyph(poi.position.x, poi.position.y, WorldGlyphs.forPoi(poi))
         }
-        shapeRenderer.end()
+        batch.end()
     }
 
     /**
@@ -59,33 +62,14 @@ class WorldObjectRenderer : Disposable {
         y: Float,
         glyph: WorldGlyph,
     ) {
-        shapeRenderer.setColor(glyph.red, glyph.green, glyph.blue, glyph.alpha)
+        val region = assets.region(glyph.regionName)
         val s = glyph.sizeWorldUnits
-        when (glyph.shape) {
-            GlyphShape.DIAMOND -> {
-                // Two triangles meeting at the centre — reproduces GateRenderer's old gate marker.
-                shapeRenderer.triangle(x, y + s, x - s, y, x + s, y)
-                shapeRenderer.triangle(x, y - s, x - s, y, x + s, y)
-            }
-            GlyphShape.BOX -> {
-                // Filled square centred on the position (station / revealed hidden-contact placeholder).
-                shapeRenderer.rect(x - s, y - s, s * 2f, s * 2f)
-            }
-            GlyphShape.ROCK_CLUSTER -> {
-                // Three filled rocks — reproduces AsteroidFieldRenderer's old cluster around the centre.
-                shapeRenderer.circle(x, y, s, ROCK_SEGMENTS)
-                shapeRenderer.circle(x - ROCK_OFFSET, y + ROCK_OFFSET, s * 0.6f, ROCK_SEGMENTS)
-                shapeRenderer.circle(x + ROCK_OFFSET, y - ROCK_OFFSET * 0.5f, s * 0.7f, ROCK_SEGMENTS)
-            }
-        }
+        // Centre the sprite on the POI position at its world size (full extent = 2 × half-extent),
+        // preserving the authored centre pivot so positions/collision/camera are unchanged (AC#4).
+        batch.draw(region, x - s, y - s, s * 2f, s * 2f)
     }
 
     override fun dispose() {
-        shapeRenderer.dispose()
-    }
-
-    private companion object {
-        const val ROCK_SEGMENTS = 16
-        const val ROCK_OFFSET = 34f
+        batch.dispose()
     }
 }

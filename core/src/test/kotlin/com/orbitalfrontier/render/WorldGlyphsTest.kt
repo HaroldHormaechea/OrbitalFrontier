@@ -23,6 +23,11 @@ import org.junit.Test
  * something" guarantee per concrete [Poi] subtype, plus the station-label and hot-path-caching
  * properties the review called out.
  *
+ * UC27: the glyph descriptor swapped its generated `GlyphShape` + RGBA floats for an atlas [WorldGlyph.regionName]
+ * (an [AtlasRegions] constant). These assertions follow the API change — they verify each POI resolves to the
+ * **right atlas region** and that its authored **world size is preserved** (AC#4 — positions/collision/camera
+ * unchanged) — instead of the old shape/colour checks. The station-label contract (ADR-0015) is unchanged.
+ *
  * Representative instances mirror how existing world/economy tests construct POI fixtures
  * (e.g. DockingTest's `Station(PoiId(...), Vec2(...), "Name")`, MiningTest's `AsteroidField(...)`).
  *
@@ -60,12 +65,15 @@ class WorldGlyphsTest {
             position = Vec2(0f, 0f),
         )
 
-    /** Asserts the glyph is a "real" graphic: a non-null shape and a strictly positive world size. */
+    /** Asserts the glyph is a "real" graphic: a non-blank atlas region name and a strictly positive size. */
     private fun assertRendersSomething(poi: Poi) {
         val glyph = WorldGlyphs.forPoi(poi)
         assertNotNull("forPoi must return a glyph for ${poi::class.simpleName}", glyph)
-        // GlyphShape is a non-null enum value — every glyph names a concrete primitive to draw.
-        assertNotNull("glyph for ${poi::class.simpleName} must name a shape", glyph.shape)
+        // Every glyph now names an atlas region — a non-blank name is the "renders something" guarantee.
+        assertTrue(
+            "glyph for ${poi::class.simpleName} must name a non-blank atlas region, was '${glyph.regionName}'",
+            glyph.regionName.isNotBlank(),
+        )
         assertTrue(
             "glyph for ${poi::class.simpleName} must have a positive world size, was ${glyph.sizeWorldUnits}",
             glyph.sizeWorldUnits > 0f,
@@ -92,6 +100,50 @@ class WorldGlyphsTest {
     @Test
     fun hiddenContact_rendersSomething() {
         assertRendersSomething(hiddenContact())
+    }
+
+    // --- Each POI resolves to its delivered design-system atlas region (AC#4) ---
+
+    @Test
+    fun jumpGate_resolvesToGateRegion() {
+        assertEquals(AtlasRegions.JUMP_GATE, WorldGlyphs.forPoi(jumpGate()).regionName)
+    }
+
+    @Test
+    fun station_resolvesToStationRegion() {
+        assertEquals(AtlasRegions.STATION, WorldGlyphs.forPoi(station()).regionName)
+    }
+
+    @Test
+    fun asteroidField_resolvesToAsteroidRegion() {
+        assertEquals(AtlasRegions.ASTEROID_FIELD, WorldGlyphs.forPoi(asteroidField()).regionName)
+    }
+
+    @Test
+    fun hiddenContact_resolvesToContactRegion() {
+        assertEquals(AtlasRegions.CONTACT_HIDDEN, WorldGlyphs.forPoi(hiddenContact()).regionName)
+    }
+
+    @Test
+    fun everyGlyphRegionIsADeclaredAtlasRegion() {
+        val pois: List<Poi> = listOf(jumpGate(), station(), asteroidField(), hiddenContact())
+        for (poi in pois) {
+            val region = WorldGlyphs.forPoi(poi).regionName
+            assertTrue(
+                "glyph region '$region' for ${poi::class.simpleName} must be a declared AtlasRegions constant",
+                region in AtlasRegions.ALL,
+            )
+        }
+    }
+
+    // --- World-unit sizes are preserved across the art swap so geometry is unchanged (AC#4) ---
+
+    @Test
+    fun authoredWorldSizesArePreserved() {
+        assertEquals("gate world size", 28f, WorldGlyphs.forPoi(jumpGate()).sizeWorldUnits, 0f)
+        assertEquals("station world size", 22f, WorldGlyphs.forPoi(station()).sizeWorldUnits, 0f)
+        assertEquals("asteroid world size", 26f, WorldGlyphs.forPoi(asteroidField()).sizeWorldUnits, 0f)
+        assertEquals("contact world size", 16f, WorldGlyphs.forPoi(hiddenContact()).sizeWorldUnits, 0f)
     }
 
     // --- Station label: the reported bug was stations rendering as nothing; their glyph must carry name ---
@@ -147,20 +199,5 @@ class WorldGlyphsTest {
             WorldGlyphs.forPoi(hiddenContact()),
             WorldGlyphs.forPoi(hiddenContact()),
         )
-    }
-
-    // --- Glyph descriptors are well-formed colours (RGBA components in [0,1]) ---
-
-    @Test
-    fun allGlyphColourComponentsAreInUnitRange() {
-        val pois: List<Poi> = listOf(jumpGate(), station(), asteroidField(), hiddenContact())
-        for (poi in pois) {
-            val g = WorldGlyphs.forPoi(poi)
-            val name = poi::class.simpleName
-            assertTrue("$name red in [0,1], was ${g.red}", g.red in 0f..1f)
-            assertTrue("$name green in [0,1], was ${g.green}", g.green in 0f..1f)
-            assertTrue("$name blue in [0,1], was ${g.blue}", g.blue in 0f..1f)
-            assertTrue("$name alpha in [0,1], was ${g.alpha}", g.alpha in 0f..1f)
-        }
     }
 }

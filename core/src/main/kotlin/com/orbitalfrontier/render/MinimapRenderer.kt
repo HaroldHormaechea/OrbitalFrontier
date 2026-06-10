@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
@@ -32,12 +33,17 @@ import com.orbitalfrontier.world.Transponder
  *
  * The minimap renders against the [Contact] capability, not concrete POI types (the Open/Closed
  * seam, coding-guidelines § O): it filters the sector's POIs to those that are contacts and draws each
- * by its [ContactKind] — a station as a filled square, a gate as the existing dot, a scanned hidden
- * contact as a small triangle. A [Transponder] (gate/station) is always drawn; a hidden contact
+ * by its [ContactKind]. A [Transponder] (gate/station) is always drawn; a hidden contact
  * (UC10) is drawn only once its id is in [revealedContacts]. A new contact kind shows up by extending
  * this marker switch, with no change to the world model.
+ *
+ * UC27 (AC#5): the panel + border stay [ShapeRenderer] primitives (re-themed to the design-system palette,
+ * AC#8) and are drawn **first**; the markers are then the design-system `mm-*` sprites (gate/station/contact
+ * + the ship's own `mm-player`) drawn in a **separate** [SpriteBatch] pass. The shared [GameAssets] atlas is
+ * **borrowed** (never disposed here); the marker regions are resolved once at construction.
  */
 class MinimapRenderer(
+    private val assets: GameAssets,
     private val sizePx: Float = DEFAULT_SIZE,
     private val marginPx: Float = DEFAULT_MARGIN,
     private val uiScale: Float = UiScale.factor,
@@ -50,9 +56,16 @@ class MinimapRenderer(
     // the small HUD minimap, not compete with the HUD readouts. GlyphLayout measures each name once per
     // draw so the label can be centred over its marker; no per-frame String/StringBuilder is allocated
     // (the name is read straight off the POI), protecting the 60 FPS budget (AC#4, AC perf).
+    // UC27: the same batch also draws the mm-* marker sprites (one begin/end for markers then labels).
     private val batch = SpriteBatch()
     private val labelFont = BitmapFont().apply { data.setScale(uiScale * LABEL_FONT_SCALE) }
     private val glyphLayout = GlyphLayout()
+
+    // UC27: marker sprites resolved once (borrowed atlas). mm-player is the ship's own marker.
+    private val gateRegion: TextureRegion = assets.region(AtlasRegions.MM_GATE)
+    private val stationRegion: TextureRegion = assets.region(AtlasRegions.MM_STATION)
+    private val contactRegion: TextureRegion = assets.region(AtlasRegions.MM_CONTACT)
+    private val playerRegion: TextureRegion = assets.region(AtlasRegions.MM_PLAYER)
 
     /**
      * The minimap panel rectangle in **world units** for the given world-unit viewport and reserved
@@ -106,6 +119,8 @@ class MinimapRenderer(
         // markers and clampToPanel derive from the fitted size, so content tracks the panel unchanged.
         val half = size / 2f - padding
         val scale = if (contentExtent > 0f) half / contentExtent else 0f
+        val marker = MARKER_DIAMETER * uiScale
+        val markerHalf = marker / 2f
 
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
         shapeRenderer.projectionMatrix = projection
@@ -113,64 +128,51 @@ class MinimapRenderer(
         Gdx.gl.glEnable(GL20.GL_BLEND)
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
 
-        // Translucent backing panel.
+        // UC27: panel + border first (ShapeRenderer, re-themed to the palette), then the mm-* marker
+        // sprites in a separate SpriteBatch pass on top.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         shapeRenderer.color = PANEL_COLOR
         shapeRenderer.rect(originX, originY, size, size)
         shapeRenderer.end()
 
-        // Contact markers (one per visible contact, styled by contact kind) + ship marker. A
-        // Transponder (gate/station) is always visible; a hidden contact (UC10) is drawn only once its
-        // id is in revealedContacts.
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        for (poi in pois) {
-            if (poi !is Contact) continue
-            if (poi !is Transponder && poi.id !in revealedContacts) continue
-            val (x, y) = clampToPanel(centerX, centerY, half, poi.position, scale)
-            when (poi.contactKind) {
-                ContactKind.GATE -> {
-                    shapeRenderer.color = GATE_COLOR
-                    shapeRenderer.circle(x, y, GATE_MARKER_RADIUS * uiScale)
-                }
-                ContactKind.STATION -> {
-                    shapeRenderer.color = STATION_COLOR
-                    // Filled square centred on the marker position, distinct from the gate dot.
-                    val r = STATION_MARKER_RADIUS * uiScale
-                    shapeRenderer.rect(x - r, y - r, r * 2f, r * 2f)
-                }
-                ContactKind.SHIP -> {
-                    shapeRenderer.color = CONTACT_COLOR
-                    // An upward triangle centred on the marker, distinct from the gate dot/station square.
-                    val r = CONTACT_MARKER_RADIUS * uiScale
-                    shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
-                }
-            }
-        }
-        shapeRenderer.color = SHIP_COLOR
-        val (sx, sy) = clampToPanel(centerX, centerY, half, shipPosition, scale)
-        shapeRenderer.circle(sx, sy, SHIP_MARKER_RADIUS * uiScale)
-        shapeRenderer.end()
-
-        // Name labels (UC24): re-walk the same markers and draw each labelled POI's name centred just
-        // above its marker, so the label tracks the (clamped) marker position. MapLabels.shouldLabel
-        // gates this to stations on the cluttered minimap; the marker draw above is untouched.
-        batch.projectionMatrix = projection
-        labelFont.color = LABEL_COLOR
-        batch.begin()
-        for (poi in pois) {
-            if (!MapLabels.shouldLabel(poi, revealedContacts, MapLabels.Surface.MINIMAP)) continue
-            val (lx, ly) = clampToPanel(centerX, centerY, half, poi.position, scale)
-            glyphLayout.setText(labelFont, (poi as Named).displayName)
-            val labelY = ly + STATION_MARKER_RADIUS * uiScale + LABEL_GAP * uiScale + glyphLayout.height
-            labelFont.draw(batch, glyphLayout, lx - glyphLayout.width / 2f, labelY)
-        }
-        batch.end()
-
-        // Panel border.
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
         shapeRenderer.color = BORDER_COLOR
         shapeRenderer.rect(originX, originY, size, size)
         shapeRenderer.end()
+
+        // Marker sprites + name labels share one batch pass. A Transponder (gate/station) is always
+        // visible; a hidden contact (UC10) is drawn only once its id is in revealedContacts.
+        batch.projectionMatrix = projection
+        batch.begin()
+        batch.color = Color.WHITE
+        for (poi in pois) {
+            if (poi !is Contact) continue
+            if (poi !is Transponder && poi.id !in revealedContacts) continue
+            val region =
+                when (poi.contactKind) {
+                    ContactKind.GATE -> gateRegion
+                    ContactKind.STATION -> stationRegion
+                    ContactKind.SHIP -> contactRegion
+                }
+            val (x, y) = clampToPanel(centerX, centerY, half, poi.position, scale)
+            batch.draw(region, x - markerHalf, y - markerHalf, marker, marker)
+        }
+        // The ship's own marker (mm-player).
+        val (sx, sy) = clampToPanel(centerX, centerY, half, shipPosition, scale)
+        batch.draw(playerRegion, sx - markerHalf, sy - markerHalf, marker, marker)
+
+        // Name labels (UC24): re-walk the same markers and draw each labelled POI's name centred just
+        // above its marker, so the label tracks the (clamped) marker position. MapLabels.shouldLabel
+        // gates this to stations on the cluttered minimap.
+        labelFont.color = LABEL_COLOR
+        for (poi in pois) {
+            if (!MapLabels.shouldLabel(poi, revealedContacts, MapLabels.Surface.MINIMAP)) continue
+            val (lx, ly) = clampToPanel(centerX, centerY, half, poi.position, scale)
+            glyphLayout.setText(labelFont, (poi as Named).displayName)
+            val labelY = ly + markerHalf + LABEL_GAP * uiScale + glyphLayout.height
+            labelFont.draw(batch, glyphLayout, lx - glyphLayout.width / 2f, labelY)
+        }
+        batch.end()
 
         Gdx.gl.glDisable(GL20.GL_BLEND)
     }
@@ -200,30 +202,24 @@ class MinimapRenderer(
 
         // Fit-to-corner bounds (world units, UC22). The panel side is the height free above the bottom
         // controls, clamped to [MIN_SIZE, DEFAULT_SIZE] and kept CONTROL_GAP clear of those controls.
-        // At the minimum supported size (1080px landscape ≈ 540 world units, UiScale.factor = 2) the
-        // fitted side lands between these bounds, so the panel stays clear of the action cluster.
         const val MIN_SIZE = 120f
         const val CONTROL_GAP = 16f
         const val PADDING = 12f
-        const val GATE_MARKER_RADIUS = 4f
-        const val STATION_MARKER_RADIUS = 4f
-        const val CONTACT_MARKER_RADIUS = 4f
-        const val SHIP_MARKER_RADIUS = 3f
+
+        // UC27: a single marker sprite size for every mm-* marker (base world-unit diameter, ×uiScale at
+        // the use site), sized so the sprites stay legible at minimap scale (AC#5).
+        const val MARKER_DIAMETER = 13f
 
         // UC24 labels: a smaller base than the HUD font (which is ×uiScale) so minimap names read as
         // secondary annotations; LABEL_GAP is the world-unit clearance between marker and label baseline.
         const val LABEL_FONT_SCALE = 0.6f
         const val LABEL_GAP = 3f
-        val PANEL_COLOR = Color(0.05f, 0.07f, 0.12f, 0.55f)
-        val BORDER_COLOR = Color(0.4f, 0.5f, 0.65f, 0.9f)
-        val GATE_COLOR = Color(0.4f, 0.85f, 1f, 1f)
-        val STATION_COLOR = Color(0.5f, 1f, 0.6f, 1f)
 
-        // Revealed hidden contacts (UC10): a hostile-leaning red, distinct from gates/stations/ship.
-        val CONTACT_COLOR = Color(1f, 0.4f, 0.4f, 1f)
-        val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
+        // UC27 palette (AC#8): a translucent void surface panel with a cold-tech cyan hairline border.
+        val PANEL_COLOR: Color = Color(Palette.VOID_800).apply { a = 0.55f }
+        val BORDER_COLOR: Color = Color(Palette.CYAN_600).apply { a = 0.9f }
 
-        // Label text: a soft near-white, legible over the translucent panel without glaring (AC#4).
-        val LABEL_COLOR = Color(0.9f, 0.95f, 1f, 1f)
+        // Label text: high-emphasis steel, legible over the translucent panel without glaring (AC#4).
+        val LABEL_COLOR: Color = Palette.STEEL_050
     }
 }

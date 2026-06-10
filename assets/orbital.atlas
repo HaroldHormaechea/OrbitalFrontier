@@ -1,0 +1,194 @@
+orbital.png
+size: 1024,748
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+action-fire
+  rotate: false
+  xy: 740, 260
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+action-dock
+  rotate: false
+  xy: 870, 260
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+action-mine
+  rotate: false
+  xy: 2, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+action-scan
+  rotate: false
+  xy: 132, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+action-radio
+  rotate: false
+  xy: 262, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+action-point-and-go
+  rotate: false
+  xy: 392, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+joystick-base
+  rotate: false
+  xy: 518, 260
+  size: 220, 220
+  orig: 220, 220
+  offset: 0, 0
+  index: -1
+joystick-knob
+  rotate: false
+  xy: 912, 518
+  size: 96, 96
+  orig: 96, 96
+  offset: 0, 0
+  index: -1
+ship-player
+  rotate: false
+  xy: 2, 2
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+ship-hostile
+  rotate: false
+  xy: 260, 2
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+station
+  rotate: false
+  xy: 518, 2
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+asteroid-field
+  rotate: false
+  xy: 2, 260
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+jump-gate
+  rotate: false
+  xy: 260, 260
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+contact-hidden
+  rotate: false
+  xy: 522, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+projectile
+  rotate: false
+  xy: 296, 648
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+mm-player
+  rotate: false
+  xy: 494, 648
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+mm-station
+  rotate: false
+  xy: 528, 648
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+mm-gate
+  rotate: false
+  xy: 562, 648
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+mm-asteroid
+  rotate: false
+  xy: 596, 648
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+mm-contact
+  rotate: false
+  xy: 630, 648
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+module-healthy
+  rotate: false
+  xy: 2, 648
+  size: 96, 96
+  orig: 96, 96
+  offset: 0, 0
+  index: -1
+module-warn
+  rotate: false
+  xy: 100, 648
+  size: 96, 96
+  orig: 96, 96
+  offset: 0, 0
+  index: -1
+module-critical
+  rotate: false
+  xy: 198, 648
+  size: 96, 96
+  orig: 96, 96
+  offset: 0, 0
+  index: -1
+floor-tile
+  rotate: false
+  xy: 362, 648
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+wall-tile
+  rotate: false
+  xy: 428, 648
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+avatar-player
+  rotate: false
+  xy: 652, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+npc-shopkeeper
+  rotate: false
+  xy: 782, 518
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
