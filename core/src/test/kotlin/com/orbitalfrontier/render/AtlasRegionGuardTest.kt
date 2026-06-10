@@ -85,10 +85,11 @@ class AtlasRegionGuardTest {
     private fun readAtlasText(): String = locateAtlas().readText()
 
     private fun locateAtlas(): File {
+        // Candidate roots: repo root, then core/ (the usual :core:test working dir), then one level deeper.
         val candidates =
             listOf(
-                File(ATLAS_RELATIVE), // run from repo root
-                File("..", ATLAS_RELATIVE), // run from core/ (the usual :core:test working dir)
+                File(ATLAS_RELATIVE),
+                File("..", ATLAS_RELATIVE),
                 File("../..", ATLAS_RELATIVE),
             )
         return candidates.firstOrNull { it.isFile }

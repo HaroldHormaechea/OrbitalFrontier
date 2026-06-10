@@ -102,7 +102,12 @@ class SpriteBackedRenderersGuardTest {
         }
         // All six action-arc glyph sprites (AC#2) — FIRE included.
         for (region in listOf(
-            "ACTION_FIRE", "ACTION_DOCK", "ACTION_MINE", "ACTION_SCAN", "ACTION_RADIO", "ACTION_POINT_AND_GO",
+            "ACTION_FIRE",
+            "ACTION_DOCK",
+            "ACTION_MINE",
+            "ACTION_SCAN",
+            "ACTION_RADIO",
+            "ACTION_POINT_AND_GO",
         )) {
             assertTrue("skin must map a glyph to AtlasRegions.$region (AC#2)", code.contains("AtlasRegions.$region"))
         }
@@ -110,11 +115,9 @@ class SpriteBackedRenderersGuardTest {
 
     // --- source location helpers (mirror NoBox2DGuardTest's tolerant candidate-root approach) ---
 
-    private fun renderSource(fileName: String): String =
-        locateMainSource("render/$fileName").readText()
+    private fun renderSource(fileName: String): String = locateMainSource("render/$fileName").readText()
 
-    private fun controlsSkinSource(fileName: String): String =
-        locateMainSource("screen/controls/$fileName").readText()
+    private fun controlsSkinSource(fileName: String): String = locateMainSource("screen/controls/$fileName").readText()
 
     private fun locateMainSource(relativeToPackageRoot: String): File {
         val relative = "src/main/kotlin/com/orbitalfrontier/$relativeToPackageRoot"

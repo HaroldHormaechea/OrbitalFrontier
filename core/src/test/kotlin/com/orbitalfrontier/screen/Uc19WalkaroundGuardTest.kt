@@ -21,7 +21,10 @@ import java.io.File
  * `StationInteriorTest`, `WalkaroundModelTest`):
  *  - **AC#1** — EXIT SHIP is purely additive: every existing hub service row is retained AND a
  *    defaulted `onDisembark` hook + an "EXIT SHIP" row are added.
- *  - **AC#3** — the avatar is drawn as a ball with a facing dot derived from `avatar.facing`.
+ *  - **AC#3** — the avatar is drawn in-world from the player sprite. (UC27 AC#7 superseded UC19's
+ *    generated ball + facing-dot avatar with the design-system `avatar-player` / `npc-shopkeeper` /
+ *    `floor-tile` / `wall-tile` atlas sprites; this guard now pins the sprite path. The pure facing
+ *    *model* — `avatar.facing` — is unchanged and covered by `WalkaroundModelTest`.)
  *  - **AC#6** — INTERACT is proximity-gated (visible only near the shopkeeper) and routes to the
  *    EXISTING `TradeScreen`; RE-BOARD is always present.
  *  - **AC#7** — re-board restores the docked state: the walk-around screen is decoupled from world/
@@ -51,14 +54,34 @@ class Uc19WalkaroundGuardTest {
         )
     }
 
-    // --- AC#3: avatar drawn as a ball + facing dot -----------------------------------------------
+    // --- AC#3 (UC27 AC#7): avatar + scene drawn from the design-system sprites -------------------
 
     @Test
-    fun `the renderer draws the avatar as a circle with a facing dot`() {
-        assertTrue("AC#3: the avatar body is a circle", RENDERER_SOURCE.contains("circle("))
+    fun `the renderer draws the avatar and shopkeeper from design-system sprites`() {
+        // UC27 (AC#7) replaced UC19's generated ball + facing-dot avatar with the design-system sprites.
         assertTrue(
-            "AC#3: the facing dot must be derived from the avatar's facing direction",
-            RENDERER_SOURCE.contains("avatar.facing.x") && RENDERER_SOURCE.contains("avatar.facing.y"),
+            "UC27 AC#7: the player avatar is drawn from the avatar-player atlas sprite",
+            RENDERER_SOURCE.contains("AtlasRegions.AVATAR_PLAYER"),
+        )
+        assertTrue(
+            "UC27 AC#7: the shopkeeper is drawn from the npc-shopkeeper atlas sprite",
+            RENDERER_SOURCE.contains("AtlasRegions.NPC_SHOPKEEPER"),
+        )
+        assertTrue(
+            "AC#3: the avatar sprite is positioned at the avatar's world position",
+            RENDERER_SOURCE.contains("avatar.position.x") && RENDERER_SOURCE.contains("avatar.position.y"),
+        )
+    }
+
+    @Test
+    fun `the walkaround scene is tiled from the floor and wall sprites`() {
+        assertTrue(
+            "UC27 AC#7: the walkable floor is drawn from the floor-tile atlas sprite",
+            RENDERER_SOURCE.contains("AtlasRegions.FLOOR_TILE"),
+        )
+        assertTrue(
+            "UC27 AC#7: the area boundary is framed from the wall-tile atlas sprite",
+            RENDERER_SOURCE.contains("AtlasRegions.WALL_TILE"),
         )
     }
 
