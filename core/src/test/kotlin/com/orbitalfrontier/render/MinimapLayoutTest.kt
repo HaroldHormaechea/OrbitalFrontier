@@ -44,10 +44,12 @@ class MinimapLayoutTest {
         val rect = panel(vpWidth = MIN_VP_WIDTH, vpHeight = MIN_VP_HEIGHT)
 
         // Fitted side: (vpHeight - margin - reservedBottom - gap) clamped — lands in (minSize, maxSize).
-        assertEquals("fitted side at the 540-world floor", 140f, rect.width, EPS)
+        // UC26 shrank the arc footprint 336 -> 304, so reservedBottom drops 360 -> 328 and the fitted side
+        // grows 140 -> 172 (= 540 - 24 - 328 - 16, still inside [120, 180]).
+        assertEquals("fitted side at the 540-world floor", 172f, rect.width, EPS)
         assertTrue("fitted side stays within [MIN_SIZE, DEFAULT_SIZE]", rect.width in MIN_SIZE..DEFAULT_SIZE)
 
-        // AC#3: clear of the action cluster on the right edge (the worst-case 336-tall right control).
+        // AC#3: clear of the action cluster on the right edge (the worst-case 304-tall right control).
         assertFalse("AC#3: panel must not overlap the action cluster", rect.overlaps(actionClusterRight(MIN_VP_WIDTH)))
         // AC#2: clear of the joystick too (whichever control handedness puts on the right edge).
         assertFalse("AC#2: panel must not overlap the joystick", rect.overlaps(joystickRight(MIN_VP_WIDTH)))
@@ -103,11 +105,12 @@ class MinimapLayoutTest {
     // --- AC#3 (drift guard): the reservation source equals the real cluster height -----------------
 
     @Test
-    fun `ActionCluster LAYOUT_HEIGHT is the expected 336 reservation`() {
+    fun `ActionCluster LAYOUT_HEIGHT is the expected 304 reservation`() {
         // The minimap reserves bottomControlBand() = MARGIN + max(JOYSTICK_SIZE, LAYOUT_HEIGHT). If the
         // cluster grows/shrinks, this constant must track it (its prefHeight equality is pinned in the
         // GL-bound source guard); pinning the value here catches a silent drift in the reservation.
-        assertEquals("ActionCluster.LAYOUT_HEIGHT must stay 336 (3 rows of 96 + 2*8 pad)", 336f, ActionCluster.LAYOUT_HEIGHT, EPS)
+        // UC26: the arc footprint is RADIUS (240) + BUTTON_DIAMETER (64) = 304 (was a 336-tall stack).
+        assertEquals("ActionCluster.LAYOUT_HEIGHT must stay 304 (RADIUS 240 + BUTTON_DIAMETER 64)", 304f, ActionCluster.LAYOUT_HEIGHT, EPS)
         // And it must be the larger of the two bottom controls, i.e. the value that drives the reserve.
         assertTrue("the cluster is the worst-case bottom control", ActionCluster.LAYOUT_HEIGHT >= JOYSTICK_SIZE)
         assertEquals("reservedBottom is MARGIN + the worst-case control", RESERVED_BOTTOM, MARGIN + ActionCluster.LAYOUT_HEIGHT, EPS)
@@ -133,8 +136,9 @@ class MinimapLayoutTest {
         const val MIN_VP_WIDTH = 960f
         const val MIN_VP_HEIGHT = 540f
 
-        // The action cluster's laid-out width: one column of FIRE_SIZE (96) + 2*BUTTON_PAD (8) = 112.
-        const val CLUSTER_WIDTH = 112f
+        // UC26: the action arc footprint is a (RADIUS + BUTTON_DIAMETER) square, so its width equals
+        // LAYOUT_WIDTH (304). Referenced directly so the test can't drift from the real cluster footprint.
+        val CLUSTER_WIDTH = ActionCluster.LAYOUT_WIDTH
 
         fun panel(
             vpWidth: Float,

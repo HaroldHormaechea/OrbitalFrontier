@@ -29,17 +29,21 @@ import java.io.File
  *  - **AC#4 (map overlay)** — the debug arm panel hides with the other controls while the map is open.
  */
 class Uc25PointAndGoGuardTest {
-    // --- AC#4: the feature is constructed ONLY under `if (debug)` ------------------------------------
+    // --- AC#4: the feature is wired ONLY under `if (debug)` ------------------------------------------
+    // UC26 moved the arm toggle off its standalone panel onto a debug-only ARC button. The arc button is
+    // enabled (and its toggle callback + the world-tap processor are wired) only inside `if (debug)`, so a
+    // release build never surfaces the button and never constructs the tap processor.
 
     @Test
-    fun `the panel and button are only allocated in a debug build`() {
+    fun `the point-and-go arc button is enabled only in a debug build`() {
+        val initBlock = between(PLAY_SCREEN_SOURCE, "if (debug) {", "override fun show()")
         assertTrue(
-            "AC#4: the arm panel is null unless debug",
-            PLAY_SCREEN_SOURCE.contains("pointAndGoPanel: Table? = if (debug) Table() else null"),
+            "AC#4: the point-and-go arc button is made available only in debug",
+            initBlock.contains("actionCluster.setActionAvailable(ActionCluster.Action.POINT_AND_GO, true)"),
         )
         assertTrue(
-            "AC#4: the arm button is null unless debug",
-            PLAY_SCREEN_SOURCE.contains("pointAndGoButton: TextButton? = if (debug) TextButton("),
+            "AC#4: its toggle callback is wired only in debug",
+            initBlock.contains("actionCluster.onPointAndGoToggle ="),
         )
     }
 
@@ -47,10 +51,13 @@ class Uc25PointAndGoGuardTest {
     fun `all point-and-go wiring lives inside the debug-gated init block`() {
         val initBlock = between(PLAY_SCREEN_SOURCE, "if (debug) {", "override fun show()")
         assertTrue(
-            "AC#4: the arm button listener is wired only in debug",
+            "AC#4: the arm-toggle listener is wired only in debug",
             initBlock.contains("pointAndGoState = pointAndGoState.toggled()"),
         )
-        assertTrue("AC#4: the arm panel is added to the stage only in debug", initBlock.contains("stage.addActor(panel)"))
+        assertTrue(
+            "AC#4: the armed state is reflected on the arc button only in debug",
+            initBlock.contains("actionCluster.setPointAndGoArmed("),
+        )
         assertTrue("AC#4: the world-tap processor is registered only in debug", initBlock.contains("inputMultiplexer.addProcessor("))
     }
 
@@ -138,41 +145,32 @@ class Uc25PointAndGoGuardTest {
         )
     }
 
-    // --- bug fix: the panel Y is floored via PointAndGoPanelPlacement, not bottomControlBand() -------
+    // --- UC26: the standalone arm panel + its placement helper are retired -------------------------
+    // The UC25 fix lived on a standalone debug panel placed via the (now-deleted) PointAndGoPanelPlacement.
+    // UC26 retired that panel — the toggle is an arc button — so neither the helper nor a standalone
+    // panel-position function may survive anywhere in PlayScreen (a leftover would mean dead/half-migrated
+    // wiring). The toggle's reachability is now governed by the arc geometry (ActionArcLayoutTest).
 
     @Test
-    fun `positionPointAndGoPanel delegates placement to PointAndGoPanelPlacement_place`() {
-        val placement = section(PLAY_SCREEN_SOURCE, "private fun positionPointAndGoPanel(")
-        assertTrue(
-            "bug fix: positionPointAndGoPanel computes the panel rect via the pure placement helper",
-            placement.contains("PointAndGoPanelPlacement.place("),
-        )
-    }
-
-    @Test
-    fun `positionPointAndGoPanel no longer derives the panel Y from bottomControlBand`() {
-        val placement = section(PLAY_SCREEN_SOURCE, "private fun positionPointAndGoPanel(")
-        // The bug was anchoring the panel Y to bottomControlBand() (the TOP of the bottom band), which
-        // floated the toggle's hit-rect above the usable world area. The fix floors it at MARGIN via
-        // PointAndGoPanelPlacement instead, so the placement function must not reference the band at all.
+    fun `the retired standalone point-and-go panel and its placement helper are gone`() {
         assertFalse(
-            "bug fix: the panel placement must not be anchored to bottomControlBand() any more",
-            placement.contains("bottomControlBand()"),
+            "UC26: the standalone panel-placement helper must be fully removed",
+            PLAY_SCREEN_SOURCE.contains("PointAndGoPanelPlacement"),
         )
-        assertTrue(
-            "bug fix: the panel is floored at the bottom MARGIN (passed through to the placement helper)",
-            placement.contains("margin = MARGIN"),
+        assertFalse(
+            "UC26: there is no standalone positionPointAndGoPanel function any more",
+            PLAY_SCREEN_SOURCE.contains("positionPointAndGoPanel("),
         )
     }
 
-    // --- AC#4: the arm panel hides with the other controls while the map overlay is open ------------
+    // --- AC#4: the arc hosting the arm toggle hides with the other controls while the map is open ----
 
     @Test
-    fun `the debug arm panel hides while the map overlay is open`() {
+    fun `the action arc hosting the arm toggle hides while the map overlay is open`() {
         val render = section(PLAY_SCREEN_SOURCE, "override fun render(")
         assertTrue(
-            "AC#4: the arm panel hides with the rest of the controls while the map is open",
-            render.contains("pointAndGoPanel?.isVisible = false"),
+            "AC#4: the whole action arc (which now hosts the debug arm toggle) hides while the map is open",
+            render.contains("actionCluster.actor.isVisible = false"),
         )
     }
 

@@ -74,7 +74,9 @@ class Uc23MapOverlayGuardTest {
 
     @Test
     fun `tapping the dismiss actor dismisses the overlay via a consuming ClickListener`() {
-        val dismiss = between(PLAY_SCREEN_SOURCE, "mapDismissActor.addListener(", "actionCluster.actor.pack()")
+        // End anchor is the first stage.addActor(...) after the listener block. (UC26 removed the old
+        // `actionCluster.actor.pack()` anchor — the arc now uses a fixed footprint, not a packed Table.)
+        val dismiss = between(PLAY_SCREEN_SOURCE, "mapDismissActor.addListener(", "stage.addActor(joystick.actor)")
         // A ClickListener consumes touchDown by default, so the tap never leaks through to a flight
         // control under the 80%-opaque backdrop.
         assertTrue("AC#5: the dismiss actor carries a (consuming) ClickListener", dismiss.contains("ClickListener()"))

@@ -10,8 +10,8 @@ The player controls a single ship in a 2D top-down sector. Movement uses **inert
 drift** — the ship carries momentum — but to keep it easy on touch, releasing the
 controls makes the ship **decelerate smoothly to a stop** rather than coasting forever.
 The feel is deliberately **~50% arcade / 50% simulation**. Control is a **single
-movement joystick on the left** plus a set of **action controls on the right**;
-turreted weapons are **auto-aim and require crew** (so the player never manually aims
+movement joystick on the left** plus a **semicircular action arc in the bottom-right
+corner** (the action controls); turreted weapons are **auto-aim and require crew** (so the player never manually aims
 turrets — that would overload touch controls). A **settings option swaps the left/right
 layout** for handedness (e.g. left-handed players). This is the "Roam" pillar of the
 core loop.
@@ -19,7 +19,7 @@ core loop.
 ## Goals
 
 - Pick-up-and-play on a phone, but with momentum-based depth (not pure arcade snap).
-- Keep on-screen controls minimal — one movement stick + a small action cluster.
+- Keep on-screen controls minimal — one movement stick + a bottom-corner action arc.
 - Different ship configurations feel meaningfully different to fly (per-ship params).
 - Accessible: support left- and right-handed layouts.
 
@@ -34,10 +34,19 @@ simplifying control while preserving a sense of mass.
 - **Left — movement virtual joystick.** Sets the direction the ship moves/thrusts; the
   hull rotates toward that direction using the ship's rotation params (see open question
   on facing vs. vector).
-- **Right — action controls.** Buttons for ship actions (fire fixed/forward weapons,
-  activate abilities/devices, etc. — _TODO: enumerate the MVP action set_).
+- **Bottom-right — action arc.** A **semicircle of circular buttons** pivoting on the
+  bottom-right corner, each button a **generated icon glyph plus a text label**, laid out
+  at equal radius from the pivot so the set follows the natural sweep of a thumb. **FIRE**
+  is pinned to a fixed end of the arc and is **always present and enabled — including
+  during combat encounters**; the contextual actions (DOCK, MINE, SCAN, RADIO-offer
+  accept, and a debug-only point-and-go nav) appear only while available and the arc
+  **reflows to stay evenly spaced** as that set changes. Decision-relevant info that no
+  longer fits on a button (docked-station name, cargo fill, mission reward) shows in a
+  small **context-readout label** beside the arc. The arc reserves a fixed
+  `radius + button-diameter` (currently 304) square footprint so the minimap and HUD
+  layout above it never overlap it. No art pipeline yet — the glyphs are generated shapes.
 - **Handedness setting.** A configuration option mirrors the layout (movement stick on
-  the right, actions on the left) for left-handed players.
+  the right, action arc pivoting on the bottom-**left** corner) for left-handed players.
 
 **Weapons & turrets:**
 - **Fixed/forward weapons** fire along hull facing, triggered by an action control.
@@ -70,8 +79,8 @@ docked**; each ship has its own movement params, loadout, cargo, and fuel. See
 
 ## Player-facing behavior
 
-- **Left** movement joystick, **right** action-button cluster (swappable via the
-  handedness setting).
+- **Left** movement joystick, **bottom-right** semicircular action arc (swappable to the
+  bottom-left via the handedness setting).
 - **HUD:**
   - current **speed**
   - **heading** indicator
@@ -101,8 +110,9 @@ docked**; each ship has its own movement params, loadout, cargo, and fuel. See
 
 ## Open questions
 
-- **MVP action set:** exactly which right-side actions exist (fire fixed weapons,
-  boost/afterburner, special ability/device, dock/interact)?
+- **MVP action set:** the arc currently carries FIRE (always on) plus the contextual
+  DOCK, MINE, SCAN and RADIO-accept actions (and a debug-only point-and-go nav). Still
+  open: whether boost/afterburner or a special ability/device join the set.
 - **Crew:** source, per-ship capacity, crew-per-turret ratio, and whether anything
   besides turrets requires crew. → candidate for a dedicated Crew design note.
 - **Auto-aim targeting priority:** nearest hostile, player-designated target, or
