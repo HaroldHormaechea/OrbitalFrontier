@@ -1,0 +1,34 @@
+# Use Case 27: Integrate design-system art atlas and palette
+
+## Summary
+Replace Orbital Frontier's runtime-generated placeholder graphics with the delivered **Orbital Frontier Design System** art — a ready-to-use libGDX `TextureAtlas` (`orbital.atlas` + `orbital.png`, RGBA8888) plus launcher icons — and apply the design system's "used future / rusty metal" color palette to the HUD and screens. The atlas is loaded once through a shared, disposed-once asset holder, and the existing renderers and control skin are backed by its regions instead of generated pixmaps: the action-arc glyph buttons (FIRE/DOCK/MINE/SCAN/RADIO/POINT_AND_GO), the movement joystick (base + knob), world objects (player ship, hostile ship, station, asteroid field, jump gate, revealed hidden contact, projectile), minimap markers (player/station/gate/asteroid/contact), ship-schematic module blocks (healthy/warn/critical), and the on-foot walkaround tiles/avatars (floor, wall, player avatar, shopkeeper). The design token palette (void/steel surfaces, **amber** primary accent, **cyan** secondary, success/warning/danger status colors) is adopted for screen clear-colors, HUD text, panels, and control tints so the game matches the system. The Android launcher identity is added from the provided assets (adaptive icon foreground+background, legacy density mipmaps, Play Store icon, manifest reference). The built-in BitmapFont is retained.
+
+**Explicitly out of scope (deferred to follow-up use cases):** bundling the four custom webfonts (Chakra Petch / Saira Stencil One / Barlow Semi Condensed / Share Tech Mono) via gdx-freetype; and a pixel-perfect reconstruction of the Command Deck and Trade Terminal React layouts into new Scene2D screens. The existing screens are restyled via the palette + sprites, not rebuilt component-by-component. The React component library / web tooling in the bundle is reference only.
+
+## Acceptance Criteria
+1. `orbital.atlas` + `orbital.png` are bundled as a packaged game asset (placed where the Android module reads libGDX assets from) and loaded once via a single shared `TextureAtlas` (or `AssetManager`), disposed exactly once on shutdown; no per-frame texture/pixmap allocation is introduced.
+2. The action-arc buttons render the delivered glyph sprites (`action-fire`/`action-dock`/`action-mine`/`action-scan`/`action-radio`/`action-point-and-go`) instead of generated glyphs; FIRE is still always present and enabled; the pressed/active state stays readable.
+3. The movement joystick uses the `joystick-base` and `joystick-knob` sprites.
+4. World objects render their delivered sprites — `ship-player` (aligned to heading), `ship-hostile`, `station`, `asteroid-field`, `jump-gate`, revealed `contact-hidden`, `projectile` — replacing the generated shapes, with the existing world-unit sizes and center pivots preserved so positions/collision/camera are unchanged.
+5. Minimap markers use the `mm-player`/`mm-station`/`mm-gate`/`mm-asteroid`/`mm-contact` sprites and remain legible at minimap scale.
+6. Ship-schematic module blocks use the `module-healthy`/`module-warn`/`module-critical` sprites for the three health states.
+7. The walkaround prototype uses the `floor-tile`, `wall-tile`, `avatar-player`, and `npc-shopkeeper` sprites.
+8. The design-system palette is applied: screen background/clear-colors use the void/steel surface colors, the primary accent is amber and the secondary cyan, and status colors follow the tokens; no ad-hoc placeholder colors remain where a token applies. (Built-in BitmapFont retained.)
+9. The Android app ships the provided launcher icon: an adaptive icon (foreground + background) under `mipmap-anydpi-v26`, legacy density mipmaps (mdpi→xxxhdpi), `android:icon`/`android:roundIcon` set in the manifest, and the 512×512 Play Store icon stored in the repo.
+10. No regression: existing model/replay/guard tests stay green; tests cover the asset holder loading every required atlas region (a guard asserting each named region resolves) and the renderers/skin referencing atlas regions rather than generated pixmaps. `./gradlew :core:ktlintCheck :core:test` is green.
+11. Visual gate (mandatory): a rendered PlayScreen screenshot on the emulator shows the real ship/station/asteroid/gate sprites, the new action-arc glyph sprites, and the design-system palette; and the new launcher icon is visible in the launcher / app info.
+
+## Potential Pitfalls & Open Questions
+- **Asset wiring** — confirm where the Android module reads libGDX assets from (root `./assets/` vs `android/src/main/assets/`); `orbital.atlas`/`orbital.png` must end up packaged. The android build already sets `noCompress` for `atlas`/`png`, so the pipeline anticipates this.
+- **Headless tests can't create GL textures** — the region-existence guard test must parse the `.atlas` text (or use a headless/mock backend), not instantiate `Texture`/`TextureAtlas` on the JVM test thread. Keep real atlas loading on the GL thread.
+- **Pivots/sizes** — world sprites must match existing world-unit sizes (gate 28, asteroid 26, station 22, contact 16, …) and stay rotation-safe (no baked directional shadow/text) so rotation in-engine looks correct and gameplay geometry is unchanged.
+- **Texture ownership/dispose** — `PlaceholderControlsSkin` currently owns and disposes generated textures; moving to a shared atlas means a single owner and careful single dispose (no double-dispose, no disposing while a screen is still live).
+- **ShapeRenderer overlays** — some renderers draw vector overlays (e.g. dock/scan range rings); decide per element whether a sprite replaces it or the ring overlay stays. Keep gameplay-critical range rings unless the design replaces them.
+- **Binary assets into the repo** — source art lives outside the repo at the design-bundle path; the chosen files must be copied in (binary). Ensure `.gitignore` does not exclude `*.png`/`*.atlas` under the asset/`res` locations.
+
+## Original Description
+Fetch this design file, read its readme, and implement the relevant aspects of the design. (Claude Design handoff bundle "orbital-frontier-design-system": a libGDX texture atlas of game art, a "used future / rusty metal" color + typography token system, React HUD/Trade-Terminal prototypes, and Android launcher icons.) Implement the designs in this project.
+
+## Clarifications
+- Q: The bundle is large (atlas art + token system + React UI-kit prototypes + launcher). What is the relevant, shippable scope for the libGDX game?
+  A (scoped autonomously): Integrate the ready-to-use art atlas to replace placeholder graphics across all renderers and the control skin; apply the color palette to screens/HUD; add the Android launcher icon. Defer custom webfonts (gdx-freetype) and a pixel-perfect Scene2D rebuild of the Command Deck / Trade Terminal screens to later use cases.
