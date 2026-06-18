@@ -14,31 +14,25 @@ import com.orbitalfrontier.combat.CombatEvent
  */
 object GameNotifications {
     /** A completed inter-sector jump into [sectorName] (UC03). */
-    fun jumpCompleted(sectorName: String): GameNotification =
-        GameNotification(NotificationKind.JUMP_COMPLETED, "JUMPED TO $sectorName")
+    fun jumpCompleted(sectorName: String): GameNotification = GameNotification(NotificationKind.JUMP_COMPLETED, "JUMPED TO $sectorName")
 
     /** Docked at [stationName] (UC05). */
-    fun docked(stationName: String): GameNotification =
-        GameNotification(NotificationKind.DOCKED, "DOCKED: $stationName")
+    fun docked(stationName: String): GameNotification = GameNotification(NotificationKind.DOCKED, "DOCKED: $stationName")
 
     /** Returned to flight from a station (UC05). */
     fun undocked(): GameNotification = GameNotification(NotificationKind.UNDOCKED, "UNDOCKED")
 
     /** A mission offer was accepted (UC12). */
-    fun missionAccepted(): GameNotification =
-        GameNotification(NotificationKind.MISSION_ACCEPTED, "MISSION ACCEPTED")
+    fun missionAccepted(): GameNotification = GameNotification(NotificationKind.MISSION_ACCEPTED, "MISSION ACCEPTED")
 
     /** A mission was turned in / completed (UC12). */
-    fun missionCompleted(): GameNotification =
-        GameNotification(NotificationKind.MISSION_COMPLETED, "MISSION COMPLETE")
+    fun missionCompleted(): GameNotification = GameNotification(NotificationKind.MISSION_COMPLETED, "MISSION COMPLETE")
 
     /** A timed courier mission lapsed before turn-in (UC12). */
-    fun missionFailedTimeout(): GameNotification =
-        GameNotification(NotificationKind.MISSION_FAILED_TIMEOUT, "MISSION EXPIRED")
+    fun missionFailedTimeout(): GameNotification = GameNotification(NotificationKind.MISSION_FAILED_TIMEOUT, "MISSION EXPIRED")
 
     /** A hostile encounter began (UC13). */
-    fun enteredCombat(): GameNotification =
-        GameNotification(NotificationKind.ENTERED_COMBAT, "HOSTILES ENGAGED")
+    fun enteredCombat(): GameNotification = GameNotification(NotificationKind.ENTERED_COMBAT, "HOSTILES ENGAGED")
 
     /** The hostile encounter ended (UC13). */
     fun leftCombat(): GameNotification = GameNotification(NotificationKind.LEFT_COMBAT, "COMBAT ENDED")

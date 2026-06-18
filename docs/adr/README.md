@@ -33,6 +33,7 @@ still wins on any conflict â keep them in sync.
 | [0020](0020-audio-system.md) | Audio: event-driven AudioService port (pure core stays audio-free), libGDX impl in render/, looping thrust + added stopSfx, idempotent music, additive v14 settings migration, placeholder synthesised clips | Accepted |
 | [0021](0021-pause-overlay.md) | In-flight pause overlay: pure PauseState gate freezes the per-frame advance (inverse of the LIVE map overlay), Android back → pause, held-input + THRUST neutralization, durable quit-to-main-menu | Accepted |
 | [0022](0022-ship-destruction-screen.md) | Ship-destruction screen: respawn-with-penalty (no permadeath), pure DestructionSummary + DestructionState gate nested under pause, durable onCriticalEvent flush (no schema bump), game-start fallback respawn | Accepted |
+| [0023](0023-notification-event-feed.md) | In-game notification feed: pure libGDX-free notify model (purity-guarded), two-level flood defense (per-tick combat→null + drop/refresh coalescing), event-driven enqueue from existing seams, top-centre toast band, transient-MVP / persistent-feed deferred | Accepted |
 
 ## Adding an ADR
 
