@@ -43,7 +43,7 @@ Statuses:
 | 31 | [use-cases/31-audio-system.md](use-cases/31-audio-system.md) | Audio system — SFX & music | done | 2026-06-18 |
 | 32 | [use-cases/32-pause-overlay.md](use-cases/32-pause-overlay.md) | Pause overlay | done | 2026-06-18 |
 | 33 | [use-cases/33-ship-destruction-screen.md](use-cases/33-ship-destruction-screen.md) | Ship-destruction / game-over feedback | done | 2026-06-18 |
-| 34 | [use-cases/34-expanded-flight-hud.md](use-cases/34-expanded-flight-hud.md) | Expanded flight HUD | pending | 2026-06-18 |
+| 34 | [use-cases/34-expanded-flight-hud.md](use-cases/34-expanded-flight-hud.md) | Expanded flight HUD | done | 2026-06-18 |
 | 35 | [use-cases/35-notification-event-feed.md](use-cases/35-notification-event-feed.md) | In-game notification / event feed | pending | 2026-06-18 |
 | 36 | [use-cases/36-tutorial-onboarding.md](use-cases/36-tutorial-onboarding.md) | First-run tutorial & onboarding | pending | 2026-06-18 |
 | 37 | [use-cases/37-settings-screen.md](use-cases/37-settings-screen.md) | Full settings screen | pending | 2026-06-18 |
