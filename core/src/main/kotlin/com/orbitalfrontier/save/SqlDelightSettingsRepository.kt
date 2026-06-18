@@ -101,10 +101,37 @@ class SqlDelightSettingsRepository(
         }
     }
 
+    override fun loadTutorialCompleted(): Boolean {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            // No row yet (fresh save) reads as "not completed" so the onboarding runs on first launch.
+            stored != null && stored.tutorial_completed != 0L
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load tutorial-completed flag; assuming not completed", e)
+            false
+        }
+    }
+
+    override fun saveTutorialCompleted(completed: Boolean) {
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the tutorial_completed column (handedness +
+                // audio columns untouched), mirroring the per-field discipline UC31 established.
+                seedDefaultSettingsRow()
+                queries.updateTutorialCompleted(if (completed) 1L else 0L)
+            }
+            logger.info(TAG, "Persisted tutorial_completed=$completed")
+        } catch (e: Exception) {
+            // Graceful degradation: keep the last good value, log, and do not crash the app.
+            logger.error(TAG, "Failed to persist tutorial_completed=$completed; last good value kept", e)
+        }
+    }
+
     /**
      * Seed the single settings row with defaults if it is absent (INSERT OR IGNORE). Idempotent and
      * side-effect-free on an existing row, so it is safe to call inside every write transaction; it
-     * guarantees the targeted UPDATE writes below always hit a row.
+     * guarantees the targeted UPDATE writes below always hit a row. `tutorial_completed` is omitted from
+     * the seed INSERT, so a freshly-seeded row takes its schema DEFAULT 0 ("tutorial not yet shown").
      */
     private fun seedDefaultSettingsRow() {
         queries.seedSettings(

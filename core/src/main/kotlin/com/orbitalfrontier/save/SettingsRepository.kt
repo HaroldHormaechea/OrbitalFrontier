@@ -40,4 +40,18 @@ interface SettingsRepository {
      * failure the last good value is left intact and the error is logged; this call does not throw.
      */
     fun saveAudioSettings(settings: AudioSettings)
+
+    /**
+     * Whether the first-run tutorial has already been shown (UC36 AC#3). `false` on a fresh save, a
+     * migrated pre-UC36 save, or an unreadable/corrupt row — so the onboarding runs by default and only
+     * a deliberately-persisted `true` suppresses it.
+     */
+    fun loadTutorialCompleted(): Boolean
+
+    /**
+     * Persist the first-run-tutorial [completed] flag atomically without touching the handedness or audio
+     * columns (UC36 AC#3). On failure the last good value is left intact and the error is logged; this
+     * call does not throw (autosave-style graceful degradation).
+     */
+    fun saveTutorialCompleted(completed: Boolean)
 }

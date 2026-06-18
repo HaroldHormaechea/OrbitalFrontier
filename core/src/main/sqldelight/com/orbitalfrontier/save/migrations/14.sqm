@@ -1,0 +1,21 @@
+-- Migration v14 -> v15 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v14 (UC31, ADR 0020) held meta + settings (handedness + the three audio columns) + the save header
+-- (game_state) + per-ship rows + cargo + ship_upgrade + ship_section_damage + field_deposit +
+-- revealed_contact + mission + reputation + owned_station + station_module. v15 (UC36, ADR 0024) adds
+-- the **first-run tutorial flag** to the single-row `settings` table:
+--
+--  1. `settings.tutorial_completed` — a new INTEGER column (0/1) recording whether the first-run
+--     onboarding has been shown, DEFAULT 0 (not yet completed).
+--
+-- A pre-UC36 save had no such flag, so a migrated `settings` row reads back at the default (0 = not
+-- completed). The practical effect is that a player who upgrades across this version is shown the
+-- tutorial once — acceptable, since the flag's job is only to stop it RE-triggering every launch (AC#3),
+-- and it is replayable from settings regardless. The new column's DEFAULT backfills the existing single
+-- row; handedness and the audio columns are untouched. ALTER TABLE ADD COLUMN is supported by the
+-- bundled SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe — the same rationale
+-- as every prior additive migration. All prior data is untouched.
+
+ALTER TABLE settings ADD COLUMN tutorial_completed INTEGER NOT NULL DEFAULT 0;
+
+UPDATE meta SET save_version = 15 WHERE id = 0;
