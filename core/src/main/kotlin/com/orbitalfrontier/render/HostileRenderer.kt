@@ -14,9 +14,11 @@ import com.orbitalfrontier.combat.ProjectileOwner
  * design-system `ship-hostile` sprite (rotated to its heading, mirroring [ShipRenderer]) and each in-flight
  * [com.orbitalfrontier.combat.Projectile] as the `projectile` sprite tinted by owner (player vs hostile).
  *
- * UC27 (AC#4): replaces the old generated triangle/dot with atlas sprites. The shared [GameAssets] atlas is
- * **borrowed** (never disposed here); this renderer owns only its own [SpriteBatch]. It only **reads** the
- * [CombatState] (render reads state — no simulation here) and is a no-op when combat is inactive.
+ * The hostile and projectile world half-extents come from [WorldSpriteSizes] (the per-type sizing single
+ * source of truth, ADR 0019) — [WorldSpriteSizes.HOSTILE] and [WorldSpriteSizes.PROJECTILE]. The shared
+ * [GameAssets] atlas is **borrowed** (never disposed here); this renderer owns only its own [SpriteBatch].
+ * It only **reads** the [CombatState] (render reads state — no simulation here) and is a no-op when combat
+ * is inactive.
  *
  * The batch colour is set to an owner tint for the projectile pass and **reset to white** before the hostile
  * pass so the pre-coloured hostile sprite draws untinted. [ROTATION_OFFSET_DEGREES] mirrors [ShipRenderer]'s
@@ -62,11 +64,11 @@ class HostileRenderer(
     }
 
     private companion object {
-        /** Half-extent of the hostile sprite in world units — unchanged from the old placeholder. */
-        const val SIZE = 18f
+        /** Half-extent of the hostile sprite in world units (per-type sizing SSOT, ADR 0019). */
+        const val SIZE = WorldSpriteSizes.HOSTILE
 
-        /** Half-extent of the projectile sprite — preserves the old shot radius (collision unchanged). */
-        const val SHOT_RADIUS = 5f
+        /** Half-extent of the projectile sprite (per-type sizing SSOT, ADR 0019); collision is model-owned. */
+        const val SHOT_RADIUS = WorldSpriteSizes.PROJECTILE
 
         /** Nose-up authoring offset; the knob for post-visual-gate heading correction (AC#11). */
         const val ROTATION_OFFSET_DEGREES = -90f

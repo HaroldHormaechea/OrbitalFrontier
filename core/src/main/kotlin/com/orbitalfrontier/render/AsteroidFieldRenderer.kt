@@ -10,11 +10,13 @@ import com.orbitalfrontier.world.AsteroidField
  * Draws each asteroid field's **mining-radius ring** in world space, using the follow camera's
  * projection (mirrors [GateRenderer]) — UC06 visual.
  *
- * Since ADR 0015 the field's **marker** (the rock cluster) is drawn by the shared [WorldObjectRenderer]
- * from the field's base [WorldGlyph], so every POI has a guaranteed in-world graphic; this renderer is
- * now the additive ring overlay showing where the mining circle is (the analogue of a gate's trigger
- * ring). Placeholder art until real asteroid sprites exist; it only reads [AsteroidField] data — no
- * simulation here (render reads state, per coding-guidelines).
+ * Since ADR 0015 the field's **marker** (the rock-cluster sprite) is drawn by the shared
+ * [WorldObjectRenderer] from the field's base [WorldGlyph], so every POI has a guaranteed in-world
+ * graphic. This renderer is the **intentional additive overlay** on top: the outline of the mining
+ * circle, showing the player where mining is in range (the analogue of a gate's trigger ring). The ring
+ * is a deliberate gameplay-range affordance, not placeholder art — it traces the model's
+ * [AsteroidField.miningRadius], which is independent of the marker sprite's visual size. It only reads
+ * [AsteroidField] data — no simulation here (render reads state, per coding-guidelines).
  */
 class AsteroidFieldRenderer : Disposable {
     private val shapeRenderer = ShapeRenderer()

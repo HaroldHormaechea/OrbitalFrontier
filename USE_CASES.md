@@ -39,7 +39,7 @@ Statuses:
 | 27 | [use-cases/27-integrate-design-system-art.md](use-cases/27-integrate-design-system-art.md) | Integrate design-system art atlas and palette | done | 2026-06-10 |
 | 28 | [use-cases/28-scalable-game-font.md](use-cases/28-scalable-game-font.md) | Scalable game font / real typography | done | 2026-06-18 |
 | 29 | [use-cases/29-final-ui-skin.md](use-cases/29-final-ui-skin.md) | Final UI skin / theme (replace placeholder skin) | done | 2026-06-18 |
-| 30 | [use-cases/30-final-sprite-art-world-rendering.md](use-cases/30-final-sprite-art-world-rendering.md) | Final sprite art for world rendering | pending | 2026-06-18 |
+| 30 | [use-cases/30-final-sprite-art-world-rendering.md](use-cases/30-final-sprite-art-world-rendering.md) | Final sprite art for world rendering | done | 2026-06-18 |
 | 31 | [use-cases/31-audio-system.md](use-cases/31-audio-system.md) | Audio system — SFX & music | pending | 2026-06-18 |
 | 32 | [use-cases/32-pause-overlay.md](use-cases/32-pause-overlay.md) | Pause overlay | pending | 2026-06-18 |
 | 33 | [use-cases/33-ship-destruction-screen.md](use-cases/33-ship-destruction-screen.md) | Ship-destruction / game-over feedback | pending | 2026-06-18 |

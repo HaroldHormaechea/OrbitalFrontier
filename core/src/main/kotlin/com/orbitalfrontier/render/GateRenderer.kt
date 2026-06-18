@@ -10,11 +10,12 @@ import com.orbitalfrontier.world.JumpGate
  * Draws each jump gate's **trigger-radius ring** in world space, using the follow camera's projection
  * (mirrors [ShipRenderer]/[StarfieldRenderer]) — UC03 AC#3 visual.
  *
- * Since ADR 0015 the gate's **marker** (the filled diamond) is drawn by the shared [WorldObjectRenderer]
- * from the gate's base [WorldGlyph], so every POI has a guaranteed in-world graphic; this renderer is now
- * the additive ring overlay on top, showing where the authored trigger circle is. Placeholder art until
- * real gate sprites exist; it only reads [JumpGate] data (no simulation here — render reads state, per
- * coding-guidelines).
+ * Since ADR 0015 the gate's **marker** (the gate sprite) is drawn by the shared [WorldObjectRenderer]
+ * from the gate's base [WorldGlyph], so every POI has a guaranteed in-world graphic. This renderer is the
+ * **intentional additive overlay** on top: the outline of the trigger circle, showing the player where a
+ * jump activates. The ring is a deliberate gameplay-range affordance, not placeholder art — it traces the
+ * model's [JumpGate.triggerRadius], which is independent of the marker sprite's visual size. It only reads
+ * [JumpGate] data (no simulation here — render reads state, per coding-guidelines).
  */
 class GateRenderer : Disposable {
     private val shapeRenderer = ShapeRenderer()

@@ -29,6 +29,7 @@ still wins on any conflict â keep them in sync.
 | [0016](0016-on-foot-station-mode.md) | On-foot station mode: transient non-persisted prototype, shop via existing TradeScreen | Accepted |
 | [0017](0017-typography-and-scalable-font.md) | Typography: pre-baked bitmap game font (JetBrains Mono OFL), bake-time-only freetype, downscaled at runtime | Accepted |
 | [0018](0018-ui-skin.md) | Finished UI skin: runtime palette-driven nine-patch chrome (rename PlaceholderControlsSkin → OrbitalUiSkin) | Accepted |
+| [0019](0019-world-sprite-sizing.md) | Per-type world sprite sizing (WorldSpriteSizes single source of truth); no new art produced | Accepted |
 
 ## Adding an ADR
 
