@@ -4,17 +4,21 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
-import kotlin.math.PI
 import kotlin.math.roundToInt
 
 /**
- * Minimal heads-up display: current speed, heading and fuel, updated every frame (AC#9; UC07 AC#3).
+ * Expanded heads-up display: the flight readouts a player needs to decide without opening a menu —
+ * speed, heading, fuel, credits, cargo fill, current sector and the active-mission objective — updated
+ * every frame from a pure [HudViewModel] (UC34 AC#1/#2/#4; UC07 AC#3).
  *
- * Heading is converted radians→degrees and normalized to [0, 360). Uses the bundled game font
+ * This renderer is draw-only: all readout maths (heading normalisation, the objective line, the
+ * display==turn-in cargo read) lives in the JVM-testable [HudViewModel]. Uses the bundled game font
  * ([GameFont], a [BitmapFont] loaded by [GameFontLoader]) drawn in screen space. A reusable
  * [StringBuilder] and integer formatting avoid per-frame String/`String.format` allocation, protecting
- * the 60 FPS budget (AC#14, coding-guidelines § performance). The fuel line turns red and appends "LOW"
- * while the tank is below the low-fuel threshold — the player-facing cue that speed is being limited.
+ * the 60 FPS budget (coding-guidelines § performance); the variable lines (SEC, OBJ) are ellipsized in
+ * place to [HudLayout.MAX_LINE_CHARS] so a long sector/objective name can't run under the top-right
+ * minimap. The fuel line turns amber and appends "LOW" while the tank is below the low-fuel threshold,
+ * and an "IN COMBAT" cue shows in the danger colour during an encounter — the player-facing status cues.
  *
  * [uiScale] (ADR 0015) magnifies the whole overlay: the font is scaled by it once at construction and
  * every base layout constant (margins, line height) is multiplied by it at its use site — the constants
@@ -32,18 +36,13 @@ class HudRenderer(
             data.setScale(GameFont.NORM * uiScale)
             color = TEXT_COLOR
         }
-    private val line = StringBuilder(24)
+    private val line = StringBuilder(32)
     private val projection = Matrix4()
 
     fun render(
-        speed: Float,
-        headingRadians: Float,
-        fuelLevel: Float,
-        fuelCapacity: Float,
-        lowFuel: Boolean,
+        model: HudViewModel,
         viewportWidth: Float,
         viewportHeight: Float,
-        inCombat: Boolean = false,
     ) {
         // Base layout constants scaled at the use site — UiScale.factor stays the single knob.
         val margin = MARGIN * uiScale
@@ -53,41 +52,69 @@ class HudRenderer(
         batch.projectionMatrix = projection
         batch.begin()
 
-        line.setLength(0)
-        line.append("SPEED ").append(speed.roundToInt())
-        font.draw(batch, line, margin, viewportHeight - margin)
+        // A running line index from the top so conditional lines (OBJ, IN COMBAT) close the gap rather
+        // than leaving a hole; baseline of line `row` is margin + row line-heights below the top edge.
+        var row = 0
 
         line.setLength(0)
-        line.append("HDG ").append(normalizeDegrees(headingRadians)).append(DEGREE)
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight)
+        line.append("SPEED ").append(model.speed.roundToInt())
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        row++
 
         line.setLength(0)
-        line.append("FUEL ").append(fuelLevel.roundToInt()).append('/').append(fuelCapacity.roundToInt())
-        if (lowFuel) line.append("  LOW")
+        line.append("HDG ").append(model.headingDegrees).append(DEGREE)
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        row++
+
+        line.setLength(0)
+        line.append("FUEL ").append(model.fuelLevel.roundToInt()).append('/').append(model.fuelCapacity.roundToInt())
+        if (model.lowFuel) line.append("  LOW")
         // UC27: design-system tokens — amber "warning" caution while low, reset to the steel readout text
         // colour afterwards so other lines stay neutral next frame (AC#8).
-        font.color = if (lowFuel) Palette.WARNING else TEXT_COLOR
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 2f)
+        font.color = if (model.lowFuel) Palette.WARNING else TEXT_COLOR
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
         font.color = TEXT_COLOR
+        row++
+
+        // UC34: credits + cargo fill share one line — "CR <credits>  CRG <used>/<cap>" — keeping the
+        // worst-case block to seven lines so it stays within the reserved HudLayout.BLOCK_HEIGHT.
+        line.setLength(0)
+        line.append("CR ").append(model.credits).append("  CRG ").append(model.cargoUsed).append('/').append(model.cargoCapacity)
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        row++
+
+        // UC34: current sector name; ellipsized in place so a long authored name can't run under the
+        // top-right minimap at the supported sizes.
+        line.setLength(0)
+        line.append("SEC ").append(model.sectorName)
+        HudLayout.ellipsize(line)
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        row++
+
+        // UC34: the active-mission objective (target + progress); hidden entirely when no mission is
+        // active. The objective content is built in the pure HudViewModel; ellipsized here like SEC.
+        val objective = model.objective
+        if (objective != null) {
+            line.setLength(0)
+            line.append("OBJ ").append(objective)
+            HudLayout.ellipsize(line)
+            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+            row++
+        }
 
         // UC13: an "IN COMBAT" cue while an encounter is live, drawn alongside the per-section ship
         // schematic ([com.orbitalfrontier.render.ShipSchematicRenderer]); the schematic carries the detail.
         // UC27: the design-system "danger" signal colour (AC#8).
-        if (inCombat) {
+        if (model.inCombat) {
             line.setLength(0)
             line.append("IN COMBAT")
             font.color = Palette.DANGER
-            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * 3f)
+            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
             font.color = TEXT_COLOR
+            row++
         }
 
         batch.end()
-    }
-
-    private fun normalizeDegrees(radians: Float): Int {
-        var degrees = (radians * 180f / PI.toFloat()).roundToInt() % 360
-        if (degrees < 0) degrees += 360
-        return degrees
     }
 
     override fun dispose() {

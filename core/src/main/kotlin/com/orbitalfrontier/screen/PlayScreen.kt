@@ -70,7 +70,9 @@ import com.orbitalfrontier.render.DestructionState
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
+import com.orbitalfrontier.render.HudLayout
 import com.orbitalfrontier.render.HudRenderer
+import com.orbitalfrontier.render.HudViewModel
 import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
@@ -896,16 +898,25 @@ class PlayScreen(
         shipRenderer.render(worldCamera, renderShip)
         // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
         hostileRenderer.render(worldCamera, combat)
-        // UC07: the HUD also shows the fuel tank with a low-fuel cue (red) below the threshold.
+        // UC07/UC34: the expanded HUD readout block. The pure HudViewModel is assembled each frame from
+        // the live sim state — speed/heading/fuel plus credits, cargo fill, the current sector name and
+        // the active-mission objective — so every readout updates live (UC34 AC#1/#2/#4); the renderer
+        // only formats and draws it.
         hudRenderer.render(
-            renderShip.speed,
-            renderShip.headingRadians,
-            fuel.level,
-            fuel.capacity,
-            fuel.isLow(fuelParams),
+            HudViewModel.build(
+                speed = renderShip.speed,
+                headingRadians = renderShip.headingRadians,
+                fuelLevel = fuel.level,
+                fuelCapacity = fuel.capacity,
+                lowFuel = fuel.isLow(fuelParams),
+                inCombat = combat.active,
+                credits = credits,
+                cargo = cargo,
+                sectorName = sector.displayName,
+                missionLog = missionLog,
+            ),
             viewportWidth,
             viewportHeight,
-            inCombat = combat.active,
         )
         // The minimap renders every transponder POI (gates + stations) plus any revealed hidden
         // contacts (UC10), keyed by contact kind. It anchors top-right (UC22), fitting its size above
@@ -1744,7 +1755,10 @@ class PlayScreen(
         physics.dispose()
     }
 
-    private companion object {
+    // UC34: `internal` (was `private`) so the HUD-vs-controls geometric guard reads the real layout
+    // constants (MARGIN/JOYSTICK_SIZE feeding bottomControlBand(), HUD_BLOCK_HEIGHT) rather than mirroring
+    // literals; the values themselves are unchanged.
+    internal companion object {
         const val TAG = "Screen"
 
         // Discrete world events (sector jumps) log under the "World" tag (coding-guidelines § logging).
@@ -1771,12 +1785,12 @@ class PlayScreen(
         // top-left band and hidden in combat / when the map overlay is open (unchanged from one button).
         const val SETTINGS_HEIGHT = 200f
 
-        // UC22: world-space height of the top-left HUD readout block (HudRenderer's three scaled text
-        // lines plus the combat "IN COMBAT" cue), measured down from the top. The settings/handedness
-        // button is centred in the band below this and above the bottom controls, so it clears the HUD
-        // even during a combat encounter and keeps a symmetric gap (≥ 16 world units at supported sizes)
-        // from both neighbours.
-        const val HUD_BLOCK_HEIGHT = 104f
+        // UC22/UC34: world-space height of the top-left HUD readout block, measured down from the top.
+        // The settings/handedness button is centred in the band below this and above the bottom controls,
+        // so it clears the HUD even during a combat encounter. UC34 expanded the block from 3–4 lines to a
+        // worst-case seven (SPEED, HDG, FUEL, CR+CRG, SEC, OBJ, IN COMBAT), so the reservation now tracks
+        // HudLayout.BLOCK_HEIGHT — the single source the pure HUD geometry and this band reservation share.
+        const val HUD_BLOCK_HEIGHT = HudLayout.BLOCK_HEIGHT
 
         // Real seconds per courier model tick on the device (UC12). The model timer is tick-based; the
         // device fires one [Missions.advance] per this many accumulated dt seconds so the countdown is

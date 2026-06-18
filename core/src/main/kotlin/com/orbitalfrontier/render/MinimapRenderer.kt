@@ -196,7 +196,9 @@ class MinimapRenderer(
         labelFont.dispose()
     }
 
-    private companion object {
+    // UC34: `internal` (was `private`) so the HUD-vs-minimap geometric guard reads the REAL shipped panel
+    // geometry (DEFAULT_SIZE/DEFAULT_MARGIN/MIN_SIZE/CONTROL_GAP) instead of hardcoding mirrored literals.
+    internal companion object {
         const val DEFAULT_SIZE = 180f
         const val DEFAULT_MARGIN = 24f
 
