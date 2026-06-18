@@ -1,10 +1,11 @@
--- Orbital Frontier save schema, version 13 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014).
+-- Orbital Frontier save schema, version 14 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020).
 --
--- This .sq file is ALWAYS the latest schema (currently v13). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v14). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
--- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12; 12.sqm: v12 -> v13). Never edit
--- this baseline destructively to make a schema change — bump the version and add a migration instead.
+-- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12; 12.sqm: v12 -> v13; 13.sqm:
+-- v13 -> v14). Never edit this baseline destructively to make a schema change — bump the version and
+-- add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -74,9 +75,17 @@ CREATE TABLE meta (
     save_version INTEGER NOT NULL
 );
 
+-- v14 (UC31, ADR 0020) adds the audio preferences to this single-row table: a master mute plus
+-- independent SFX and music gains. Each is its own column with a sensible DEFAULT so the v13 -> v14
+-- migration backfills an existing settings row (audio enabled, SFX 1.0, music 0.5) with no data loss.
+-- Per-field UPDATE writes (updateHandedness / updateAudioSettings) replace the old whole-row
+-- INSERT OR REPLACE so toggling one preference never clobbers another's column.
 CREATE TABLE settings (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
-    handedness TEXT NOT NULL
+    handedness TEXT NOT NULL,
+    master_muted INTEGER NOT NULL DEFAULT 0,
+    sfx_volume REAL NOT NULL DEFAULT 1.0,
+    music_volume REAL NOT NULL DEFAULT 0.5
 );
 
 -- Single-row save "header": which sector the player is in, which owned ship is active, which
@@ -253,16 +262,28 @@ SELECT save_version FROM meta WHERE id = 0;
 initMeta:
 INSERT OR IGNORE INTO meta(id, save_version) VALUES (0, ?);
 
--- Read the persisted handedness (null on first run / before any save).
+-- Read every persisted preference in one row (null on first run / before any save). UC31 widened
+-- this from handedness-only so the audio settings load in the same single-row read.
 selectSettings:
-SELECT handedness FROM settings WHERE id = 0;
+SELECT handedness, master_muted, sfx_volume, music_volume FROM settings WHERE id = 0;
 
--- Insert-or-update the single settings row's handedness.
--- INSERT OR REPLACE (not UPSERT) so it works on minSdk-24 devices, whose bundled SQLite
--- predates the ON CONFLICT DO UPDATE syntax. Safe here: the table is single-row with no
--- foreign keys, so the delete-then-insert REPLACE performs has no side effects.
-upsertHandedness:
-INSERT OR REPLACE INTO settings(id, handedness) VALUES (0, ?);
+-- Seed the single settings row with defaults once; idempotent (no-op if the row already exists). The
+-- caller binds the defaults, so the per-field UPDATE writes below always hit an existing row (UC31).
+-- INSERT OR IGNORE (not UPSERT) so it works on minSdk-24 devices, whose bundled SQLite predates the
+-- ON CONFLICT syntax.
+seedSettings:
+INSERT OR IGNORE INTO settings(id, handedness, master_muted, sfx_volume, music_volume) VALUES (0, ?, ?, ?, ?);
+
+-- Targeted single-field handedness write (UC31): updates ONLY the handedness column, so a layout
+-- toggle never clobbers the audio columns (Risk 1). Replaces the old whole-row INSERT OR REPLACE.
+-- Relies on the row already existing (seedSettings runs first in the same transaction).
+updateHandedness:
+UPDATE settings SET handedness = ? WHERE id = 0;
+
+-- Targeted audio-preferences write (UC31 AC#3): updates ONLY the three audio columns together, so
+-- persisting volume/mute never touches the handedness column. Relies on the row already existing.
+updateAudioSettings:
+UPDATE settings SET master_muted = ?, sfx_volume = ?, music_volume = ? WHERE id = 0;
 
 -- Read the save header (UC09: header only — ships are read separately via selectAllShips so the
 -- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New
