@@ -22,6 +22,7 @@ import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
 import com.orbitalfrontier.combat.CombatState
+import com.orbitalfrontier.combat.DestructionSummary
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.PlayerCombatInput
@@ -65,6 +66,7 @@ import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
+import com.orbitalfrontier.render.DestructionState
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
@@ -82,6 +84,7 @@ import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
+import com.orbitalfrontier.screen.controls.DestructionOverlay
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.screen.controls.PauseOverlay
@@ -326,6 +329,15 @@ class PlayScreen(
     private val pauseOverlay = PauseOverlay(skin)
     private val pauseButton = TextButton("PAUSE", skin.settingsButtonStyle)
 
+    // UC33: the destruction / game-over gate + overlay. [destructionState] is the pure gate (libGDX-free,
+    // JVM-testable) raised by the SIMULATION on a hull-destroying hit (not a player tap); like the pause
+    // gate it FREEZES the per-frame advance, but it is read NESTED under the pause gate so the two compose,
+    // it carries the [DestructionSummary] the overlay renders, and it clears only on a deliberate CONTINUE
+    // (AC#1/#2/#3). [destructionOverlay] is the modal Scene2D widget (dim backdrop + "SHIP DESTROYED" +
+    // consequence lines + CONTINUE), added to the stage LAST (above the pause overlay) for the top z-order.
+    private var destructionState = DestructionState()
+    private val destructionOverlay = DestructionOverlay(skin)
+
     // UC26: every player action now lives on the bottom-corner action arc ([actionCluster]) instead of in
     // standalone context panels. The contextual actions still latch the same one-shot intents the panels
     // did, set by the arc button's tap callback (wired in [init]) and consumed inside the deterministic
@@ -439,6 +451,9 @@ class PlayScreen(
         pauseOverlay.onSettings = { enterPauseSettings() }
         pauseOverlay.onBack = { exitPauseSettings() }
         pauseOverlay.onQuit = { quitToMainMenu() }
+        // UC33: the destruction overlay's single CONTINUE button acknowledges the consequence screen and
+        // resumes control at the respawn point (the respawn was already applied + persisted, AC#3).
+        destructionOverlay.onContinue = { continueAfterDestruction() }
 
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
@@ -452,6 +467,9 @@ class PlayScreen(
         // z-order over the HUD, the minimap and the map dismiss actor while the game is paused.
         stage.addActor(pauseButton)
         stage.addActor(pauseOverlay.actor)
+        // UC33: the modal destruction overlay LAST of all, so its backdrop holds the very top z-order
+        // (above the HUD, the map/pause overlays and every tap target) while a destruction is pending.
+        stage.addActor(destructionOverlay.actor)
 
         // UC32: Android back key drives pause (AC#1, pitfall#2). Appended AFTER the stage (never
         // setProcessors) so on-screen controls keep first crack at touches; this only handles the BACK key.
@@ -582,8 +600,11 @@ class PlayScreen(
         // skipped — no game time passes (AC#2/#5) — and only [renderFrame] runs (reading the frozen body),
         // so resuming continues exactly where the player left off (AC#4).
         val paused = pauseState.isPaused
+        // UC33: a pending destruction ALSO freezes the deterministic advance (the consequence screen halts
+        // play until the player taps CONTINUE — AC#1). The gate is nested inside the pause gate so the two
+        // compose; while either is raised no game time passes and only [renderFrame] runs (AC#2/#5).
         if (!paused) {
-            advanceSimulation(dt)
+            if (!destructionState.isPending) advanceSimulation(dt)
         }
         // Render the ship from the live Box2D transform: this frame's step when running, the frozen
         // kinematics when paused. After a gate jump the advance already reset the body to the arrival point.
@@ -911,12 +932,15 @@ class PlayScreen(
         // only when the player taps Settings ([pauseSettingsShown]), and NOT ANDed with combat/map (so
         // pausing mid-combat then opening Settings works). While running it keeps the pre-UC32 rule.
         settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)
+        // UC33: a pending destruction screen owns the foreground — force the settings panel hidden under it
+        // (the destruction overlay offers only CONTINUE, no settings sub-view), regardless of the above.
+        if (destructionState.isPending) settingsOverlay.actor.isVisible = false
         // UC26: the whole action arc (FIRE + every contextual button) and the context readout hide with
         // the rest of the controls only while the map overlay is open — NOT during combat, so FIRE stays
         // visible and enabled throughout an encounter (UC26 AC#3/#6). UC32: they also hide while paused, so
         // a held stick/FIRE can't sit live under the pause backdrop (pitfall#3). The arc's own per-action
         // availability (set above) governs which contextual buttons show when neither overlay is open.
-        val controlsHidden = mapOpen || paused
+        val controlsHidden = mapOpen || paused || destructionState.isPending
         if (controlsHidden) {
             joystick.actor.isVisible = false
             actionCluster.actor.isVisible = false
@@ -930,7 +954,11 @@ class PlayScreen(
         // including mid-combat (AC#1); it hides while either overlay is up. The modal pause overlay (dim
         // backdrop + buttons) shows exactly while paused.
         pauseButton.isVisible = !mapOpen && !paused
+        // UC33: the destruction screen also suppresses the HUD pause button (the player must CONTINUE, not
+        // open pause, while destroyed) and shows the modal destruction overlay exactly while one is pending.
+        if (destructionState.isPending) pauseButton.isVisible = false
         pauseOverlay.actor.isVisible = paused
+        destructionOverlay.actor.isVisible = destructionState.isPending
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
         if (combat.active) {
             val active = fleet.active
@@ -1029,6 +1057,8 @@ class PlayScreen(
         )
         // UC32: the modal pause overlay fills the stage and re-centres its button column.
         pauseOverlay.resize(screenWidth, screenHeight)
+        // UC33: the modal destruction overlay fills the stage and re-centres its consequence column.
+        destructionOverlay.resize(screenWidth, screenHeight)
     }
 
     /**
@@ -1168,15 +1198,20 @@ class PlayScreen(
     }
 
     /**
-     * Forgiving destruction respawn (UC13 AC#5): relocate the active ship to the last docked station
-     * (its sector + position) with a cargo-loss penalty and full repair via the pure [Respawn], re-seed
-     * the Box2D body, clear the encounter, and autosave. With no last dock (a brand-new game), respawn in
-     * place so the player is never stranded.
+     * Forgiving destruction respawn + consequence screen (UC13 AC#5 / UC33). Relocate the active ship to
+     * the respawn point with a cargo-loss penalty and full repair via the pure [Respawn], re-seed the
+     * Box2D body, and clear the encounter — exactly as before — then, instead of a silent teleport,
+     * **surface the destruction**: build the pure [DestructionSummary], raise the [destructionState] gate
+     * (which freezes the per-frame advance), and show the modal [destructionOverlay] the player must
+     * acknowledge with CONTINUE (UC33 AC#1/#2/#3). The respawn is committed and **durably persisted now**
+     * via [AutosaveController.onCriticalEvent], so a crash/close on the consequence screen reloads the
+     * post-respawn state and the penalty is applied exactly once (UC33 AC#4). A held stick/FIRE is
+     * neutralised (mirrors [openPause]) so it cannot sit live under the frozen overlay.
      */
     private fun respawnPlayer() {
         val active = fleet.active
-        val (respawnSector, respawnPosition) = resolveRespawnLocation()
-        val result = Respawn.respawn(respawnPosition, cargo, combatParams)
+        val destination = resolveRespawnLocation()
+        val result = Respawn.respawn(destination.position, cargo, combatParams)
         cargo = result.cargo
         fleet =
             fleet.withActive(
@@ -1185,29 +1220,67 @@ class PlayScreen(
         physics.resetTo(result.kinematics)
         combat = result.combat
         combatTickAccumulator = 0f
-        if (respawnSector != null) currentSector = respawnSector
+        currentSector = destination.sector
+
+        // UC33: neutralise any held flight input (mirrors openPause pitfall#3) so a stick/FIRE held at the
+        // instant of destruction does not stick live under the frozen overlay, and stop the looping THRUST
+        // cue so it cannot drone on while the sim is frozen.
+        stage.cancelTouchFocus()
+        if (previousThrusting) {
+            audio.stopSfx(Sfx.THRUST)
+            previousThrusting = false
+        }
+
+        // UC33: raise the consequence screen with the pure summary, then commit the respawn DURABLY before
+        // the player acknowledges it (AC#4) — the event-driven analogue of the pause/exit blocking flush.
+        val summary = DestructionSummary.from(result, destination.name)
+        destructionOverlay.setSummary(summary)
+        destructionState = destructionState.pending(summary)
+        autosave.onCriticalEvent("respawn")
         logger.info(
             WORLD_TAG,
-            "Player ship destroyed; respawned at ${lastDockedStation?.value ?: "current location"} " +
-                "(lost ${result.unitsLost} cargo units)",
+            "Player ship destroyed; respawned at ${destination.name} (lost ${result.unitsLost} cargo units)",
         )
-        autosave.onEvent("respawn")
     }
 
     /**
-     * The respawn sector + position: the last docked station's location if it is still in the authored
-     * world, else (null, current position) — respawn in place when there is no recorded dock.
+     * Acknowledge the destruction consequence screen (UC33 AC#3): clear the pending [destructionState] —
+     * which un-freezes the simulation and hides the overlay next frame — returning control at the respawn
+     * point where the ship already sits (the respawn was applied and persisted at the moment of
+     * destruction). No-op when nothing is pending.
      */
-    private fun resolveRespawnLocation(): Pair<SectorId?, Vec2> {
+    private fun continueAfterDestruction() {
+        if (!destructionState.isPending) return
+        destructionState = destructionState.cleared()
+        logger.info(TAG, "Destruction acknowledged; resuming flight at the respawn point")
+    }
+
+    /**
+     * The respawn destination on destruction (UC33): the last docked station's sector + position +
+     * display name when it is still in the authored world; otherwise the **game-start point**
+     * ([MvpSectorMap.START_SECTOR], origin) — which is exactly where a new game spawns
+     * ([com.orbitalfrontier.ship.Fleet.starter] at [Vec2.ZERO]) — so a player destroyed before their
+     * first dock is sent back to the start rather than stranded in deep space. The location name is read
+     * from the authored world ([com.orbitalfrontier.world.Sector.displayName]), never hardcoded.
+     */
+    private fun resolveRespawnLocation(): RespawnLocation {
         val stationId = lastDockedStation
         if (stationId != null) {
             for (sector in sectorWorld.sectors) {
                 val station = sector.station(stationId)
-                if (station != null) return sector.id to station.position
+                if (station != null) return RespawnLocation(sector.id, station.position, station.displayName)
             }
         }
-        return null to physics.readKinematics().position
+        val startSector = MvpSectorMap.START_SECTOR
+        return RespawnLocation(startSector, Vec2.ZERO, sectorWorld.sector(startSector).displayName)
     }
+
+    /** The resolved respawn destination (UC33): which sector + position to respawn at, and its display name. */
+    private data class RespawnLocation(
+        val sector: SectorId,
+        val position: Vec2,
+        val name: String,
+    )
 
     /**
      * The live world snapshot (current sector, the fleet with the active ship's kinematics read back
@@ -1656,6 +1729,7 @@ class PlayScreen(
     override fun dispose() {
         stage.dispose()
         pauseOverlay.dispose()
+        destructionOverlay.dispose()
         skin.dispose()
         starfield.dispose()
         shipRenderer.dispose()
