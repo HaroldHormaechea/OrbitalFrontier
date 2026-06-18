@@ -289,6 +289,11 @@ class PlayScreen(
     // so it plays continuously while the stick is held and exactly once per ignition (AC#1).
     private var previousThrusting = false
 
+    // UC31: cooldown that paces the MINING_TICK cue. Mining resolves EVERY held frame (60/s), so the cue
+    // is throttled to one play per MINING_SFX_INTERVAL of productive mining — a pleasant pulse, not a
+    // 60 Hz buzz. Counts down only on productive ticks; the first tick of a session plays immediately.
+    private var miningSfxCooldown = 0f
+
     private val skin = OrbitalUiSkin(gameAssets)
 
     // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
@@ -343,7 +348,11 @@ class PlayScreen(
                 skin = skin,
                 repository = settingsRepository,
                 saveExecutor = saveExecutor,
-                initial = initialHandedness,
+                initialHandedness = initialHandedness,
+                // UC31: seed the audio controls from persisted settings (already applied to [audio] by the
+                // app at startup); the overlay then keeps them in sync as the player adjusts them.
+                initialAudio = settingsRepository.loadAudioSettings(),
+                audio = audio,
             ) { newHandedness ->
                 handedness = newHandedness
                 layoutControls()
@@ -570,7 +579,12 @@ class PlayScreen(
             if (result.minedUnits > 0) {
                 cargo = result.cargo
                 fieldDepletion = result.fieldDepletion
-                audio.play(Sfx.MINING_TICK) // UC31: per-productive-tick mining cue (AC#1)
+                // UC31: mining cue, throttled (mining resolves every held frame; pulse, don't buzz — AC#1).
+                miningSfxCooldown -= dt
+                if (miningSfxCooldown <= 0f) {
+                    audio.play(Sfx.MINING_TICK)
+                    miningSfxCooldown = MINING_SFX_INTERVAL
+                }
                 val fieldEmptied = (result.fieldDepletion[field.id]?.values?.sum() ?: 0) <= 0
                 // Event-driven autosave on the two key transitions (UC06): the hold just filled, or the
                 // field just emptied. Each fires at most once because subsequent ticks are no-ops.
@@ -1489,8 +1503,16 @@ class PlayScreen(
         const val MAX_DT = 1f / 30f
         const val MARGIN = 24f
         const val JOYSTICK_SIZE = 220f
+
+        // UC31: minimum seconds between MINING_TICK cues while mining is held (≈8 pulses/sec).
+        const val MINING_SFX_INTERVAL = 0.12f
+
         const val SETTINGS_WIDTH = 200f
-        const val SETTINGS_HEIGHT = 56f
+
+        // UC31: the settings panel now stacks four controls (handedness + mute + SFX + music volume), each
+        // a 44-high row with a 6 gap, so the panel is 4 × (44 + 6) = 200 tall. Still centred in the
+        // top-left band and hidden in combat / when the map overlay is open (unchanged from one button).
+        const val SETTINGS_HEIGHT = 200f
 
         // UC22: world-space height of the top-left HUD readout block (HudRenderer's three scaled text
         // lines plus the combat "IN COMBAT" cue), measured down from the top. The settings/handedness

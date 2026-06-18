@@ -46,6 +46,7 @@ class ShipyardScreen(
     private val root = Table()
 
     init {
+        skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
         root.setFillParent(true)
         root.pad(MARGIN)
         root.background = skin.panel

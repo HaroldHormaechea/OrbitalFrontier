@@ -3,6 +3,7 @@ package com.orbitalfrontier.app
 import app.cash.sqldelight.db.SqlDriver
 import com.badlogic.gdx.Game
 import com.orbitalfrontier.audio.MusicTrack
+import com.orbitalfrontier.audio.Sfx
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
@@ -31,6 +32,7 @@ import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.StationWalkaroundScreen
 import com.orbitalfrontier.screen.TradeScreen
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.station.StationBuildOrder
@@ -133,6 +135,10 @@ class OrbitalFrontierGame(
         audioService.setSfxVolume(audioSettings.sfxVolume)
         audioService.setMusicVolume(audioSettings.musicVolume)
         audio = audioService
+
+        // UC31: wire the shared UI-tap cue so every menu/hub/desk screen's buttons click audibly (AC#1).
+        // The hook is read at tap time, so screens built later still pick it up; reset in dispose().
+        OrbitalUiSkin.uiTapSound = { audio.play(Sfx.UI_TAP) }
 
         // Read the save once, up front, to decide whether Continue is available (UC21 AC#4). The actual
         // New-Game-vs-Continue decision is now the player's at the menu, not an automatic load-or-seed:
@@ -584,6 +590,8 @@ class OrbitalFrontierGame(
         // UC31: release the audio service AFTER every screen is disposed (no screen can still trigger a
         // cue) — its native Sound/Music handles. Single owner, single dispose; reset to the no-op so any
         // late call is harmless.
+        // UC31: drop the static UI-tap hook first so no late button event can call the disposed service.
+        OrbitalUiSkin.uiTapSound = null
         try {
             audio.dispose()
         } catch (e: Exception) {
