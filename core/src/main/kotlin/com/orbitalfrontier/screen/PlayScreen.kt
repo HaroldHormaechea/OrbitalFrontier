@@ -1,6 +1,7 @@
 package com.orbitalfrontier.screen
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.InputAdapter
 import com.badlogic.gdx.InputMultiplexer
 import com.badlogic.gdx.ScreenAdapter
@@ -12,6 +13,7 @@ import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.audio.Sfx
@@ -71,6 +73,7 @@ import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
 import com.orbitalfrontier.render.Palette
+import com.orbitalfrontier.render.PauseState
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
@@ -81,6 +84,7 @@ import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
+import com.orbitalfrontier.screen.controls.PauseOverlay
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
@@ -88,6 +92,7 @@ import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.FleetResolver
 import com.orbitalfrontier.ship.FuelLimitedMovement
+import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
@@ -150,6 +155,11 @@ class PlayScreen(
     initialHandedness: Handedness,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
+    // UC32: quit-to-main-menu hand-off. The pause overlay's Quit button flushes a durable autosave and
+    // then invokes this; the app ([com.orbitalfrontier.app.OrbitalFrontierGame.returnToMainMenu]) rebuilds
+    // and shows the main menu and disposes this screen. Defaults to a no-op so headless/JVM tests that
+    // exercise the pause gate need not wire it.
+    private val onQuitToMainMenu: () -> Unit = {},
     // UC31: the injected audio port. SFX are triggered here from the SAME gameplay event seams the
     // autosave/HUD use (combat events, the thrust transition, a productive mining tick, dock, jump,
     // mission accept/complete), so sound is event-driven and the pure simulation stays audio-free
@@ -304,6 +314,18 @@ class PlayScreen(
     private val settingsOverlay: SettingsOverlay
     private val inputMultiplexer = InputMultiplexer(stage)
 
+    // UC32: the in-flight pause overlay. [pauseState] is the pure paused/running gate (libGDX-free,
+    // JVM-testable, the deliberate inverse of [mapOverlayState] — it FREEZES the sim, ADR 0021); read once
+    // per frame to gate the entire per-frame state-advance below (AC#2). [pauseSettingsShown] tracks the
+    // Settings sub-view (the in-flight settings panel surfaced over the pause backdrop, AC#3). [pauseOverlay]
+    // is the modal Scene2D widget (dim backdrop + Resume/Settings/Quit), added to the stage LAST (top z), and
+    // [pauseButton] is the top-centre HUD control that opens it (reachable in combat, hidden while an overlay
+    // is open). The Android back key also drives pause/resume (AC#1) via an input processor wired in [init].
+    private var pauseState = PauseState()
+    private var pauseSettingsShown = false
+    private val pauseOverlay = PauseOverlay(skin)
+    private val pauseButton = TextButton("PAUSE", skin.settingsButtonStyle)
+
     // UC26: every player action now lives on the bottom-corner action arc ([actionCluster]) instead of in
     // standalone context panels. The contextual actions still latch the same one-shot intents the panels
     // did, set by the arc button's tap callback (wired in [init]) and consumed inside the deterministic
@@ -399,14 +421,55 @@ class PlayScreen(
             },
         )
 
+        // UC32: open the pause overlay from the top-centre HUD button (AC#1). Resume/Quit transitions and
+        // the Settings sub-view are wired to the overlay's callbacks; Settings shows the existing in-flight
+        // settings panel on top of the backdrop (and Back returns to the pause menu, AC#3).
+        pauseButton.addListener(
+            object : ClickListener() {
+                override fun clicked(
+                    event: InputEvent?,
+                    x: Float,
+                    y: Float,
+                ) {
+                    openPause()
+                }
+            },
+        )
+        pauseOverlay.onResume = { resumeGame() }
+        pauseOverlay.onSettings = { enterPauseSettings() }
+        pauseOverlay.onBack = { exitPauseSettings() }
+        pauseOverlay.onQuit = { quitToMainMenu() }
+
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
         stage.addActor(contextReadout)
         stage.addActor(settingsOverlay.actor)
-        // UC23: the minimap tap target, then the full-screen dismiss actor LAST so it has the top z-order
-        // and catches taps over everything (including the minimap) while the overlay is open.
+        // UC23: the minimap tap target, then the full-screen dismiss actor so it catches taps over
+        // everything (including the minimap) while the map overlay is open.
         stage.addActor(minimapTapTarget)
         stage.addActor(mapDismissActor)
+        // UC32: the HUD pause button, then the modal pause overlay LAST so its backdrop holds the top
+        // z-order over the HUD, the minimap and the map dismiss actor while the game is paused.
+        stage.addActor(pauseButton)
+        stage.addActor(pauseOverlay.actor)
+
+        // UC32: Android back key drives pause (AC#1, pitfall#2). Appended AFTER the stage (never
+        // setProcessors) so on-screen controls keep first crack at touches; this only handles the BACK key.
+        // In the settings sub-view BACK steps back to the pause menu; while paused it resumes; in flight it
+        // opens pause. Scoped to this screen — the catch is enabled in [show] and released in [hide].
+        inputMultiplexer.addProcessor(
+            object : InputAdapter() {
+                override fun keyDown(keycode: Int): Boolean {
+                    if (keycode != Input.Keys.BACK) return false
+                    when {
+                        pauseSettingsShown -> exitPauseSettings()
+                        pauseState.isPaused -> resumeGame()
+                        else -> openPause()
+                    }
+                    return true
+                }
+            },
+        )
 
         // UC25/UC26: wire the debug-only point-and-go aid. Everything here is gated on [debug], so a
         // release build constructs none of it. UC26 moved its arm toggle onto the action arc; the
@@ -443,18 +506,98 @@ class PlayScreen(
         }
     }
 
+    /**
+     * Open the pause overlay (UC32 AC#1): freeze the sim via [pauseState], enforce the one-overlay rule by
+     * dismissing the map overlay (pitfall — only one overlay visible), and neutralise held inputs so a
+     * stick/FIRE held at the moment of pause does not "stick" on resume (pitfall#3): cancel Scene2D touch
+     * focus and stop the looping THRUST cue (mirrors [hide]). No-op when already paused.
+     */
+    private fun openPause() {
+        if (pauseState.isPaused) return
+        pauseState = pauseState.paused()
+        pauseSettingsShown = false
+        pauseOverlay.showSettingsSubView(false)
+        mapOverlayState = mapOverlayState.dismissed()
+        stage.cancelTouchFocus()
+        if (previousThrusting) {
+            audio.stopSfx(Sfx.THRUST)
+            previousThrusting = false
+        }
+        logger.info(TAG, "Game paused")
+    }
+
+    /** Resume from pause (UC32 AC#4): unfreeze the sim and leave the Settings sub-view. No-op when running. */
+    private fun resumeGame() {
+        if (!pauseState.isPaused) return
+        pauseState = pauseState.resumed()
+        pauseSettingsShown = false
+        pauseOverlay.showSettingsSubView(false)
+        logger.info(TAG, "Game resumed")
+    }
+
+    /**
+     * Enter the pause Settings sub-view (UC32 AC#3): hide the pause button column and surface the existing
+     * in-flight settings panel. The panel was added to the stage BEFORE the pause backdrop, so bring it to
+     * the front — otherwise the backdrop swallows its taps and the controls are dead.
+     */
+    private fun enterPauseSettings() {
+        pauseSettingsShown = true
+        pauseOverlay.showSettingsSubView(true)
+        settingsOverlay.actor.toFront()
+    }
+
+    /** Leave the Settings sub-view back to the pause menu (UC32 AC#3). */
+    private fun exitPauseSettings() {
+        pauseSettingsShown = false
+        pauseOverlay.showSettingsSubView(false)
+    }
+
+    /**
+     * Quit to the main menu (UC32 AC#4): flush a durable autosave FIRST so no progress is lost, then hand
+     * off to the app, which rebuilds + shows the main menu and disposes this screen. The blocking flush
+     * mirrors the Android pause/exit path ([pause] -> [AutosaveController.onPauseOrExit]).
+     */
+    private fun quitToMainMenu() {
+        logger.info(TAG, "Quit to main menu (flushing autosave)")
+        autosave.onPauseOrExit()
+        onQuitToMainMenu()
+    }
+
     override fun show() {
         Gdx.input.inputProcessor = inputMultiplexer
+        // UC32: catch the Android BACK key so it maps to pause/resume here instead of the default
+        // screen-back/exit behaviour (AC#1). Released in [hide], so the catch is scoped to this screen.
+        Gdx.input.setCatchKey(Input.Keys.BACK, true)
         layoutControls()
         logger.info(TAG, "PlayScreen shown (handedness=$handedness)")
     }
 
     override fun render(delta: Float) {
         val dt = delta.coerceIn(MIN_DT, MAX_DT)
-        // UC23: whether the zoomed map overlay is open this frame. It gates only the HUD control
-        // visibility + the overlay draw below — the simulation/step/autosave/combat are LIVE and run
-        // unchanged regardless (MapOverlayLayout.PAUSES_SIMULATION = false).
+        // UC23: whether the zoomed map overlay is open this frame. It gates the HUD control visibility +
+        // the map overlay draw below. (UC32: the pause overlay, unlike this LIVE map overlay, additionally
+        // FREEZES the sim — see the pause gate just below.)
         val mapOpen = mapOverlayState.isOpen
+        // UC32: the pause gate, read once. While paused the ENTIRE deterministic per-frame advance is
+        // skipped — no game time passes (AC#2/#5) — and only [renderFrame] runs (reading the frozen body),
+        // so resuming continues exactly where the player left off (AC#4).
+        val paused = pauseState.isPaused
+        if (!paused) {
+            advanceSimulation(dt)
+        }
+        // Render the ship from the live Box2D transform: this frame's step when running, the frozen
+        // kinematics when paused. After a gate jump the advance already reset the body to the arrival point.
+        val renderShip = physics.readKinematics()
+        renderFrame(dt, mapOpen, paused, renderShip)
+    }
+
+    /**
+     * The entire deterministic per-frame state-advance (UC32 gates this on the pause state, so while paused
+     * no game time passes — AC#2/#5). The flow is byte-identical to the pre-UC32 inline body: debug
+     * teleport, fuel burn + thrust cue, the ADR 0005 movement step, gate traversal, docking, mining,
+     * scanning, radio offers, courier timers, combat, then the periodic autosave.
+     */
+    private fun advanceSimulation(dt: Float) {
         val input = joystick.currentInput()
 
         // UC25 debug point-and-go: consume an armed-tap teleport BEFORE this frame reads the body, so the
@@ -697,9 +840,21 @@ class PlayScreen(
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
+    }
 
+    /**
+     * Draw the frame in BOTH paused and running states (UC32): camera follow, the world/HUD/minimap draws,
+     * the control-visibility pass, the Scene2D stage, and the map + pause overlays. The ship is taken from
+     * [renderShip] (the live, frozen-while-paused Box2D transform) so the scene stays visible while paused.
+     */
+    private fun renderFrame(
+        dt: Float,
+        mapOpen: Boolean,
+        paused: Boolean,
+        renderShip: ShipKinematics,
+    ) {
         // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7).
-        worldCamera.position.set(ship.position.x, ship.position.y, 0f)
+        worldCamera.position.set(renderShip.position.x, renderShip.position.y, 0f)
         worldCamera.update()
 
         // UC27: deepest-space backdrop from the design-system palette (void-900, AC#8).
@@ -710,20 +865,20 @@ class PlayScreen(
         val viewportHeight = Gdx.graphics.height.toFloat()
         val sector = sectorWorld.sector(currentSector)
         // Parallax keyed off the camera's world position conveys motion (AC#11).
-        starfield.render(ship.position.x, ship.position.y, viewportWidth, viewportHeight)
+        starfield.render(renderShip.position.x, renderShip.position.y, viewportWidth, viewportHeight)
         // Ring overlays first (mining / trigger radii), then the per-POI base markers on top: the
         // shared WorldObjectRenderer draws a glyph for every POI in the sector — stations included
         // (previously unrendered in-world) and revealed hidden contacts — keyed by WorldGlyphs.forPoi.
         asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
         worldObjectRenderer.render(worldCamera, sector.pois, revealedContacts)
-        shipRenderer.render(worldCamera, ship)
+        shipRenderer.render(worldCamera, renderShip)
         // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
         hostileRenderer.render(worldCamera, combat)
         // UC07: the HUD also shows the fuel tank with a low-fuel cue (red) below the threshold.
         hudRenderer.render(
-            ship.speed,
-            ship.headingRadians,
+            renderShip.speed,
+            renderShip.headingRadians,
             fuel.level,
             fuel.capacity,
             fuel.isLow(fuelParams),
@@ -737,7 +892,7 @@ class PlayScreen(
         // so it can never overlap the joystick or action cluster on either side.
         minimap.render(
             sector.pois,
-            ship.position,
+            renderShip.position,
             sector.contentExtent,
             revealedContacts,
             viewportWidth,
@@ -752,12 +907,17 @@ class PlayScreen(
         // nothing shows through / under the 80%-opaque backdrop and no stray tap reaches a flight control
         // (an invisible actor receives no touch; the full-screen dismiss actor on top catches taps). Only
         // the controls hide — the simulation keeps running (the overlay is LIVE).
-        settingsOverlay.actor.isVisible = !combat.active && !mapOpen
+        // UC32: while paused the settings panel is the Settings sub-view of the pause overlay — visible
+        // only when the player taps Settings ([pauseSettingsShown]), and NOT ANDed with combat/map (so
+        // pausing mid-combat then opening Settings works). While running it keeps the pre-UC32 rule.
+        settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)
         // UC26: the whole action arc (FIRE + every contextual button) and the context readout hide with
         // the rest of the controls only while the map overlay is open — NOT during combat, so FIRE stays
-        // visible and enabled throughout an encounter (UC26 AC#3/#6). The arc's own per-action availability
-        // (set above) governs which contextual buttons show when the overlay is closed.
-        if (mapOpen) {
+        // visible and enabled throughout an encounter (UC26 AC#3/#6). UC32: they also hide while paused, so
+        // a held stick/FIRE can't sit live under the pause backdrop (pitfall#3). The arc's own per-action
+        // availability (set above) governs which contextual buttons show when neither overlay is open.
+        val controlsHidden = mapOpen || paused
+        if (controlsHidden) {
             joystick.actor.isVisible = false
             actionCluster.actor.isVisible = false
             contextReadout.isVisible = false
@@ -766,6 +926,11 @@ class PlayScreen(
             actionCluster.actor.isVisible = true
         }
         mapDismissActor.isVisible = mapOpen
+        // UC32: the HUD pause button is reachable any time the game is running and no overlay is open —
+        // including mid-combat (AC#1); it hides while either overlay is up. The modal pause overlay (dim
+        // backdrop + buttons) shows exactly while paused.
+        pauseButton.isVisible = !mapOpen && !paused
+        pauseOverlay.actor.isVisible = paused
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
         if (combat.active) {
             val active = fleet.active
@@ -788,7 +953,7 @@ class PlayScreen(
         if (mapOpen) {
             mapOverlay.render(
                 sector.pois,
-                ship.position,
+                renderShip.position,
                 sector.contentExtent,
                 revealedContacts,
                 viewportWidth,
@@ -853,6 +1018,17 @@ class PlayScreen(
             )
         minimapTapTarget.setBounds(minimapRect.x, minimapRect.y, minimapRect.width, minimapRect.height)
         mapDismissActor.setBounds(0f, 0f, screenWidth, screenHeight)
+
+        // UC32: the pause button sits centred along the TOP edge — clear of the top-left HUD readout /
+        // settings band, the top-right minimap, and the combat ship-schematic — so it stays reachable
+        // (including mid-combat) without overlapping another HUD element at the 960×540 floor.
+        pauseButton.setSize(PAUSE_BUTTON_WIDTH, PAUSE_BUTTON_HEIGHT)
+        pauseButton.setPosition(
+            (screenWidth - PAUSE_BUTTON_WIDTH) / 2f,
+            screenHeight - MARGIN - PAUSE_BUTTON_HEIGHT,
+        )
+        // UC32: the modal pause overlay fills the stage and re-centres its button column.
+        pauseOverlay.resize(screenWidth, screenHeight)
     }
 
     /**
@@ -1470,6 +1646,8 @@ class PlayScreen(
             audio.stopSfx(Sfx.THRUST)
             previousThrusting = false
         }
+        // UC32: release the BACK-key catch so it returns to default handling once this screen is hidden.
+        Gdx.input.setCatchKey(Input.Keys.BACK, false)
         if (Gdx.input.inputProcessor === inputMultiplexer) {
             Gdx.input.inputProcessor = null
         }
@@ -1477,6 +1655,7 @@ class PlayScreen(
 
     override fun dispose() {
         stage.dispose()
+        pauseOverlay.dispose()
         skin.dispose()
         starfield.dispose()
         shipRenderer.dispose()
@@ -1506,6 +1685,10 @@ class PlayScreen(
 
         // UC31: minimum seconds between MINING_TICK cues while mining is held (≈8 pulses/sec).
         const val MINING_SFX_INTERVAL = 0.12f
+
+        // UC32: the top-centre HUD pause button footprint (world units; the ×2 UI viewport magnifies it).
+        const val PAUSE_BUTTON_WIDTH = 140f
+        const val PAUSE_BUTTON_HEIGHT = 56f
 
         const val SETTINGS_WIDTH = 200f
 
