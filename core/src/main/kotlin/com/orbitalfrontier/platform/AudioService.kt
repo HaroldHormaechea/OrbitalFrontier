@@ -22,6 +22,14 @@ interface AudioService {
     fun play(sfx: Sfx)
 
     /**
+     * Stop a currently-playing [sfx]. The intended use is the looping [Sfx.THRUST] engine sound, which
+     * [play] starts on the thrust rising edge and this ends on the falling edge — without it, a looping
+     * cue would play forever. One-shot cues have nothing sustained to stop, so calling this for them is a
+     * harmless no-op (they finish on their own).
+     */
+    fun stopSfx(sfx: Sfx)
+
+    /**
      * Start (or cross to) the background music [track]. **Idempotent**: a no-op when [track] is already
      * the current track, so callers can assert the desired ambience every frame / on every screen
      * transition without restarting the loop (UC31 AC#2).
@@ -57,6 +65,8 @@ interface AudioService {
  */
 object NoOpAudioService : AudioService {
     override fun play(sfx: Sfx) = Unit
+
+    override fun stopSfx(sfx: Sfx) = Unit
 
     override fun playMusic(track: MusicTrack) = Unit
 

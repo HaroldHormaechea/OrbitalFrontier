@@ -2,16 +2,20 @@ package com.orbitalfrontier.app
 
 import app.cash.sqldelight.db.SqlDriver
 import com.badlogic.gdx.Game
+import com.orbitalfrontier.audio.MusicTrack
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionOrder
+import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
 import com.orbitalfrontier.render.GameAssets
+import com.orbitalfrontier.render.LibGdxAudioService
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
@@ -74,6 +78,12 @@ class OrbitalFrontierGame(
     // UC27: the single shared design-system art atlas (AC#1). Loaded once on the GL thread in create()
     // and disposed exactly once in dispose(); every screen/renderer/skin gets a BORROWED reference.
     private var gameAssets: GameAssets? = null
+
+    // UC31: the single audio service. Defaults to the no-op (headless/test-safe, and the value before the
+    // GL-thread libGDX service is built in create()); replaced once with the real LibGdxAudioService and
+    // disposed exactly once in dispose() (single owner, single dispose — like gameAssets).
+    private var audio: AudioService = NoOpAudioService
+
     private var mainMenuScreen: MainMenuScreen? = null
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
@@ -112,6 +122,17 @@ class OrbitalFrontierGame(
         settings.ensureInitialized()
         settingsRepository = settings
         handedness = settings.loadHandedness()
+
+        // UC31: build the real audio service on the GL/audio thread (alive by create()) and apply the
+        // persisted preferences before any cue/music plays, so audio honours the saved mute + volumes
+        // immediately (AC#3). The field stays NoOpAudioService until this point, so an early failure
+        // leaves a safe no-op rather than a half-built service.
+        val audioService = LibGdxAudioService.load(logger)
+        val audioSettings = settings.loadAudioSettings()
+        audioService.setMasterMuted(audioSettings.masterMuted)
+        audioService.setSfxVolume(audioSettings.sfxVolume)
+        audioService.setMusicVolume(audioSettings.musicVolume)
+        audio = audioService
 
         // Read the save once, up front, to decide whether Continue is available (UC21 AC#4). The actual
         // New-Game-vs-Continue decision is now the player's at the menu, not an automatic load-or-seed:
@@ -196,6 +217,7 @@ class OrbitalFrontierGame(
                 initialHandedness = handedness,
                 initialWorldState = initialWorldState,
                 onDocked = { station -> openStationHub(station) },
+                audio = audio,
                 debug = debug,
             )
         playScreen = screen
@@ -205,6 +227,8 @@ class OrbitalFrontierGame(
             logger.info(TAG, "Resuming docked at station ${resumedStation.id.value}")
             openStationHub(resumedStation)
         } else {
+            // UC31: flight ambience while roaming (AC#2). Idempotent, so re-entering flight never restarts it.
+            audio.playMusic(MusicTrack.FLIGHT)
             setScreen(screen)
         }
     }
@@ -217,6 +241,9 @@ class OrbitalFrontierGame(
 
     /** Open the station hub for [station], owning it so it can be disposed (libGDX only hide()s). */
     private fun openStationHub(station: Station) {
+        // UC31: switch to the station ambience (AC#2). Idempotent, so the on-foot walk-around, sub-desks
+        // and hub-return (which never call playMusic) let STATION span them gap-free until undock.
+        audio.playMusic(MusicTrack.STATION)
         val hub =
             StationHubScreen(
                 logger = logger,
@@ -430,6 +457,8 @@ class OrbitalFrontierGame(
 
     /** Undock and return to the play screen, then dispose the (now hidden) hub to free its GL. */
     private fun returnToFlight() {
+        // UC31: back to flight ambience (AC#2). Idempotent — a no-op if FLIGHT is somehow already current.
+        audio.playMusic(MusicTrack.FLIGHT)
         playScreen?.undock()
         playScreen?.let { setScreen(it) }
         // setScreen above already hid the hub; dispose it now that it is no longer the active screen.
@@ -451,6 +480,29 @@ class OrbitalFrontierGame(
         hireScreen = null
         missionBoardScreen?.dispose()
         missionBoardScreen = null
+    }
+
+    /**
+     * App backgrounded (or losing audio focus): pause the music so it doesn't play under another app
+     * (UC31 edge case — clean background behaviour). `super.pause()` still forwards to the active screen.
+     */
+    override fun pause() {
+        super.pause()
+        try {
+            audio.pauseMusic()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to pause music on app pause", e)
+        }
+    }
+
+    /** App foregrounded: resume the music paused in [pause]. `super.resume()` forwards to the screen. */
+    override fun resume() {
+        super.resume()
+        try {
+            audio.resumeMusic()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to resume music on app resume", e)
+        }
     }
 
     override fun dispose() {
@@ -528,6 +580,16 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose game assets on shutdown", e)
         }
         gameAssets = null
+
+        // UC31: release the audio service AFTER every screen is disposed (no screen can still trigger a
+        // cue) — its native Sound/Music handles. Single owner, single dispose; reset to the no-op so any
+        // late call is harmless.
+        try {
+            audio.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose audio service on shutdown", e)
+        }
+        audio = NoOpAudioService
 
         try {
             driver?.close()
