@@ -90,7 +90,7 @@ class SpriteBackedRenderersGuardTest {
 
     @Test
     fun `control skin draws the joystick and action glyphs from atlas regions`() {
-        val src = controlsSkinSource("PlaceholderControlsSkin.kt")
+        val src = controlsSkinSource("OrbitalUiSkin.kt")
         val code = stripComments(src)
         assertTrue(
             "skin must draw art via gameAssets.region(...) on its atlas path (AC#2/#3)",

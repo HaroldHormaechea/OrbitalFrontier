@@ -13,7 +13,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.ShipRoster
@@ -41,13 +41,14 @@ class ShipyardScreen(
     private val onFleet: (FleetOrder) -> Unit,
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val root = Table()
 
     init {
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
         stage.addActor(root)
         rebuild()
     }
@@ -57,7 +58,7 @@ class ShipyardScreen(
         root.clear()
         val fleet = fleetSupplier()
 
-        root.add(Label(stationName, skin.labelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("SHIPYARD", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         root.add(Label("CREDITS: ${creditsSupplier()}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
 

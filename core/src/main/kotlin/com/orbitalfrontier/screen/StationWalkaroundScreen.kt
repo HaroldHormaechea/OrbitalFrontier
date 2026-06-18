@@ -15,7 +15,7 @@ import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.WalkaroundRenderer
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.MovementJoystick
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.walkaround.Avatar
 import com.orbitalfrontier.walkaround.StationInterior
 import com.orbitalfrontier.walkaround.WalkaroundModel
@@ -55,7 +55,7 @@ class StationWalkaroundScreen(
     private val model = WalkaroundModel()
     private val renderer = WalkaroundRenderer(gameAssets)
 
-    private val skin = PlaceholderControlsSkin(gameAssets)
+    private val skin = OrbitalUiSkin(gameAssets)
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val joystick = MovementJoystick(skin)
 

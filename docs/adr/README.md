@@ -5,7 +5,7 @@ the reasoning behind them. ADRs are append-only history: when a decision changes
 add a **new** ADR that supersedes the old one rather than rewriting it.
 
 An `Accepted` ADR is binding unless a later ADR supersedes it. `PROJECT_BRIEF.md`
-still wins on any conflict — keep them in sync.
+still wins on any conflict â keep them in sync.
 
 ## Index
 
@@ -25,9 +25,10 @@ still wins on any conflict — keep them in sync.
 | [0012](0012-real-time-combat.md) | Real-time combat: transient encounter state, durable per-ship damage, additive v11 persistence | Accepted |
 | [0013](0013-factions-and-reputation.md) | Factions & reputation: action-driven standing, separate gate filter, additive v12 persistence | Accepted |
 | [0014](0014-owned-stations.md) | Player-owned stations: player state in WorldState, station-build capability flag, additive v13 persistence | Accepted |
-| [0015](0015-ui-scale-and-universal-object-glyphs.md) | UI ×2 scale knob (UI/HUD only) + universal in-world object glyphs (exhaustive POI glyph resolver) | Accepted |
+| [0015](0015-ui-scale-and-universal-object-glyphs.md) | UI Ã2 scale knob (UI/HUD only) + universal in-world object glyphs (exhaustive POI glyph resolver) | Accepted |
 | [0016](0016-on-foot-station-mode.md) | On-foot station mode: transient non-persisted prototype, shop via existing TradeScreen | Accepted |
 | [0017](0017-typography-and-scalable-font.md) | Typography: pre-baked bitmap game font (JetBrains Mono OFL), bake-time-only freetype, downscaled at runtime | Accepted |
+| [0018](0018-ui-skin.md) | Finished UI skin: runtime palette-driven nine-patch chrome (rename PlaceholderControlsSkin → OrbitalUiSkin) | Accepted |
 
 ## Adding an ADR
 

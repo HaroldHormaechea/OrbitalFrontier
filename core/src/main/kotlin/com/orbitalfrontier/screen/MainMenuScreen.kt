@@ -2,7 +2,6 @@ package com.orbitalfrontier.screen
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.ScreenAdapter
-import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
@@ -15,7 +14,7 @@ import com.orbitalfrontier.menu.MainMenuModel
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 
 /**
  * The main/title menu shown on every launch before gameplay begins (UC21 AC#1/#5).
@@ -32,7 +31,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
  * **disabled / greyed (not hidden)** when [continueEnabled] is false (no usable save), per AC#4 and the
  * deliberate UI choice in the use case.
  *
- * Mirrors [StationHubScreen]'s resource model: owns a [PlaceholderControlsSkin] + [Stage] and releases
+ * Mirrors [StationHubScreen]'s resource model: owns a [OrbitalUiSkin] + [Stage] and releases
  * them in [dispose] (the game disposes every owned screen explicitly, since libGDX `setScreen` only
  * `hide()`s the previous screen).
  */
@@ -42,7 +41,7 @@ class MainMenuScreen(
     private val onContinue: () -> Unit,
     private val onStartNewGame: () -> Unit,
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // The pure state machine. continueEnabled doubles as "a usable save exists": it gates Continue and
@@ -55,6 +54,7 @@ class MainMenuScreen(
     init {
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
         stage.addActor(root)
         rebuild()
     }
@@ -77,18 +77,18 @@ class MainMenuScreen(
 
     /** The menu itself: title + START + CONTINUE (CONTINUE greyed/disabled when there is no save). */
     private fun buildMenu() {
-        root.add(Label("ORBITAL FRONTIER", skin.labelStyle)).padBottom(TITLE_GAP).row()
+        root.add(Label("ORBITAL FRONTIER", skin.titleLabelStyle)).padBottom(TITLE_GAP).row()
 
         val startButton = menuButton("START") { act(model.onStart()) }
         root.add(startButton).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
 
         val continueButton = menuButton("CONTINUE") { act(model.onContinue()) }
         if (!continueEnabled) {
-            // Shown disabled and greyed, never hidden (AC#4). isDisabled stops Scene2D from treating it
-            // as a live button; the grey tint communicates the state; the model also guards onContinue
-            // (returns NONE) so even a stray tap is a safe no-op.
+            // Shown disabled, never hidden (AC#4). isDisabled stops Scene2D from treating it as a live
+            // button AND drives the skin's `disabled` drawable + `disabledFontColor` (UC29 AC#4), so the
+            // muted state is the finished design-system styling — no manual colour tint here. The model
+            // also guards onContinue (returns NONE) so even a stray tap is a safe no-op.
             continueButton.isDisabled = true
-            continueButton.color = DISABLED_TINT
         }
         root.add(continueButton).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
     }
@@ -173,6 +173,5 @@ class MainMenuScreen(
         const val BTN_WIDTH = 240f
         const val BTN_HEIGHT = 64f
         const val WARNING_WIDTH = 420f
-        val DISABLED_TINT: Color = Color(0.5f, 0.5f, 0.5f, 0.6f)
     }
 }

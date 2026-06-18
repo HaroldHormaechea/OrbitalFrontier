@@ -13,7 +13,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.screen.layout.GridCell
 import com.orbitalfrontier.screen.layout.MenuGrid
 
@@ -31,7 +31,7 @@ import com.orbitalfrontier.screen.layout.MenuGrid
  * keeps this screen free of world/save coupling (SRP); the screen only renders the [fuelStatus]
  * readout and re-reads it after a refuel tap.
  *
- * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
+ * Owns its own GL-backed resources (a [OrbitalUiSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes both screens explicitly, so there is no leaked context when the
  * other screen is the active one (libGDX `setScreen` only `hide()`s the previous screen).
  */
@@ -64,7 +64,7 @@ class StationHubScreen(
     // menu/row stays exactly as-is (AC#1).
     private val onDisembark: () -> Unit = {},
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Fuel readout (UC07): seeded from the current tank and refreshed in place after each refuel tap.
@@ -85,8 +85,9 @@ class StationHubScreen(
         val root = Table()
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
 
-        root.add(Label(stationName, skin.labelStyle)).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).padBottom(TITLE_GAP).row()
         // UC14: show the owning faction when the station has one (cosmetic).
         if (factionName != null) {
             root.add(Label("FACTION: $factionName", skin.labelStyle)).padBottom(SERVICE_GAP).row()
