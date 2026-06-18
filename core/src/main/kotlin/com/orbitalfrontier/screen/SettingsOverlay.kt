@@ -1,62 +1,135 @@
 package com.orbitalfrontier.screen
 
 import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
+import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
+import com.orbitalfrontier.settings.AudioSettings
 import com.orbitalfrontier.settings.Handedness
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
- * Handedness toggle (AC#8). Tapping the button:
- *  1. swaps handedness **in memory immediately** and notifies [onHandednessChanged] on the render
- *     thread, so the control layout flips instantly with no I/O wait; and
- *  2. persists the new value through the injected [SaveExecutor] — the **same single writer** that
- *     handles autosave (UC04). Real SQLite I/O never blocks the render thread (coding-guidelines §
- *     concurrency), and because every persistence write shares this one serial queue, the settings
- *     write can't interleave with an autosave. The repository write is itself transactional and
- *     swallows+logs failures, so no result needs marshalling back.
+ * In-flight settings panel: a handedness toggle (AC#8) plus the UC31 audio controls — master mute and
+ * stepped SFX / music volume (UC31 AC#3). Every control follows the same two-step discipline the
+ * handedness toggle established:
+ *  1. apply the change **in memory + to the live [AudioService] immediately on the render thread**, so the
+ *     effect (control layout flip, mute, volume) is instant with no I/O wait; and
+ *  2. persist the new value through the injected [SaveExecutor] — the **same single writer** that handles
+ *     autosave (UC04) — so the settings write never blocks the render thread and can't interleave with an
+ *     autosave. The repository writes are transactional, per-field (handedness vs. audio never clobber each
+ *     other, UC31 Risk 1) and swallow+log their own failures, so nothing needs marshalling back.
  *
- * The [SaveExecutor]'s lifecycle is owned by the app (built in the launcher, shut down on dispose),
- * not by this overlay — so the overlay holds no disposable resources of its own.
+ * The controls are stacked in a [Table] exposed as [actor] (the play screen positions/sizes/hides it as a
+ * single unit, unchanged from when it was one button). The [SaveExecutor]'s lifecycle is owned by the app,
+ * not this overlay, so the overlay holds no disposable resources of its own.
  */
 class SettingsOverlay(
     skin: OrbitalUiSkin,
     private val repository: SettingsRepository,
     private val saveExecutor: SaveExecutor,
-    initial: Handedness,
+    initialHandedness: Handedness,
+    initialAudio: AudioSettings,
+    private val audio: AudioService,
     private val onHandednessChanged: (Handedness) -> Unit,
 ) {
-    private var handedness: Handedness = initial
-    val actor: TextButton = TextButton(label(initial), skin.settingsButtonStyle)
+    private var handedness: Handedness = initialHandedness
+    private var audioSettings: AudioSettings = initialAudio.coerced()
+
+    private val handednessButton = TextButton(handednessLabel(handedness), skin.settingsButtonStyle)
+    private val muteButton = TextButton(muteLabel(audioSettings), skin.settingsButtonStyle)
+    private val sfxButton = TextButton(sfxLabel(audioSettings), skin.settingsButtonStyle)
+    private val musicButton = TextButton(musicLabel(audioSettings), skin.settingsButtonStyle)
+
+    /** The stacked controls, laid out top-down. Positioned/sized/hidden by the play screen as one unit. */
+    val actor: Table = Table()
 
     init {
-        actor.addListener(
-            object : ChangeListener() {
-                override fun changed(
-                    event: ChangeEvent,
-                    target: Actor,
-                ) {
-                    toggle()
-                }
-            },
-        )
-    }
+        handednessButton.addListener(onTap { toggleHandedness() })
+        muteButton.addListener(onTap { toggleMute() })
+        sfxButton.addListener(onTap { cycleSfxVolume() })
+        musicButton.addListener(onTap { cycleMusicVolume() })
 
-    private fun toggle() {
-        handedness = handedness.toggled()
-        actor.setText(label(handedness))
-        onHandednessChanged(handedness) // instant, render-thread, no I/O
-        persistAsync(handedness)
-    }
-
-    private fun persistAsync(value: Handedness) {
-        saveExecutor.execute {
-            // Off the render thread; repository write is transactional and logs its own failures.
-            repository.saveHandedness(value)
+        actor.top()
+        for (button in listOf(handednessButton, muteButton, sfxButton, musicButton)) {
+            actor.add(button).width(ROW_WIDTH).height(ROW_HEIGHT).padBottom(ROW_GAP)
+            actor.row()
         }
     }
 
-    private fun label(value: Handedness): String = "LAYOUT: " + if (value == Handedness.RIGHT_HANDED) "R" else "L"
+    private fun toggleHandedness() {
+        handedness = handedness.toggled()
+        handednessButton.setText(handednessLabel(handedness))
+        onHandednessChanged(handedness) // instant, render-thread, no I/O
+        saveExecutor.execute { repository.saveHandedness(handedness) }
+    }
+
+    private fun toggleMute() {
+        audioSettings = audioSettings.copy(masterMuted = !audioSettings.masterMuted)
+        audio.setMasterMuted(audioSettings.masterMuted) // instant, render-thread
+        muteButton.setText(muteLabel(audioSettings))
+        persistAudioAsync()
+    }
+
+    private fun cycleSfxVolume() {
+        audioSettings = audioSettings.copy(sfxVolume = nextVolume(audioSettings.sfxVolume))
+        audio.setSfxVolume(audioSettings.sfxVolume) // instant, render-thread
+        sfxButton.setText(sfxLabel(audioSettings))
+        persistAudioAsync()
+    }
+
+    private fun cycleMusicVolume() {
+        audioSettings = audioSettings.copy(musicVolume = nextVolume(audioSettings.musicVolume))
+        audio.setMusicVolume(audioSettings.musicVolume) // instant, render-thread
+        musicButton.setText(musicLabel(audioSettings))
+        persistAudioAsync()
+    }
+
+    private fun persistAudioAsync() {
+        val snapshot = audioSettings
+        saveExecutor.execute {
+            // Off the render thread; the repository write is transactional and logs its own failures.
+            repository.saveAudioSettings(snapshot)
+        }
+    }
+
+    private fun onTap(action: () -> Unit): ChangeListener =
+        object : ChangeListener() {
+            override fun changed(
+                event: ChangeEvent,
+                target: Actor,
+            ) {
+                action()
+            }
+        }
+
+    private fun handednessLabel(value: Handedness): String = "LAYOUT: " + if (value == Handedness.RIGHT_HANDED) "R" else "L"
+
+    private fun muteLabel(value: AudioSettings): String = "AUDIO: " + if (value.masterMuted) "OFF" else "ON"
+
+    private fun sfxLabel(value: AudioSettings): String = "SFX: ${percent(value.sfxVolume)}%"
+
+    private fun musicLabel(value: AudioSettings): String = "MUSIC: ${percent(value.musicVolume)}%"
+
+    private fun percent(volume: Float): Int = (volume * 100f).roundToInt()
+
+    /** Next discrete volume level, wrapping 100% -> 0% (a single tappable button cycles the gain). */
+    private fun nextVolume(current: Float): Float {
+        val nearest = VOLUME_LEVELS.minByOrNull { abs(it - current) } ?: return VOLUME_LEVELS.first()
+        val index = VOLUME_LEVELS.indexOf(nearest)
+        return VOLUME_LEVELS[(index + 1) % VOLUME_LEVELS.size]
+    }
+
+    private companion object {
+        /** Stepped gains a volume button cycles through (0 % .. 100 % in 25 % steps). */
+        val VOLUME_LEVELS = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+
+        const val ROW_WIDTH = 200f
+        const val ROW_HEIGHT = 44f
+        const val ROW_GAP = 6f
+    }
 }

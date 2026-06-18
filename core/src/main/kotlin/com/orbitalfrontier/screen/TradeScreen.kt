@@ -59,6 +59,7 @@ class TradeScreen(
     private val heldLabels = LinkedHashMap<ResourceType, Label>()
 
     init {
+        skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
         val root = Table()
         root.setFillParent(true)
         root.pad(MARGIN)

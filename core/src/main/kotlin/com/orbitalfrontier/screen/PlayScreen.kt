@@ -14,6 +14,7 @@ import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.audio.Sfx
 import com.orbitalfrontier.combat.Combat
 import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
@@ -56,7 +57,9 @@ import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
+import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
@@ -147,6 +150,11 @@ class PlayScreen(
     initialHandedness: Handedness,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
+    // UC31: the injected audio port. SFX are triggered here from the SAME gameplay event seams the
+    // autosave/HUD use (combat events, the thrust transition, a productive mining tick, dock, jump,
+    // mission accept/complete), so sound is event-driven and the pure simulation stays audio-free
+    // (AC#4). Defaults to the no-op so headless/JVM contexts (the replay harness, tests) run silently.
+    private val audio: AudioService = NoOpAudioService,
     // UC25: debug-build flag. When true, the debug-only point-and-go navigation aid (arm toggle +
     // world-tap teleport) is wired below; when false (release, tests) none of it is constructed, so
     // release controls, tap handling, and gameplay are byte-for-byte unchanged.
@@ -276,6 +284,16 @@ class PlayScreen(
     private var combatTickAccumulator = 0f
     private val combatParams = CombatParams()
 
+    // UC31: previous-frame thrust state for the looping THRUST cue. The engine sound starts on the
+    // not-thrusting -> thrusting rising edge ([audio].play) and stops on the falling edge ([audio].stopSfx),
+    // so it plays continuously while the stick is held and exactly once per ignition (AC#1).
+    private var previousThrusting = false
+
+    // UC31: cooldown that paces the MINING_TICK cue. Mining resolves EVERY held frame (60/s), so the cue
+    // is throttled to one play per MINING_SFX_INTERVAL of productive mining — a pleasant pulse, not a
+    // 60 Hz buzz. Counts down only on productive ticks; the first tick of a session plays immediately.
+    private var miningSfxCooldown = 0f
+
     private val skin = OrbitalUiSkin(gameAssets)
 
     // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
@@ -330,7 +348,11 @@ class PlayScreen(
                 skin = skin,
                 repository = settingsRepository,
                 saveExecutor = saveExecutor,
-                initial = initialHandedness,
+                initialHandedness = initialHandedness,
+                // UC31: seed the audio controls from persisted settings (already applied to [audio] by the
+                // app at startup); the overlay then keeps them in sync as the player adjusts them.
+                initialAudio = settingsRepository.loadAudioSettings(),
+                audio = audio,
             ) { newHandedness ->
                 handedness = newHandedness
                 layoutControls()
@@ -461,6 +483,13 @@ class PlayScreen(
         val thrusting = !input.released && input.magnitude > params.inputDeadzone
         fuel = FuelBurn.step(fuel, thrusting, powerParams, dt)
 
+        // UC31: drive the looping engine cue off the thrust transition (edge-triggered, AC#1) — start it
+        // when thrust begins, stop it when thrust ends, so it plays only while the stick is held.
+        if (thrusting != previousThrusting) {
+            if (thrusting) audio.play(Sfx.THRUST) else audio.stopSfx(Sfx.THRUST)
+            previousThrusting = thrusting
+        }
+
         // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps. UC09:
         // the model runs against the ACTIVE SHIP's params — its type + engine loadout (ShipStats) — then
         // the fuel-limited scaling on top (UC07 AC#3). For the starter ship with an empty loadout
@@ -501,6 +530,7 @@ class PlayScreen(
                 // Event-driven autosave: a jump is a key world event (UC04 AC#2). The snapshot the
                 // controller reads now reflects the post-jump sector + re-seeded kinematics.
                 autosave.onEvent("jump")
+                audio.play(Sfx.JUMP) // UC31: jump-gate transition cue (AC#1)
                 arrived
             } else {
                 stepped
@@ -522,6 +552,7 @@ class PlayScreen(
                 logger.info(WORLD_TAG, "Docked at station ${available.id.value} (${available.displayName})")
                 // Docking is a key world event — event-driven autosave persists the dock state now.
                 autosave.onEvent("dock")
+                audio.play(Sfx.DOCK) // UC31: dock cue (AC#1)
                 onDocked(available)
             }
         }
@@ -548,6 +579,12 @@ class PlayScreen(
             if (result.minedUnits > 0) {
                 cargo = result.cargo
                 fieldDepletion = result.fieldDepletion
+                // UC31: mining cue, throttled (mining resolves every held frame; pulse, don't buzz — AC#1).
+                miningSfxCooldown -= dt
+                if (miningSfxCooldown <= 0f) {
+                    audio.play(Sfx.MINING_TICK)
+                    miningSfxCooldown = MINING_SFX_INTERVAL
+                }
                 val fieldEmptied = (result.fieldDepletion[field.id]?.values?.sum() ?: 0) <= 0
                 // Event-driven autosave on the two key transitions (UC06): the hold just filled, or the
                 // field just emptied. Each fires at most once because subsequent ticks are no-ops.
@@ -629,6 +666,7 @@ class PlayScreen(
                     cargo = result.cargo
                     reputation = result.reputation
                     autosave.onEvent("mission-accept")
+                    audio.play(Sfx.MISSION_ACCEPT) // UC31: mission-accept cue (AC#1)
                     logger.info(WORLD_TAG, "Accepted radio mission ${offer.id.value} in sector ${currentSector.value}")
                 }
             }
@@ -929,6 +967,10 @@ class PlayScreen(
         val fireAction = if (actionCluster.isFirePressed()) FireAction.FIRE else FireAction.NONE
         val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
         combat = result.combat
+
+        // UC31: play SFX for this tick's combat events (weapon fire, hostile hit, hostile destroyed) from
+        // the pure model's structured output — audio is event-driven, the simulation stays audio-free (AC#4).
+        result.events.forEach { event -> Sfx.forCombatEvent(event)?.let(audio::play) }
 
         // Fold the player's new section damage onto the active ship (=== check skips a no-op tick).
         if (result.sectionDamage !== active.sectionDamage) {
@@ -1358,6 +1400,12 @@ class PlayScreen(
         reputation = result.reputation
         logger.info(ECONOMY_TAG, "Mission order applied; active=${activeMissions().size}, credits=$credits")
         autosave.onEvent("mission")
+        // UC31: distinct cue for accept vs. turn-in (AC#1); only on a real change (no-ops returned early above).
+        when (order) {
+            is MissionOrder.Accept -> audio.play(Sfx.MISSION_ACCEPT)
+            is MissionOrder.TurnIn -> audio.play(Sfx.MISSION_COMPLETE)
+            MissionOrder.None -> Unit
+        }
     }
 
     /** The player's owned stations (UC15) — read by the station-build hub action for its readout/intent. */
@@ -1415,6 +1463,13 @@ class PlayScreen(
     }
 
     override fun hide() {
+        // UC31: stop the looping engine cue when the play screen is hidden (docking hand-off, app pause,
+        // screen switch) so it can't bleed into the hub/other screens; reset the edge so it restarts
+        // cleanly on the next thrust when the screen is shown again.
+        if (previousThrusting) {
+            audio.stopSfx(Sfx.THRUST)
+            previousThrusting = false
+        }
         if (Gdx.input.inputProcessor === inputMultiplexer) {
             Gdx.input.inputProcessor = null
         }
@@ -1448,8 +1503,16 @@ class PlayScreen(
         const val MAX_DT = 1f / 30f
         const val MARGIN = 24f
         const val JOYSTICK_SIZE = 220f
+
+        // UC31: minimum seconds between MINING_TICK cues while mining is held (≈8 pulses/sec).
+        const val MINING_SFX_INTERVAL = 0.12f
+
         const val SETTINGS_WIDTH = 200f
-        const val SETTINGS_HEIGHT = 56f
+
+        // UC31: the settings panel now stacks four controls (handedness + mute + SFX + music volume), each
+        // a 44-high row with a 6 gap, so the panel is 4 × (44 + 6) = 200 tall. Still centred in the
+        // top-left band and hidden in combat / when the map overlay is open (unchanged from one button).
+        const val SETTINGS_HEIGHT = 200f
 
         // UC22: world-space height of the top-left HUD readout block (HudRenderer's three scaled text
         // lines plus the combat "IN COMBAT" cue), measured down from the top. The settings/handedness

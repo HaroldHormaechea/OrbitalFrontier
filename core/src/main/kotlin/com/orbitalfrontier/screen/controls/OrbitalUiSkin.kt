@@ -6,11 +6,15 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.NinePatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.ui.Button
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.ui.Touchpad
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
@@ -288,7 +292,36 @@ class OrbitalUiSkin(
         textures.clear()
     }
 
-    private companion object {
+    /**
+     * UC31: attach a stage-wide listener that plays the shared UI-tap cue on a button tap. ChangeEvents
+     * bubble from the originating widget to the stage root, so one listener here covers every button on
+     * the screen. It fires ONLY when the event's target is a [Button] (TextButton/ImageButton), so a
+     * ScrollPane scroll or other ChangeEvent doesn't machine-gun the cue. The actual sound is played
+     * through the static [uiTapSound] hook the app wires to [com.orbitalfrontier.platform.AudioService],
+     * so screens stay decoupled from the audio port. Install on UI/menu screens; the play screen is
+     * intentionally excluded so its gameplay buttons keep their own cues (dock/fire/…).
+     */
+    fun installTapSound(stage: Stage) {
+        stage.root.addListener(
+            object : ChangeListener() {
+                override fun changed(
+                    event: ChangeEvent,
+                    actor: Actor,
+                ) {
+                    if (event.target is Button) uiTapSound?.invoke()
+                }
+            },
+        )
+    }
+
+    companion object {
+        /**
+         * UC31: global UI-tap audio hook. The app sets this once (to play `Sfx.UI_TAP` through the audio
+         * service) and every screen's [installTapSound] invokes it; null (the default) makes UI taps
+         * silent, which is the correct behaviour in headless/JVM contexts that never wire audio.
+         */
+        var uiTapSound: (() -> Unit)? = null
+
         const val CONTROL_SIZE = 220
         const val KNOB_SIZE = 96
         const val ACTION_SIZE = 120

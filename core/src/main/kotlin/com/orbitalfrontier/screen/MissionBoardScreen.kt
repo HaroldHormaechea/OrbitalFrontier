@@ -65,6 +65,7 @@ class MissionBoardScreen(
     private val root = Table()
 
     init {
+        skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
         root.setFillParent(true)
         root.background = skin.panel
         stage.addActor(root)

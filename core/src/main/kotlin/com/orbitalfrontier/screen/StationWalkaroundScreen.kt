@@ -67,6 +67,7 @@ class StationWalkaroundScreen(
     private var avatar: Avatar = Avatar.spawnedAt(interior.avatarSpawn)
 
     init {
+        skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
         reboardButton.addListener(
             object : ClickListener() {
                 override fun clicked(

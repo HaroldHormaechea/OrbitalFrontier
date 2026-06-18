@@ -1,6 +1,7 @@
 package com.orbitalfrontier.save
 
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.settings.AudioSettings
 import com.orbitalfrontier.settings.Handedness
 
 /**
@@ -10,6 +11,11 @@ import com.orbitalfrontier.settings.Handedness
  * `SqlDriver` behind the database is supplied per platform, so this class is exercised in JVM
  * tests against an in-memory driver. All writes run inside `transaction { }` so a failure rolls
  * back and never leaves a half-written row (AC#13, coding-guidelines § "Transactional saves").
+ *
+ * UC31: the single settings row is seeded with defaults up front (in [ensureInitialized] and again,
+ * idempotently, before every targeted write), and each preference is written through its own
+ * column-scoped UPDATE, so toggling handedness can never clobber the audio columns and vice-versa
+ * (Risk 1).
  */
 class SqlDelightSettingsRepository(
     private val database: OrbitalFrontier,
@@ -21,6 +27,7 @@ class SqlDelightSettingsRepository(
         try {
             queries.transaction {
                 queries.initMeta(SaveVersion.CURRENT)
+                seedDefaultSettingsRow()
             }
         } catch (e: Exception) {
             logger.error(TAG, "Failed to initialize save metadata (save_version=${SaveVersion.CURRENT})", e)
@@ -35,7 +42,7 @@ class SqlDelightSettingsRepository(
                 saveHandedness(Handedness.DEFAULT)
                 Handedness.DEFAULT
             } else {
-                parseHandedness(stored)
+                parseHandedness(stored.handedness)
             }
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load handedness; using default=${Handedness.DEFAULT}", e)
@@ -46,13 +53,66 @@ class SqlDelightSettingsRepository(
     override fun saveHandedness(handedness: Handedness) {
         try {
             queries.transaction {
-                queries.upsertHandedness(handedness.name)
+                // Ensure the row exists, then write ONLY the handedness column (audio columns untouched).
+                seedDefaultSettingsRow()
+                queries.updateHandedness(handedness.name)
             }
             logger.info(TAG, "Persisted handedness=$handedness")
         } catch (e: Exception) {
             // Graceful degradation: keep the last good save, log, and do not crash the app.
             logger.error(TAG, "Failed to persist handedness=$handedness; last good value kept", e)
         }
+    }
+
+    override fun loadAudioSettings(): AudioSettings {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            if (stored == null) {
+                logger.info(TAG, "No settings row; using default audio settings=${AudioSettings.DEFAULT}")
+                AudioSettings.DEFAULT
+            } else {
+                AudioSettings(
+                    masterMuted = stored.master_muted != 0L,
+                    sfxVolume = stored.sfx_volume.toFloat(),
+                    musicVolume = stored.music_volume.toFloat(),
+                ).coerced()
+            }
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load audio settings; using default=${AudioSettings.DEFAULT}", e)
+            AudioSettings.DEFAULT
+        }
+    }
+
+    override fun saveAudioSettings(settings: AudioSettings) {
+        val coerced = settings.coerced()
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the audio columns (handedness untouched).
+                seedDefaultSettingsRow()
+                queries.updateAudioSettings(
+                    if (coerced.masterMuted) 1L else 0L,
+                    coerced.sfxVolume.toDouble(),
+                    coerced.musicVolume.toDouble(),
+                )
+            }
+            logger.info(TAG, "Persisted audio settings=$coerced")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist audio settings=$coerced; last good value kept", e)
+        }
+    }
+
+    /**
+     * Seed the single settings row with defaults if it is absent (INSERT OR IGNORE). Idempotent and
+     * side-effect-free on an existing row, so it is safe to call inside every write transaction; it
+     * guarantees the targeted UPDATE writes below always hit a row.
+     */
+    private fun seedDefaultSettingsRow() {
+        queries.seedSettings(
+            Handedness.DEFAULT.name,
+            if (AudioSettings.DEFAULT.masterMuted) 1L else 0L,
+            AudioSettings.DEFAULT.sfxVolume.toDouble(),
+            AudioSettings.DEFAULT.musicVolume.toDouble(),
+        )
     }
 
     private fun parseHandedness(value: String): Handedness =
