@@ -7,6 +7,8 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.platform.NoOpLogger
+import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.station.OwnedStation
 import com.orbitalfrontier.station.StationId
 import com.orbitalfrontier.station.StationModuleCatalog
@@ -94,7 +96,7 @@ class SaveMigrationTest {
         assertEquals(
             "the v1 settings row must survive the migration",
             "LEFT_HANDED",
-            queries.selectSettings().executeAsOneOrNull(),
+            readHandedness(),
         )
 
         // The v2 tables now exist.
@@ -201,7 +203,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: the seeded settings + game_state survive the additive migration (AC#4).
-        assertEquals("v2 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v2 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new dock column exists and is NULL for the pre-existing (in-flight) save.
         assertTrue("docked_station_id column must exist after migration", columnExists("game_state", "docked_station_id"))
@@ -274,7 +276,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: settings + the docked game_state + ship survive the additive migration (AC#4).
-        assertEquals("v3 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v3 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The two new v4 tables now exist.
         assertTrue("cargo table must exist after migration", tableExists("cargo"))
@@ -376,7 +378,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: settings + the in-flight game_state + ship + cargo survive the additive migration.
-        assertEquals("v4 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v4 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new fuel column exists and was backfilled to a FULL tank (DEFAULT 100) for the existing ship.
         assertTrue("ship.fuel column must exist after migration", columnExists("ship", "fuel"))
@@ -485,7 +487,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: settings + the in-flight game_state + ship + cargo survive the additive migration.
-        assertEquals("v5 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v5 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new credits column exists and was backfilled to 0 (a migrated save upgrades broke; a new
         // game seeds a starting balance in code, not via this default).
@@ -592,7 +594,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: settings + the in-flight game_state + ship + cargo survive the additive migration.
-        assertEquals("v6 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v6 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new ship_type column exists and the existing ship was backfilled to the starter type.
         assertTrue("ship.ship_type column must exist after migration", columnExists("ship", "ship_type"))
@@ -712,7 +714,7 @@ class SaveMigrationTest {
         val queries = database.orbitalFrontierQueries
 
         // Data survival: settings + the in-flight game_state + ship + cargo survive the additive migration.
-        assertEquals("v7 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v7 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new revealed_contact table exists and is EMPTY — a migrated save has scanned nothing, so
         // every hidden contact reads back still hidden (UC10 AC#4; the migration is purely additive).
@@ -833,7 +835,7 @@ class SaveMigrationTest {
 
         // Data survival: settings + the in-flight game_state + ship + cargo + the revealed contact survive
         // the additive migration.
-        assertEquals("v8 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v8 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new crew column exists and was backfilled to 0 (a migrated ship reads back uncrewed).
         assertTrue("ship.crew column must exist after migration", columnExists("ship", "crew"))
@@ -952,7 +954,7 @@ class SaveMigrationTest {
 
         // Data survival: settings + the in-flight game_state + ship + cargo + the revealed contact survive
         // the additive migration.
-        assertEquals("v9 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v9 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new mission table exists and is EMPTY — a migrated save has no missions, so the player reads
         // back with an empty mission log (UC12 AC#5; the migration is purely additive).
@@ -1060,6 +1062,27 @@ class SaveMigrationTest {
         driver.execute(null, "INSERT INTO revealed_contact(contact_id) VALUES ('alpha-derelict')", 0)
     }
 
+    /**
+     * Read the single `settings` row's `handedness` column directly via raw SQL.
+     *
+     * UC31 widened the generated `selectSettings` query to also select the new audio columns
+     * (`master_muted`/`sfx_volume`/`music_volume`), so running it against a **pre-v14** settings table —
+     * which the per-step migration tests build — throws "no such column". A raw single-column read stays
+     * valid at every schema version, so it is the right tool for the "the vN handedness row survived"
+     * assertions that stop at an intermediate version.
+     */
+    private fun readHandedness(): String? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT handedness FROM settings WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
     /** Read the single `game_state` row's `last_docked_station_id` column directly via SQL. */
     private fun readLastDockedStation(): String? =
         driver.executeQuery(
@@ -1085,7 +1108,7 @@ class SaveMigrationTest {
 
         // Data survival: settings + the in-flight game_state + ship + cargo + the revealed contact survive
         // the additive migration.
-        assertEquals("v10 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v10 settings must survive", "LEFT_HANDED", readHandedness())
 
         // The new (empty) per-ship section-damage table exists — a migrated save has no rows, so every ship
         // reads back pristine (full derived HP, UC13 AC#3; the migration is purely additive).
@@ -1256,7 +1279,7 @@ class SaveMigrationTest {
 
         // Data survival: settings + the in-flight game_state + last dock + ship + cargo + the revealed
         // contact + the accepted mission all survive the additive migration.
-        assertEquals("v11 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v11 settings must survive", "LEFT_HANDED", readHandedness())
         assertEquals("the recorded last dock must survive", "alpha-station", readLastDockedStation())
 
         // The stored save-format version is bumped to 12 (AC#2) — assert the v11->v12 step before continuing.
@@ -1427,7 +1450,7 @@ class SaveMigrationTest {
 
         // Data survival: settings + the in-flight game_state + last dock + ship + cargo + the revealed contact
         // + the faction-attributed mission + the reputation row all survive the additive migration.
-        assertEquals("v12 settings must survive", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v12 settings must survive", "LEFT_HANDED", readHandedness())
         assertEquals("the recorded last dock must survive", "alpha-station", readLastDockedStation())
 
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
@@ -1465,17 +1488,17 @@ class SaveMigrationTest {
     }
 
     @Test
-    fun `the full v1 to v13 chain preserves settings, lands every schema change, and ends at version 13`() {
+    fun `the full v1 to v14 chain preserves settings, lands every schema change, and ends at version 14`() {
         buildRealV1Database()
 
-        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 11.sqm (v11->v12), 12.sqm (v12->v13).
-        OrbitalFrontier.Schema.migrate(driver, 1L, 13L)
+        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 12.sqm (v12->v13), 13.sqm (v13->v14).
+        OrbitalFrontier.Schema.migrate(driver, 1L, 14L)
 
         val database = OrbitalFrontier(driver)
         val queries = database.orbitalFrontierQueries
 
         // v1 settings survive the whole chain.
-        assertEquals("v1 settings must survive the v1->v13 chain", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+        assertEquals("v1 settings must survive the v1->v14 chain", "LEFT_HANDED", readHandedness())
 
         // Every schema change landed: the v2 tables, the v3 dock column, the v4 tables, the v5 fuel
         // column, the v6 credits column, the v7 ship_type column + ship_upgrade table, the v8
@@ -1498,15 +1521,94 @@ class SaveMigrationTest {
         assertTrue("game_state.last_docked_station_id column must exist", columnExists("game_state", "last_docked_station_id"))
         assertTrue("reputation table must exist", tableExists("reputation"))
         assertTrue("mission.faction_id column must exist", columnExists("mission", "faction_id"))
-        // …and the v13 owned_station + station_module tables (UC15).
+        // …the v13 owned_station + station_module tables (UC15)…
         assertTrue("owned_station table must exist", tableExists("owned_station"))
         assertTrue("station_module table must exist", tableExists("station_module"))
+        // …and the v14 audio-preference columns on settings (UC31).
+        assertTrue("settings.master_muted column must exist", columnExists("settings", "master_muted"))
+        assertTrue("settings.sfx_volume column must exist", columnExists("settings", "sfx_volume"))
+        assertTrue("settings.music_volume column must exist", columnExists("settings", "music_volume"))
 
         // A migrated-from-v1 DB has no game state (settings-only origin) → New Game.
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
         assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState())
 
+        // The migrated settings row backfills the audio defaults (audio enabled at default levels).
+        assertEquals(
+            "a v1-origin migrated save reads back the default audio settings",
+            AudioSettings.DEFAULT,
+            SqlDelightSettingsRepository(database, NoOpLogger).loadAudioSettings(),
+        )
+
         // Ends at the current schema version.
-        assertEquals(13L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(14L, queries.selectSaveVersion().executeAsOne())
+    }
+
+    /**
+     * Build a minimal real v13 (UC15) database — just `meta` + the v13 `settings` table (handedness
+     * only, before the UC31 audio columns) — and seed a settings row. The v13->v14 migration (13.sqm)
+     * touches only `settings` and `meta`, so the rest of the v13 schema is irrelevant to this migration
+     * and is intentionally omitted (mirrors the minimal v1 builder).
+     */
+    private fun buildRealV13Database() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 13)", 0)
+        driver.execute(null, "INSERT INTO settings(id, handedness) VALUES (0, 'RIGHT_HANDED')", 0)
+    }
+
+    @Test
+    fun `migrating a real v13 database to v14 adds the audio columns, preserves handedness, backfills defaults, and bumps the version`() {
+        buildRealV13Database()
+
+        // Apply the sequential v13 -> v14 migration (runs migrations/13.sqm).
+        OrbitalFrontier.Schema.migrate(driver, 13L, 14L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The three new audio columns now exist on the single-row settings table (purely additive).
+        assertTrue("settings.master_muted column must exist after migration", columnExists("settings", "master_muted"))
+        assertTrue("settings.sfx_volume column must exist after migration", columnExists("settings", "sfx_volume"))
+        assertTrue("settings.music_volume column must exist after migration", columnExists("settings", "music_volume"))
+
+        // Data survival: the pre-UC31 handedness value is untouched by the additive migration.
+        assertEquals(
+            "the v13 handedness must survive the v13->v14 migration",
+            "RIGHT_HANDED",
+            readHandedness(),
+        )
+
+        // Backfill: a pre-UC31 save had no audio prefs, so the migrated row reads back at the DEFAULTs
+        // (unmuted, SFX 1.0, music 0.5) — audio enabled at default levels, no data loss (UC31 AC#3).
+        val repo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertEquals(
+            "a migrated v13 save backfills the default audio settings",
+            AudioSettings.DEFAULT,
+            repo.loadAudioSettings(),
+        )
+
+        // The stored save-format version is bumped to 14.
+        assertEquals(14L, queries.selectSaveVersion().executeAsOne())
+
+        // The new columns are writable, not just present: audio prefs saved on top of the migrated DB
+        // round-trip, and (Risk 1) the targeted audio write leaves the migrated handedness untouched.
+        val saved = AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f)
+        repo.saveAudioSettings(saved)
+        val freshRepo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertEquals("audio prefs round-trip on the migrated DB", saved, freshRepo.loadAudioSettings())
+        assertEquals(
+            "the audio write must not clobber the migrated handedness",
+            Handedness.RIGHT_HANDED,
+            freshRepo.loadHandedness(),
+        )
     }
 }

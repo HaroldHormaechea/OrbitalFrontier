@@ -200,15 +200,16 @@ class MissionPersistenceTest {
 
             assertTrue("the v10 mission table must exist after migration", v9.tableExistsLocal("mission"))
             assertEquals("a migrated v9 save has no missions", 0L, v9.missionCount())
-            assertEquals("prior data is preserved", "LEFT_HANDED", queries.selectSettings().executeAsOneOrNull())
+            assertEquals("prior data is preserved", "LEFT_HANDED", v9.handednessLocal())
             assertEquals("the save version is bumped to 10", 10L, queries.selectSaveVersion().executeAsOne())
 
-            // Continue the chain to the current schema so the now-v13-aware repository (which reads the
+            // Continue the chain to the current schema so the now-current repository (which reads the
             // ship_section_damage table + game_state.last_docked_station_id added by v11, the reputation
-            // table added by v12, and the owned_station/station_module tables added by v13) can load — the
-            // canonical per-step migration assertions live in SaveMigrationTest.
-            OrbitalFrontier.Schema.migrate(v9, 10L, 13L)
-            assertEquals("the chain reaches the current save version", 13L, queries.selectSaveVersion().executeAsOne())
+            // table added by v12, the owned_station/station_module tables added by v13, and the settings
+            // audio columns added by v14) can load — the canonical per-step migration assertions live in
+            // SaveMigrationTest.
+            OrbitalFrontier.Schema.migrate(v9, 10L, 14L)
+            assertEquals("the chain reaches the current save version", 14L, queries.selectSaveVersion().executeAsOne())
 
             // The migrated save loads through the repository with an empty mission log, and a freshly
             // saved mission round-trips on top of it (the new table is writable, not just present).
@@ -248,6 +249,23 @@ class MissionPersistenceTest {
             mapper = { cursor ->
                 cursor.next()
                 QueryResult.Value(cursor.getLong(0) ?: 0L)
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    /**
+     * Read the `settings.handedness` column directly via raw SQL. UC31 widened the generated
+     * `selectSettings` query to also select the v14 audio columns, so it can't run against this test's
+     * pre-v14 (v10) settings table; a single-column raw read stays valid at every schema version.
+     */
+    private fun JdbcSqliteDriver.handednessLocal(): String? =
+        executeQuery(
+            identifier = null,
+            sql = "SELECT handedness FROM settings WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0))
             },
             parameters = 0,
             binders = null,
