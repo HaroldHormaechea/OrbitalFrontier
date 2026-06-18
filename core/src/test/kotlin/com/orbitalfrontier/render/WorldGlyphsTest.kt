@@ -136,14 +136,43 @@ class WorldGlyphsTest {
         }
     }
 
-    // --- World-unit sizes are preserved across the art swap so geometry is unchanged (AC#4) ---
+    // --- World-unit sizes are preserved across the art swap so geometry is unchanged (AC#3/#4) ---
 
+    /**
+     * UC30 AC#3 extracted the per-type half-extents into [WorldSpriteSizes] (the sizing single source of
+     * truth, ADR 0019). This asserts each POI's glyph resolves its world size **from that SSOT** — proving
+     * the renderers read the one auditable place rather than a re-introduced inline literal.
+     */
     @Test
-    fun authoredWorldSizesArePreserved() {
-        assertEquals("gate world size", 28f, WorldGlyphs.forPoi(jumpGate()).sizeWorldUnits, 0f)
-        assertEquals("station world size", 22f, WorldGlyphs.forPoi(station()).sizeWorldUnits, 0f)
-        assertEquals("asteroid world size", 26f, WorldGlyphs.forPoi(asteroidField()).sizeWorldUnits, 0f)
-        assertEquals("contact world size", 16f, WorldGlyphs.forPoi(hiddenContact()).sizeWorldUnits, 0f)
+    fun glyphWorldSizesResolveFromWorldSpriteSizes() {
+        assertEquals("gate world size", WorldSpriteSizes.GATE, WorldGlyphs.forPoi(jumpGate()).sizeWorldUnits, 0f)
+        assertEquals("station world size", WorldSpriteSizes.STATION, WorldGlyphs.forPoi(station()).sizeWorldUnits, 0f)
+        assertEquals(
+            "asteroid world size",
+            WorldSpriteSizes.ASTEROID_FIELD,
+            WorldGlyphs.forPoi(asteroidField()).sizeWorldUnits,
+            0f,
+        )
+        assertEquals(
+            "contact world size",
+            WorldSpriteSizes.HIDDEN_CONTACT,
+            WorldGlyphs.forPoi(hiddenContact()).sizeWorldUnits,
+            0f,
+        )
+    }
+
+    /**
+     * The desync safety net for AC#3: the authored half-extents must stay **pinned to their pre-UC30
+     * values** so the extraction into [WorldSpriteSizes] caused zero geometry drift (changing collision /
+     * dock / mine / jump ranges relative to the visuals). Asserting the SSOT constants against literals here
+     * — not against themselves — is what keeps this a real pin rather than a tautology.
+     */
+    @Test
+    fun authoredWorldSizesArePinnedToTheirPreUc30Values() {
+        assertEquals("gate half-extent", 28f, WorldSpriteSizes.GATE, 0f)
+        assertEquals("station half-extent", 22f, WorldSpriteSizes.STATION, 0f)
+        assertEquals("asteroid half-extent", 26f, WorldSpriteSizes.ASTEROID_FIELD, 0f)
+        assertEquals("contact half-extent", 16f, WorldSpriteSizes.HIDDEN_CONTACT, 0f)
     }
 
     // --- Station label: the reported bug was stations rendering as nothing; their glyph must carry name ---
