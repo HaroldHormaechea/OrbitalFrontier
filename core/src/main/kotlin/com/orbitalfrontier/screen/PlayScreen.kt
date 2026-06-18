@@ -57,6 +57,8 @@ import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.mission.MissionStatus
 import com.orbitalfrontier.mission.Missions
+import com.orbitalfrontier.notify.GameNotifications
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
@@ -76,6 +78,7 @@ import com.orbitalfrontier.render.HudViewModel
 import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
+import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.PauseState
 import com.orbitalfrontier.render.ShipRenderer
@@ -191,6 +194,14 @@ class PlayScreen(
     private val starfield = StarfieldRenderer()
     private val shipRenderer = ShipRenderer(gameAssets)
     private val hudRenderer = HudRenderer()
+
+    // UC35: the transient notification feed. [notifications] is the pure, libGDX-free queue (event-driven,
+    // JVM-testable — it holds/coalesces/auto-dismisses the toasts); [notificationRenderer] is its GL-bound
+    // draw side (mirrors HudRenderer). The screen enqueues from the SAME gameplay seams that drive SFX
+    // (jump, dock/undock, the mission life-cycle, the combat boundary, low fuel, credit changes), advances
+    // the queue only while the sim advances, and draws visible() unless a full-screen overlay is up (AC#3/#4).
+    private val notifications = NotificationQueue()
+    private val notificationRenderer = NotificationRenderer()
     private val gateRenderer = GateRenderer()
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
 
@@ -308,6 +319,14 @@ class PlayScreen(
     // is throttled to one play per MINING_SFX_INTERVAL of productive mining — a pleasant pulse, not a
     // 60 Hz buzz. Counts down only on productive ticks; the first tick of a session plays immediately.
     private var miningSfxCooldown = 0f
+
+    // UC35: edge-tracking for the two notifications that have no single discrete event seam of their own.
+    // [previousCombatActive] drives the ENTERED-COMBAT toast on the combat-active false->true edge (the
+    // CombatEvent hierarchy has no "encounter started" event; LEFT-COMBAT flows through forCombatEvent on
+    // EncounterCleared instead). [previousLowFuel] drives the LOW-FUEL toast on the fuel-is-low false->true
+    // edge, so it fires once per dip into the low band rather than every frame the tank stays low.
+    private var previousCombatActive = initialWorldState.combat.active
+    private var previousLowFuel = initialWorldState.fuel.isLow(fuelParams)
 
     private val skin = OrbitalUiSkin(gameAssets)
 
@@ -656,6 +675,12 @@ class PlayScreen(
             previousThrusting = thrusting
         }
 
+        // UC35: low-fuel notification on the false->true edge of the low-fuel band (AC#1) — fired once when
+        // the tank dips low, not every frame it stays low; re-arms once the tank is topped back up.
+        val lowFuelNow = fuel.isLow(fuelParams)
+        if (lowFuelNow && !previousLowFuel) notifications.enqueue(GameNotifications.lowFuel())
+        previousLowFuel = lowFuelNow
+
         // ADR 0005 per-frame contract: read -> model computes velocity -> apply -> Box2D steps. UC09:
         // the model runs against the ACTIVE SHIP's params — its type + engine loadout (ShipStats) — then
         // the fuel-limited scaling on top (UC07 AC#3). For the starter ship with an empty loadout
@@ -697,6 +722,8 @@ class PlayScreen(
                 // controller reads now reflects the post-jump sector + re-seeded kinematics.
                 autosave.onEvent("jump")
                 audio.play(Sfx.JUMP) // UC31: jump-gate transition cue (AC#1)
+                // UC35: jump-completed toast, naming the sector just entered (AC#1).
+                notifications.enqueue(GameNotifications.jumpCompleted(sectorWorld.sector(currentSector).displayName))
                 arrived
             } else {
                 stepped
@@ -719,6 +746,9 @@ class PlayScreen(
                 // Docking is a key world event — event-driven autosave persists the dock state now.
                 autosave.onEvent("dock")
                 audio.play(Sfx.DOCK) // UC31: dock cue (AC#1)
+                // UC35: dock toast, naming the station (AC#1). Enqueued before the hub hand-off so it is in
+                // the queue and surfaces the next time the play screen is shown (on undock).
+                notifications.enqueue(GameNotifications.docked(available.displayName))
                 onDocked(available)
             }
         }
@@ -828,11 +858,12 @@ class PlayScreen(
                     )
                 if (result.changed) {
                     missionLog = result.log
-                    credits = result.credits
+                    applyCreditChange(result.credits)
                     cargo = result.cargo
                     reputation = result.reputation
                     autosave.onEvent("mission-accept")
                     audio.play(Sfx.MISSION_ACCEPT) // UC31: mission-accept cue (AC#1)
+                    notifications.enqueue(GameNotifications.missionAccepted()) // UC35 (AC#1)
                     logger.info(WORLD_TAG, "Accepted radio mission ${offer.id.value} in sector ${currentSector.value}")
                 }
             }
@@ -847,10 +878,11 @@ class PlayScreen(
             missionTickAccumulator -= MISSION_TICK_SECONDS
             val advanced = Missions.advance(missionLog, credits, cargo, missionParams, reputation, reputationParams)
             missionLog = advanced.log
-            credits = advanced.credits
+            applyCreditChange(advanced.credits)
             reputation = advanced.reputation
             if (advanced.changed) {
                 autosave.onEvent("mission-expired")
+                notifications.enqueue(GameNotifications.missionFailedTimeout()) // UC35 (AC#1)
                 logger.info(WORLD_TAG, "A courier mission timed out in sector ${currentSector.value}")
             }
         }
@@ -863,6 +895,11 @@ class PlayScreen(
         // Periodic autosave: accumulate this frame; the controller enqueues a save only every
         // interval (no per-frame I/O or logging — coding-guidelines § concurrency/logging).
         autosave.update(dt)
+
+        // UC35: advance the notification feed only here, inside the gated sim advance — so toasts age and
+        // auto-dismiss in sim time and FREEZE under pause / the destruction screen exactly like everything
+        // else (AC#3). The draw side reads visible() in renderFrame regardless, so frozen toasts stay shown.
+        notifications.update(dt)
     }
 
     /**
@@ -983,6 +1020,13 @@ class PlayScreen(
 
         stage.act(dt)
         stage.draw()
+
+        // UC35: draw the transient toasts above the HUD/controls but suppressed under any full-screen modal
+        // — the zoomed map overlay, the pause backdrop, or the destruction screen ([controlsHidden]) — so a
+        // toast never bleeds over a modal (AC#4). The queue keeps holding them; they reappear once cleared.
+        if (!controlsHidden) {
+            notificationRenderer.render(notifications.visible(), viewportWidth, viewportHeight)
+        }
 
         // UC23: the zoomed map overlay is drawn LAST, on top of the gameplay and the (now-hidden) HUD
         // controls — a full-screen dim backdrop (scene faintly visible, AC#3) plus a full-height map
@@ -1130,6 +1174,18 @@ class PlayScreen(
     private fun bottomControlBand(): Float = MARGIN + maxOf(JOYSTICK_SIZE, ActionCluster.LAYOUT_HEIGHT)
 
     /**
+     * The single chokepoint every credit mutation routes through (UC35 AC#1): set the wallet and, on a real
+     * change, enqueue the gain/loss toast from the pure [GameNotifications.creditDelta]. Centralising it here
+     * means a credit gain or loss surfaces consistently no matter which system moved the balance (a trade,
+     * a hire, an outfit, a ship purchase, a fuel buy, a mission reward, a courier penalty, a station build),
+     * and no individual site has to remember to notify. A no-change call enqueues nothing (creditDelta → null).
+     */
+    private fun applyCreditChange(newCredits: Long) {
+        GameNotifications.creditDelta(credits, newCredits)?.let(notifications::enqueue)
+        credits = newCredits
+    }
+
+    /**
      * Run UC13 combat for this frame: an edge-triggered natural-encounter spawn on the outside→inside
      * crossing of an authored zone (suppressed while docked or already fighting), then the paced shared
      * [Combat.step]. [playerPosition] is the post-gate ship position this frame; the previous frame's
@@ -1153,6 +1209,16 @@ class PlayScreen(
             }
         }
         previousShipPosition = playerPosition
+
+        // UC35: entered-combat toast on the combat-active false->true edge (AC#1). The CombatEvent hierarchy
+        // has no "encounter started" event — only the natural spawn above flips combat live — so this edge is
+        // detected here, symmetric with the left-combat toast that flows through forCombatEvent on
+        // EncounterCleared. Captured BEFORE the step loop below, so a same-frame spawn-then-clear still reads
+        // as a rising edge here (and the clear is caught as a falling edge next frame).
+        if (combat.active && !previousCombatActive) {
+            notifications.enqueue(GameNotifications.enteredCombat())
+        }
+        previousCombatActive = combat.active
 
         if (!combat.active) {
             combatTickAccumulator = 0f
@@ -1188,6 +1254,10 @@ class PlayScreen(
         // UC31: play SFX for this tick's combat events (weapon fire, hostile hit, hostile destroyed) from
         // the pure model's structured output — audio is event-driven, the simulation stays audio-free (AC#4).
         result.events.forEach { event -> Sfx.forCombatEvent(event)?.let(audio::play) }
+
+        // UC35: surface combat-boundary toasts from the SAME structured events (left-combat on
+        // EncounterCleared; every per-shot event maps to null upstream so the feed never floods — AC#1).
+        result.events.forEach { event -> GameNotifications.forCombatEvent(event)?.let(notifications::enqueue) }
 
         // Fold the player's new section damage onto the active ship (=== check skips a no-op tick).
         if (result.sectionDamage !== active.sectionDamage) {
@@ -1349,7 +1419,7 @@ class PlayScreen(
             logger.info(ECONOMY_TAG, "Trade requested but nothing changed hands (unaffordable, hold full, nothing to sell, or not offered)")
             return
         }
-        credits = result.credits
+        applyCreditChange(result.credits)
         cargo = result.cargo
         logger.info(
             ECONOMY_TAG,
@@ -1403,7 +1473,7 @@ class PlayScreen(
             logger.info(ECONOMY_TAG, "Hire requested but nothing changed (station doesn't hire, at capacity, or unaffordable)")
             return
         }
-        credits = result.credits
+        applyCreditChange(result.credits)
         fleet = fleet.withActive(active.withCrew(result.crew))
         logger.info(
             ECONOMY_TAG,
@@ -1443,7 +1513,7 @@ class PlayScreen(
             logger.info(ECONOMY_TAG, "Outfit requested but nothing changed (not offered, unaffordable, no free slot, or empty slot)")
             return
         }
-        credits = result.credits
+        applyCreditChange(result.credits)
         // Re-derive capacities from the new fit on the LIVE active ship (current cargo/fuel), then sync.
         val refitted = active.copy(cargo = cargo, fuel = fuel).withLoadout(result.loadout)
         cargo = refitted.cargo
@@ -1482,7 +1552,7 @@ class PlayScreen(
             return
         }
         val previousActive = fleet.activeShipId
-        credits = result.credits
+        applyCreditChange(result.credits)
         fleet = result.fleet
 
         if (fleet.activeShipId != previousActive) {
@@ -1556,7 +1626,7 @@ class PlayScreen(
         val result = StationRefuel.resolve(credits, fuel, price, StationRefuelAction.BUY)
         return when (result.status) {
             StationRefuelStatus.REFUELED -> {
-                credits = result.credits
+                applyCreditChange(result.credits)
                 fuel = result.fuel
                 logger.info(
                     ECONOMY_TAG,
@@ -1585,6 +1655,7 @@ class PlayScreen(
             Docking.resolve(sectorWorld, currentSector, dockedStation, physics.readKinematics().position, DockAction.UNDOCK)
         logger.info(WORLD_TAG, "Undocked in sector ${currentSector.value}")
         autosave.onEvent("undock")
+        notifications.enqueue(GameNotifications.undocked()) // UC35 (AC#1)
     }
 
     /**
@@ -1655,15 +1726,22 @@ class PlayScreen(
             return
         }
         missionLog = result.log
-        credits = result.credits
+        applyCreditChange(result.credits)
         cargo = result.cargo
         reputation = result.reputation
         logger.info(ECONOMY_TAG, "Mission order applied; active=${activeMissions().size}, credits=$credits")
         autosave.onEvent("mission")
-        // UC31: distinct cue for accept vs. turn-in (AC#1); only on a real change (no-ops returned early above).
+        // UC31/UC35: distinct cue + toast for accept vs. turn-in (AC#1); only on a real change (no-ops
+        // returned early above). The credit reward from a turn-in already surfaced via applyCreditChange.
         when (order) {
-            is MissionOrder.Accept -> audio.play(Sfx.MISSION_ACCEPT)
-            is MissionOrder.TurnIn -> audio.play(Sfx.MISSION_COMPLETE)
+            is MissionOrder.Accept -> {
+                audio.play(Sfx.MISSION_ACCEPT)
+                notifications.enqueue(GameNotifications.missionAccepted())
+            }
+            is MissionOrder.TurnIn -> {
+                audio.play(Sfx.MISSION_COMPLETE)
+                notifications.enqueue(GameNotifications.missionCompleted())
+            }
             MissionOrder.None -> Unit
         }
     }
@@ -1704,7 +1782,7 @@ class PlayScreen(
             )
             return
         }
-        credits = result.credits
+        applyCreditChange(result.credits)
         cargo = result.cargo
         stations = result.registry
         logger.info(
@@ -1752,6 +1830,7 @@ class PlayScreen(
         mapOverlay.dispose()
         hostileRenderer.dispose()
         shipSchematicRenderer.dispose()
+        notificationRenderer.dispose()
         physics.dispose()
     }
 
