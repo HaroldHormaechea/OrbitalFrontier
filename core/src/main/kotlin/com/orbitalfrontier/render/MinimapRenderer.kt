@@ -3,7 +3,6 @@ package com.orbitalfrontier.render
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
@@ -51,14 +50,15 @@ class MinimapRenderer(
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
 
-    // UC24 name labels: a screen-space text pass over the markers. The built-in BitmapFont is scaled by
-    // uiScale (like HudRenderer) but at a smaller base — labels should read as secondary annotations on
-    // the small HUD minimap, not compete with the HUD readouts. GlyphLayout measures each name once per
-    // draw so the label can be centred over its marker; no per-frame String/StringBuilder is allocated
-    // (the name is read straight off the POI), protecting the 60 FPS budget (AC#4, AC perf).
+    // UC24 name labels: a screen-space text pass over the markers. The bundled game font (GameFont, via
+    // GameFontLoader) is downscaled by GameFont.NORM × uiScale (like HudRenderer) at a smaller base —
+    // labels should read as secondary annotations on the small HUD minimap, not compete with the HUD
+    // readouts. GlyphLayout measures each name once per draw so the label can be centred over its marker;
+    // no per-frame String/StringBuilder is allocated (the name is read straight off the POI), protecting
+    // the 60 FPS budget (AC#4, AC perf).
     // UC27: the same batch also draws the mm-* marker sprites (one begin/end for markers then labels).
     private val batch = SpriteBatch()
-    private val labelFont = BitmapFont().apply { data.setScale(uiScale * LABEL_FONT_SCALE) }
+    private val labelFont = GameFontLoader.load().apply { data.setScale(GameFont.NORM * uiScale * LABEL_FONT_SCALE) }
     private val glyphLayout = GlyphLayout()
 
     // UC27: marker sprites resolved once (borrowed atlas). mm-player is the ship's own marker.

@@ -27,6 +27,7 @@ still wins on any conflict — keep them in sync.
 | [0014](0014-owned-stations.md) | Player-owned stations: player state in WorldState, station-build capability flag, additive v13 persistence | Accepted |
 | [0015](0015-ui-scale-and-universal-object-glyphs.md) | UI ×2 scale knob (UI/HUD only) + universal in-world object glyphs (exhaustive POI glyph resolver) | Accepted |
 | [0016](0016-on-foot-station-mode.md) | On-foot station mode: transient non-persisted prototype, shop via existing TradeScreen | Accepted |
+| [0017](0017-typography-and-scalable-font.md) | Typography: pre-baked bitmap game font (JetBrains Mono OFL), bake-time-only freetype, downscaled at runtime | Accepted |
 
 ## Adding an ADR
 

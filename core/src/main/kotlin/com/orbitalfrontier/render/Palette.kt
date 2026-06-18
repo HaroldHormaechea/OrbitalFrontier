@@ -10,7 +10,8 @@ import com.badlogic.gdx.graphics.Color
  * These are the single source of truth for non-sprite colours across the game: screen clear-colours, HUD
  * text, the minimap panel/border, the ship-schematic states, and control tints. Screens and renderers
  * reference these constants instead of ad-hoc literals so the look is consistent and one edit re-themes
- * everything. The built-in [com.badlogic.gdx.graphics.g2d.BitmapFont] is retained (custom fonts deferred).
+ * everything. Text is drawn in the bundled game font ([com.orbitalfrontier.render.GameFont]) as of UC28;
+ * these colours tint it (the font is baked white, so `font.color` tints survive — UC27 AC#8).
  *
  * Each [Color] is parsed once from its hex token via [Color.valueOf] (RRGGBB). They are shared, immutable
  * intent — **never** mutate a returned instance in a draw loop (set components on the renderer's own Color,
