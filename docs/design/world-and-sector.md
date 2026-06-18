@@ -152,15 +152,21 @@ A clearly-marked seam after the marker loop is reserved for UC24 marker labels (
   The geometry of the minimap tap target is the **same** `MinimapRenderer.panelRect` the minimap draw
   uses (one source for draw + touch), so the tappable region always matches the visible minimap.
 - **The overlay is LIVE — opening the map does not pause the game** (`MapOverlayLayout.PAUSES_SIMULATION
-  = false`; the AC#6 "define and apply consistent behaviour" decision). This matches the rest of the
-  game, which has **no general pause** — docking hands off to a separate screen (movement freezes only
-  because `PlayScreen` isn't rendered), but in-flight HUD layers never stop the simulation. **Explicit
-  LIVE-in-combat tradeoff:** opening the map mid-combat does **not** suspend the fight — hostiles keep
-  firing and the encounter keeps stepping, so the player takes **unavoidable damage** while the map is
-  up, and flight input is effectively suspended because the controls are occluded/hidden behind the
-  backdrop. This is the deliberate, consistent choice (a pure inspection layer, not a tactical pause);
-  the player dismisses the map to resume flying/fighting. Revisit only if combat playtesting shows the
-  no-pause map is punishing enough to warrant a combat-only exception.
+  = false`; the AC#6 "define and apply consistent behaviour" decision). The map overlay is a pure
+  inspection layer, **not** a tactical pause. **Explicit LIVE-in-combat tradeoff:** opening the map
+  mid-combat does **not** suspend the fight — hostiles keep firing and the encounter keeps stepping, so
+  the player takes **unavoidable damage** while the map is up, and flight input is effectively suspended
+  because the controls are occluded/hidden behind the backdrop. This is the deliberate, consistent choice
+  for the *map*; the player dismisses it to resume flying/fighting. Revisit only if combat playtesting
+  shows the no-pause map is punishing enough to warrant a combat-only exception.
+
+  **Pause now exists separately (UC32, ADR 0021).** As of UC32 the game *does* have a general pause: a
+  top-centre HUD **PAUSE** button (and the Android **back** gesture) opens a modal pause overlay
+  (Resume / Settings / Quit to main menu) that **freezes the deterministic tick** while open — the
+  deliberate **inverse** of this LIVE map overlay. The two are mutually exclusive (opening pause
+  dismisses the map), so the rule is now: **the map inspects without stopping time; pause stops time.**
+  Pausing is the intended way to step away mid-encounter without taking damage, and `back` maps to
+  pause/resume in flight.
 
 **Encounters:**
 - **Natural/ambient** — encounters that simply exist in the living world (traffic,

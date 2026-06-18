@@ -151,34 +151,41 @@ class OrbitalFrontierGame(
 
         // Show the main menu first, on every launch (UC21 AC#1/#5). Start / Continue route into the
         // game via enterGame(); only then is the play screen / hub built.
-        val menu =
-            MainMenuScreen(
-                logger = logger,
-                continueEnabled = loaded != null,
-                // Continue: resume the existing save (AC#2). loaded is non-null here (Continue is only
-                // enabled when it is), so the !! is safe.
-                onContinue = {
-                    logger.info(TAG, "Continue: restored save (sector=${loaded!!.currentSector.value})")
-                    enterGame(loaded)
-                },
-                // Start: begin a brand-new game (AC#3). clearSave() is UNCONDITIONAL — a no-op on an
-                // empty DB and a full wipe on a usable OR corrupt save; it is decoupled from the warnings
-                // (the menu model gates those on whether a save exists). It is safe to call at menu time:
-                // there is no AutosaveController yet (the play screen, hence autosaving, is built only in
-                // enterGame() below), so there is no concurrent writer to race with the wipe.
-                onStartNewGame = {
-                    logger.info(TAG, "New Game: wiping any existing save; seeding defaults (credits=$STARTING_CREDITS)")
-                    gameStateRepository.clearSave()
-                    // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
-                    // (UC09 — WorldState defaults to Fleet.starter()).
-                    enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS))
-                },
-            )
+        val menu = buildMainMenu(loaded)
         mainMenuScreen = menu
         setScreen(menu)
 
         logger.info(TAG, "Game created; handedness=$handedness; menu shown")
     }
+
+    /**
+     * Build the main menu over the given [loaded] save snapshot (UC21; reused by UC32's quit-to-main-menu).
+     * Continue is enabled iff a usable save exists; Start wipes any save and seeds a fresh game. The two
+     * callbacks defer the New-Game-vs-Continue decision to the player and route into [enterGame].
+     */
+    private fun buildMainMenu(loaded: WorldState?): MainMenuScreen =
+        MainMenuScreen(
+            logger = logger,
+            continueEnabled = loaded != null,
+            // Continue: resume the existing save (AC#2). loaded is non-null here (Continue is only
+            // enabled when it is), so the !! is safe.
+            onContinue = {
+                logger.info(TAG, "Continue: restored save (sector=${loaded!!.currentSector.value})")
+                enterGame(loaded)
+            },
+            // Start: begin a brand-new game (AC#3). clearSave() is UNCONDITIONAL — a no-op on an
+            // empty DB and a full wipe on a usable OR corrupt save; it is decoupled from the warnings
+            // (the menu model gates those on whether a save exists). It is safe to call at menu time:
+            // there is no AutosaveController yet (the play screen, hence autosaving, is built only in
+            // enterGame() below), so there is no concurrent writer to race with the wipe.
+            onStartNewGame = {
+                logger.info(TAG, "New Game: wiping any existing save; seeding defaults (credits=$STARTING_CREDITS)")
+                gameStateRepository.clearSave()
+                // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
+                // (UC09 — WorldState defaults to Fleet.starter()).
+                enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS))
+            },
+        )
 
     /**
      * Enter gameplay with [worldState] — the shared tail of both Start (a fresh seed) and Continue (the
@@ -223,6 +230,9 @@ class OrbitalFrontierGame(
                 initialHandedness = handedness,
                 initialWorldState = initialWorldState,
                 onDocked = { station -> openStationHub(station) },
+                // UC32: the pause overlay's Quit button flushes a durable autosave (in PlayScreen) and then
+                // hands back here to rebuild + show the main menu and dispose the play screen.
+                onQuitToMainMenu = { returnToMainMenu() },
                 audio = audio,
                 debug = debug,
             )
@@ -459,6 +469,25 @@ class OrbitalFrontierGame(
             )
         tradeScreen = desk
         setScreen(desk)
+    }
+
+    /**
+     * Quit from flight back to the main menu (UC32 AC#4). The play screen has already flushed a durable
+     * autosave before invoking this, so progress is safe and Continue is available. Stops the flight music,
+     * rebuilds the menu from a fresh load, disposes the previous menu BEFORE reassigning (single-owner
+     * discipline — libGDX only hide()s screens), shows it, then disposes the play screen and nulls the field
+     * so its GL is released and no stale snapshot can be taken; a later Continue/New Game builds a fresh one.
+     */
+    private fun returnToMainMenu() {
+        audio.stopMusic()
+        val loaded = gameStateRepository.loadGameState()
+        val menu = buildMainMenu(loaded)
+        mainMenuScreen?.dispose()
+        mainMenuScreen = menu
+        setScreen(menu)
+        playScreen?.dispose()
+        playScreen = null
+        logger.info(TAG, "Quit to main menu; play screen disposed (continueEnabled=${loaded != null})")
     }
 
     /** Undock and return to the play screen, then dispose the (now hidden) hub to free its GL. */

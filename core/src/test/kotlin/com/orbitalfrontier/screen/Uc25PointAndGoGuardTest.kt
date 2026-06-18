@@ -167,7 +167,8 @@ class Uc25PointAndGoGuardTest {
 
     @Test
     fun `the action arc hosting the arm toggle hides while the map overlay is open`() {
-        val render = section(PLAY_SCREEN_SOURCE, "override fun render(")
+        // UC32 moved the control-visibility pass into the both-states renderFrame(...).
+        val render = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         assertTrue(
             "AC#4: the whole action arc (which now hosts the debug arm toggle) hides while the map is open",
             render.contains("actionCluster.actor.isVisible = false"),

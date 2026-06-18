@@ -31,6 +31,7 @@ still wins on any conflict â keep them in sync.
 | [0018](0018-ui-skin.md) | Finished UI skin: runtime palette-driven nine-patch chrome (rename PlaceholderControlsSkin → OrbitalUiSkin) | Accepted |
 | [0019](0019-world-sprite-sizing.md) | Per-type world sprite sizing (WorldSpriteSizes single source of truth); no new art produced | Accepted |
 | [0020](0020-audio-system.md) | Audio: event-driven AudioService port (pure core stays audio-free), libGDX impl in render/, looping thrust + added stopSfx, idempotent music, additive v14 settings migration, placeholder synthesised clips | Accepted |
+| [0021](0021-pause-overlay.md) | In-flight pause overlay: pure PauseState gate freezes the per-frame advance (inverse of the LIVE map overlay), Android back → pause, held-input + THRUST neutralization, durable quit-to-main-menu | Accepted |
 
 ## Adding an ADR
 

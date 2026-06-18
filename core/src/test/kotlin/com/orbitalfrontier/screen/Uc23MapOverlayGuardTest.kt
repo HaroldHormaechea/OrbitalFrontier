@@ -99,11 +99,13 @@ class Uc23MapOverlayGuardTest {
 
     @Test
     fun `the overlay is drawn after stage_draw on top of the hidden controls`() {
-        val render = section(PLAY_SCREEN_SOURCE, "override fun render(")
+        // UC32 split render() into the gated advanceSimulation(dt) + the both-states renderFrame(...); the
+        // draw lives in renderFrame now, so scope the draw-order assertions there.
+        val render = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         val stageDrawIdx = render.indexOf("stage.draw()")
         val overlayIdx = render.indexOf("mapOverlay.render(")
-        assertTrue("AC#2/#3: stage.draw() is present in render()", stageDrawIdx >= 0)
-        assertTrue("AC#2/#3: the overlay is drawn in render()", overlayIdx >= 0)
+        assertTrue("AC#2/#3: stage.draw() is present in the render path", stageDrawIdx >= 0)
+        assertTrue("AC#2/#3: the overlay is drawn in the render path", overlayIdx >= 0)
         assertTrue("AC#2/#3: the overlay is drawn AFTER stage.draw()", overlayIdx > stageDrawIdx)
         assertTrue(
             "AC#2/#3: the overlay draw is gated on the overlay-open state",
@@ -113,10 +115,12 @@ class Uc23MapOverlayGuardTest {
 
     @Test
     fun `gameplay controls are hidden while the overlay is open`() {
-        val render = section(PLAY_SCREEN_SOURCE, "override fun render(")
+        // UC32: control-visibility moved into renderFrame(...) and the settings line gained the pause-aware
+        // conditional; the running branch still hides on the map overlay (and combat).
+        val render = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         assertTrue(
-            "AC#2: the settings button hides while the overlay is open (and during combat)",
-            render.contains("settingsOverlay.actor.isVisible = !combat.active && !mapOpen"),
+            "AC#2: the settings button hides while the overlay is open (and during combat) in the running branch",
+            render.contains("settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)"),
         )
         assertTrue(
             "AC#2: the joystick is hidden while the overlay is open",
@@ -132,10 +136,14 @@ class Uc23MapOverlayGuardTest {
 
     @Test
     fun `the simulation step is not gated on the overlay state`() {
+        // UC32 extracted the per-frame advance into advanceSimulation(dt); the physics step lives there now.
+        val advance = section(PLAY_SCREEN_SOURCE, "private fun advanceSimulation(")
+        assertTrue("AC#6: the per-frame physics step runs in advanceSimulation()", advance.contains("physics.step(dt)"))
+        // The advance is called every frame in render(); UC32 gates it ONLY on the pause state. The map
+        // overlay must NOT short-circuit or skip the simulation: render() carries no early-out and no
+        // `if (!mapOpen)` wrapper around the advance — `mapOpen` may ONLY gate control visibility + the draw.
         val render = section(PLAY_SCREEN_SOURCE, "override fun render(")
-        assertTrue("AC#6: the per-frame physics step runs in render()", render.contains("physics.step(dt)"))
-        // The overlay must NOT short-circuit or skip the simulation: no early-out and no `if (!mapOpen)`
-        // wrapper around the sim. `mapOpen` may ONLY gate control visibility + the overlay draw.
+        assertTrue("AC#6: render() advances the sim every frame (LIVE map overlay)", render.contains("advanceSimulation(dt)"))
         assertFalse(
             "AC#6: render() must not early-return when the map is open",
             Regex("""if\s*\(\s*mapOpen\s*\)\s*return""").containsMatchIn(render),
