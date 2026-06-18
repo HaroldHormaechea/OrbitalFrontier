@@ -68,8 +68,11 @@ Add a **pure `com.orbitalfrontier.notify` package** plus a thin render layer, fe
 - **Render layer (GL-bound).** `NotificationLayout` is pure world-unit geometry (mirrors `HudLayout`/
   `MinimapLayout`): a **top-centre band stacking downward**, threaded through the clear gap to the right of
   the top-left HUD block and left of the top-right minimap (a `RIGHT_RESERVED` reservation), starting below
-  the UC32 pause button (`TOP_INSET`), clear of the bottom action arc by construction (AC#4); at the
-  smallest viewport the toast width shrinks to the available band rather than overrunning a neighbour.
+  the UC32 pause button (`TOP_INSET`). The bottom-corner action arc (UC26) is tall enough at the 960×540
+  floor that its top edge reaches *up into* the lower toast rows, so a row whose bottom dips below the arc
+  top narrows its right edge to clear the worst-case right-handed arc (the left-handed arc sits left of the
+  band already) — per-row clearance, not "by construction". At the smallest viewport the toast width shrinks
+  to the available band rather than overrunning a neighbour (AC#4).
   `NotificationRenderer` mirrors `HudRenderer` — draws the `visible()` snapshot tinted by severity from the
   design-system `Palette`, suppressed under any full-screen modal (map/pause/destruction).
 
