@@ -11,7 +11,7 @@ import kotlin.math.sqrt
  * movement model consumes. The knob deflection becomes the target direction + magnitude; when
  * the stick is not touched it reports [MovementInput.NONE] so the model applies drift decay.
  */
-class MovementJoystick(skin: PlaceholderControlsSkin) {
+class MovementJoystick(skin: OrbitalUiSkin) {
     val actor: Touchpad = Touchpad(TOUCHPAD_DEADZONE, skin.touchpadStyle)
 
     /** Read this frame's intent from the touchpad. */

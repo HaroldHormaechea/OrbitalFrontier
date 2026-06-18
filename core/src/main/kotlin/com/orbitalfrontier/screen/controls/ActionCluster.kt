@@ -28,7 +28,7 @@ import com.orbitalfrontier.settings.ScreenSide
  * callback ([onDock]/[onScan]/[onAcceptRadio]/[onPointAndGoToggle]), which the screen turns into the same
  * one-shot, deterministically-consumed intent the retired context panels produced (UC26 AC#8).
  */
-class ActionCluster(skin: PlaceholderControlsSkin) {
+class ActionCluster(skin: OrbitalUiSkin) {
     /** The set of player actions that can live on the arc, in arc priority order after FIRE. */
     enum class Action { FIRE, DOCK, MINE, SCAN, RADIO, POINT_AND_GO }
 
@@ -168,14 +168,14 @@ class ActionCluster(skin: PlaceholderControlsSkin) {
             }
         }
 
-    private fun glyphFor(action: Action): PlaceholderControlsSkin.ActionGlyph =
+    private fun glyphFor(action: Action): OrbitalUiSkin.ActionGlyph =
         when (action) {
-            Action.FIRE -> PlaceholderControlsSkin.ActionGlyph.FIRE
-            Action.DOCK -> PlaceholderControlsSkin.ActionGlyph.DOCK
-            Action.MINE -> PlaceholderControlsSkin.ActionGlyph.MINE
-            Action.SCAN -> PlaceholderControlsSkin.ActionGlyph.SCAN
-            Action.RADIO -> PlaceholderControlsSkin.ActionGlyph.RADIO
-            Action.POINT_AND_GO -> PlaceholderControlsSkin.ActionGlyph.POINT_AND_GO
+            Action.FIRE -> OrbitalUiSkin.ActionGlyph.FIRE
+            Action.DOCK -> OrbitalUiSkin.ActionGlyph.DOCK
+            Action.MINE -> OrbitalUiSkin.ActionGlyph.MINE
+            Action.SCAN -> OrbitalUiSkin.ActionGlyph.SCAN
+            Action.RADIO -> OrbitalUiSkin.ActionGlyph.RADIO
+            Action.POINT_AND_GO -> OrbitalUiSkin.ActionGlyph.POINT_AND_GO
         }
 
     private fun defaultLabel(action: Action): String =

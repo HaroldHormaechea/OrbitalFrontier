@@ -77,7 +77,7 @@ import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
 import com.orbitalfrontier.screen.controls.MovementJoystick
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
@@ -276,7 +276,7 @@ class PlayScreen(
     private var combatTickAccumulator = 0f
     private val combatParams = CombatParams()
 
-    private val skin = PlaceholderControlsSkin(gameAssets)
+    private val skin = OrbitalUiSkin(gameAssets)
 
     // ADR 0015: scale the Scene2D UI (controls + fonts) by UiScale.factor via the viewport's
     // unitsPerPixel; this is UI-only and does NOT touch the world camera (the playfield stays 1:1).

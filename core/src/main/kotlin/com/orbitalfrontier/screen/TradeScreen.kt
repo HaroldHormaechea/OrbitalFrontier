@@ -17,7 +17,7 @@ import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 
 /**
  * The station trade desk shown from the station hub while docked (UC08 AC#2/#3).
@@ -36,7 +36,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
  * renders the same layout. Buying / selling moves [UNITS_PER_TAP] units per tap; the pure resolver
  * clamps to what is affordable / fits / is held, so an over-request is harmless.
  *
- * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
+ * Owns its own GL-backed resources (a [OrbitalUiSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes the screen explicitly when the player leaves (libGDX `setScreen`
  * only `hide()`s the previous screen).
  */
@@ -49,7 +49,7 @@ class TradeScreen(
     private val onTrade: (TradeOrder) -> Unit,
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Credit balance readout, refreshed in place after each trade.
@@ -62,8 +62,9 @@ class TradeScreen(
         val root = Table()
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
 
-        root.add(Label(stationName, skin.labelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("TRADE", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
 
         balanceLabel.setText(balanceText())

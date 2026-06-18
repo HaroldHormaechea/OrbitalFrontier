@@ -5,7 +5,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.save.SettingsRepository
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.Handedness
 
 /**
@@ -22,7 +22,7 @@ import com.orbitalfrontier.settings.Handedness
  * not by this overlay — so the overlay holds no disposable resources of its own.
  */
 class SettingsOverlay(
-    skin: PlaceholderControlsSkin,
+    skin: OrbitalUiSkin,
     private val repository: SettingsRepository,
     private val saveExecutor: SaveExecutor,
     initial: Handedness,

@@ -15,7 +15,7 @@ import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 
 /**
  * The station crew-hire desk shown from the station hub while docked at a crew-hiring station (UC11
@@ -33,7 +33,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
  * Hiring [UNITS_PER_TAP] crew per tap; the pure resolver clamps to remaining capacity and what the
  * wallet affords (clamp-to-remaining), so an over-request is harmless.
  *
- * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
+ * Owns its own GL-backed resources (a [OrbitalUiSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes the screen explicitly when the player leaves (libGDX `setScreen`
  * only `hide()`s the previous screen).
  */
@@ -47,7 +47,7 @@ class HireScreen(
     private val onHire: (HireOrder) -> Unit,
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // Readouts refreshed in place after each hire.
@@ -59,8 +59,9 @@ class HireScreen(
         val root = Table()
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
 
-        root.add(Label(stationName, skin.labelStyle)).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).padBottom(TITLE_GAP).row()
         root.add(Label("HIRE CREW", skin.labelStyle)).padBottom(SERVICE_GAP).row()
 
         crewLabel.setText(crewText())

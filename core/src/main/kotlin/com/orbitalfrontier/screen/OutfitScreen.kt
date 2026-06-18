@@ -16,7 +16,7 @@ import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.ship.Fleet
 
 /**
@@ -43,13 +43,14 @@ class OutfitScreen(
     private val onBack: () -> Unit,
     private val catalog: UpgradeCatalog = UpgradeCatalog.MVP,
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val root = Table()
 
     init {
         root.setFillParent(true)
         root.pad(MARGIN)
+        root.background = skin.panel
         stage.addActor(root)
         rebuild()
     }
@@ -61,7 +62,7 @@ class OutfitScreen(
         val active = fleet.active
         val loadout = active.loadout
 
-        root.add(Label(stationName, skin.labelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("OUTFITTING — ${active.type.displayName}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         root.add(Label("CREDITS: ${creditsSupplier()}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
 

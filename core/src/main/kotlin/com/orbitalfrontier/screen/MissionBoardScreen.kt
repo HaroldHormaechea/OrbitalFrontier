@@ -18,7 +18,7 @@ import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
-import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
+import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 
 /**
  * The station mission board shown from the station hub while docked (UC12 AC#2/#3).
@@ -38,7 +38,7 @@ import com.orbitalfrontier.screen.controls.PlaceholderControlsSkin
  * delivery the destination station — the pure resolver no-ops a tap that can't apply, so an
  * over-optimistic TURN IN is harmless.
  *
- * Owns its own GL-backed resources (a [PlaceholderControlsSkin] + [Stage]) and releases them in
+ * Owns its own GL-backed resources (a [OrbitalUiSkin] + [Stage]) and releases them in
  * [dispose] — the game disposes the screen explicitly when the player leaves (libGDX `setScreen` only
  * `hide()`s the previous screen).
  */
@@ -56,7 +56,7 @@ class MissionBoardScreen(
     private val lockedSupplier: () -> List<Mission> = { emptyList() },
     private val reputationSupplier: () -> Reputation = { Reputation.EMPTY },
 ) : ScreenAdapter() {
-    private val skin = PlaceholderControlsSkin()
+    private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // The whole content table is rebuilt on each refresh: accepting/turning in changes which rows
@@ -66,6 +66,7 @@ class MissionBoardScreen(
 
     init {
         root.setFillParent(true)
+        root.background = skin.panel
         stage.addActor(root)
         rebuild()
     }
@@ -75,7 +76,7 @@ class MissionBoardScreen(
         root.clearChildren()
         root.pad(MARGIN)
 
-        root.add(Label(stationName, skin.labelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
+        root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("MISSION BOARD", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         root.add(Label("CREDITS: ${creditsSupplier()}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         // UC14: current per-faction reputation readout.
