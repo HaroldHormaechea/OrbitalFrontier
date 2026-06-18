@@ -42,15 +42,16 @@ class Uc26ActionArcGuardTest {
 
     @Test
     fun `the arc hides only with the map overlay, never during combat`() {
-        // The arc-visibility block keys solely on `mapOpen`. The settings button hides on combat.active
-        // (its band overlaps the combat schematic) — the arc deliberately does NOT, so FIRE survives an
-        // encounter (AC#3). Pinning the absence of `combat` in this block is what makes that explicit.
+        // The arc-visibility block keys on `controlsHidden = mapOpen || paused` (UC32 added the pause
+        // case). The settings button hides on combat.active (its band overlaps the combat schematic) — the
+        // arc deliberately does NOT, so FIRE survives an encounter (AC#3). Pinning the absence of `combat`
+        // in this block is what makes that explicit.
         val visibility = between(PLAY_SCREEN_SOURCE, "UC26: the whole action arc", "mapDismissActor.isVisible = mapOpen")
         assertTrue("AC#3: the arc hides while the map is open", visibility.contains("actionCluster.actor.isVisible = false"))
         assertTrue("AC#3: the arc is shown again when the map is closed", visibility.contains("actionCluster.actor.isVisible = true"))
         // Inspect only the CODE after the comment block (the comment legitimately mentions combat); the
-        // executable visibility branch must key on `mapOpen` alone, never on the combat-active flag.
-        val visibilityCode = visibility.substringAfter("if (mapOpen)")
+        // executable visibility branch must key on `controlsHidden` (mapOpen || paused), never on combat.
+        val visibilityCode = visibility.substringAfter("if (controlsHidden)")
         assertFalse(
             "AC#3: the arc visibility must NOT be gated on combat (FIRE stays visible in an encounter)",
             visibilityCode.contains("combat"),

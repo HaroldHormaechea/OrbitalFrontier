@@ -33,9 +33,15 @@ class Uc21MainMenuGuardTest {
     @Test
     fun `create() shows the main menu first, before any gameplay`() {
         val create = section(GAME_SOURCE, "override fun create(")
+        // UC32 extracted the menu construction into a shared buildMainMenu(loaded) helper (reused by
+        // quit-to-main-menu); create() builds the menu through it and shows it first.
         assertTrue(
-            "AC#1: create() must build a MainMenuScreen",
-            create.contains("MainMenuScreen("),
+            "AC#1: create() must build the main menu (via buildMainMenu(loaded))",
+            create.contains("buildMainMenu("),
+        )
+        assertTrue(
+            "AC#1: buildMainMenu(...) constructs a MainMenuScreen",
+            section(GAME_SOURCE, "private fun buildMainMenu(").contains("MainMenuScreen("),
         )
         assertTrue(
             "AC#1/#5: create() must show the menu (setScreen(menu)) on every launch",

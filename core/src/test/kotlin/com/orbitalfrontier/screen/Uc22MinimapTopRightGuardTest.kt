@@ -121,10 +121,13 @@ class Uc22MinimapTopRightGuardTest {
     fun `the relocated settings button is hidden during combat`() {
         // Its band overlaps the combat-only ship schematic, so it must hide while an encounter is live —
         // keyed on the same combat.active flag as the schematic (an invisible scene2d actor also stops
-        // receiving touch, so nothing leaks through it).
+        // receiving touch, so nothing leaks through it). UC32 wrapped this in the pause-aware conditional
+        // (paused -> the Settings sub-view governs it), but the running branch still hides on combat.active.
         assertTrue(
-            "AC#2: the settings button hides while combat is active",
-            PLAY_SCREEN_SOURCE.contains("settingsOverlay.actor.isVisible = !combat.active"),
+            "AC#2: while running, the settings button hides on combat.active (and the map overlay)",
+            PLAY_SCREEN_SOURCE.contains(
+                "settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)",
+            ),
         )
     }
 
