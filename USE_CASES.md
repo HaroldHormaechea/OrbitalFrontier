@@ -37,3 +37,31 @@ Statuses:
 | 25 | [use-cases/25-debug-point-and-go-navigation.md](use-cases/25-debug-point-and-go-navigation.md) | Debug point-and-go navigation (debug builds only) | done | 2026-06-09 |
 | 26 | [use-cases/26-bottom-right-action-arc.md](use-cases/26-bottom-right-action-arc.md) | Semicircular bottom-right action cluster | done | 2026-06-10 |
 | 27 | [use-cases/27-integrate-design-system-art.md](use-cases/27-integrate-design-system-art.md) | Integrate design-system art atlas and palette | done | 2026-06-10 |
+| 28 | [use-cases/28-scalable-game-font.md](use-cases/28-scalable-game-font.md) | Scalable game font / real typography | pending | 2026-06-18 |
+| 29 | [use-cases/29-final-ui-skin.md](use-cases/29-final-ui-skin.md) | Final UI skin / theme (replace placeholder skin) | pending | 2026-06-18 |
+| 30 | [use-cases/30-final-sprite-art-world-rendering.md](use-cases/30-final-sprite-art-world-rendering.md) | Final sprite art for world rendering | pending | 2026-06-18 |
+| 31 | [use-cases/31-audio-system.md](use-cases/31-audio-system.md) | Audio system — SFX & music | pending | 2026-06-18 |
+| 32 | [use-cases/32-pause-overlay.md](use-cases/32-pause-overlay.md) | Pause overlay | pending | 2026-06-18 |
+| 33 | [use-cases/33-ship-destruction-screen.md](use-cases/33-ship-destruction-screen.md) | Ship-destruction / game-over feedback | pending | 2026-06-18 |
+| 34 | [use-cases/34-expanded-flight-hud.md](use-cases/34-expanded-flight-hud.md) | Expanded flight HUD | pending | 2026-06-18 |
+| 35 | [use-cases/35-notification-event-feed.md](use-cases/35-notification-event-feed.md) | In-game notification / event feed | pending | 2026-06-18 |
+| 36 | [use-cases/36-tutorial-onboarding.md](use-cases/36-tutorial-onboarding.md) | First-run tutorial & onboarding | pending | 2026-06-18 |
+| 37 | [use-cases/37-settings-screen.md](use-cases/37-settings-screen.md) | Full settings screen | pending | 2026-06-18 |
+| 38 | [use-cases/38-save-slot-management.md](use-cases/38-save-slot-management.md) | Save-slot management UI | pending | 2026-06-18 |
+| 39 | [use-cases/39-accessibility-options.md](use-cases/39-accessibility-options.md) | Accessibility options | pending | 2026-06-18 |
+| 40 | [use-cases/40-purchase-confirmation-feedback.md](use-cases/40-purchase-confirmation-feedback.md) | Purchase/sale confirmation & economy feedback | pending | 2026-06-18 |
+| 41 | [use-cases/41-combat-bounty-missions.md](use-cases/41-combat-bounty-missions.md) | Combat / bounty mission type | pending | 2026-06-18 |
+| 42 | [use-cases/42-loot-salvage-economy.md](use-cases/42-loot-salvage-economy.md) | Loot & salvage from destroyed hostiles | pending | 2026-06-18 |
+| 43 | [use-cases/43-combat-driven-reputation.md](use-cases/43-combat-driven-reputation.md) | Combat-driven reputation | pending | 2026-06-18 |
+| 44 | [use-cases/44-combat-hud-feedback.md](use-cases/44-combat-hud-feedback.md) | Combat HUD — targeting, health bars & hit feedback | pending | 2026-06-18 |
+| 45 | [use-cases/45-enemy-ai-spawn-director.md](use-cases/45-enemy-ai-spawn-director.md) | Richer enemy AI & encounter variety | pending | 2026-06-18 |
+| 46 | [use-cases/46-dynamic-station-pricing.md](use-cases/46-dynamic-station-pricing.md) | Dynamic station pricing | pending | 2026-06-18 |
+| 47 | [use-cases/47-junkyard-buy-used-parts.md](use-cases/47-junkyard-buy-used-parts.md) | Buy used parts at junkyards | pending | 2026-06-18 |
+| 48 | [use-cases/48-reputation-gated-upgrades.md](use-cases/48-reputation-gated-upgrades.md) | Reputation-gated upgrade & ship availability | pending | 2026-06-18 |
+| 49 | [use-cases/49-power-brownout-and-ui.md](use-cases/49-power-brownout-and-ui.md) | Power brownout/throttle & power UI surfacing | pending | 2026-06-18 |
+| 50 | [use-cases/50-crew-depth-fleet-management.md](use-cases/50-crew-depth-fleet-management.md) | Crew depth & fleet/crew management screen | pending | 2026-06-18 |
+| 51 | [use-cases/51-station-building-ui-and-surfacing.md](use-cases/51-station-building-ui-and-surfacing.md) | Station-building UI & world surfacing | pending | 2026-06-18 |
+| 52 | [use-cases/52-autosave-and-save-robustness.md](use-cases/52-autosave-and-save-robustness.md) | Periodic autosave, indicator & save robustness | pending | 2026-06-18 |
+| 53 | [use-cases/53-procedural-sector-generation.md](use-cases/53-procedural-sector-generation.md) | Procedural sector generation | pending | 2026-06-18 |
+| 54 | [use-cases/54-additional-poi-types.md](use-cases/54-additional-poi-types.md) | Additional POI types — derelicts, distress, hazards | pending | 2026-06-18 |
+| 55 | [use-cases/55-refresh-readme-and-docs.md](use-cases/55-refresh-readme-and-docs.md) | Refresh stale README & status docs | pending | 2026-06-18 |
