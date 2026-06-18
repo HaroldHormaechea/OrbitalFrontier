@@ -8,12 +8,14 @@ import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.ship.ShipKinematics
 
 /**
- * Draws the player ship as the design-system `ship-player` sprite (UC27 AC#4) — centred on the hull
- * position and rotated about its centre to the hull heading — in world space, using the follow camera's
- * projection. Replaces the old generated triangle; it only reads [ShipKinematics] (no simulation here).
+ * Draws the player ship as the design-system `ship-player` sprite — centred on the hull position and
+ * rotated about its centre to the hull heading — in world space, using the follow camera's projection.
+ * It only reads [ShipKinematics] (render reads state — no simulation here).
  *
- * The shared [GameAssets] atlas is **borrowed** (never disposed here); this renderer owns only its own
- * [SpriteBatch]. The ship region is resolved once at construction.
+ * The ship's world half-extent comes from [WorldSpriteSizes.SHIP] (the per-type sizing single source of
+ * truth, ADR 0019), overridable via [sizeWorldUnits] for tests. The shared [GameAssets] atlas is
+ * **borrowed** (never disposed here); this renderer owns only its own [SpriteBatch]. The ship region is
+ * resolved once at construction.
  *
  * **Heading alignment ([ROTATION_OFFSET_DEGREES]).** [ShipKinematics.headingRadians] uses the math
  * convention (0 rad = +x / right). The delivered ship art is authored **nose-up** (+y), so the sprite must
@@ -23,7 +25,7 @@ import com.orbitalfrontier.ship.ShipKinematics
  */
 class ShipRenderer(
     private val assets: GameAssets,
-    private val sizeWorldUnits: Float = DEFAULT_SIZE,
+    private val sizeWorldUnits: Float = WorldSpriteSizes.SHIP,
 ) : Disposable {
     private val batch = SpriteBatch()
     private val region: TextureRegion = assets.region(AtlasRegions.SHIP_PLAYER)
@@ -60,9 +62,6 @@ class ShipRenderer(
     }
 
     private companion object {
-        /** Half-extent of the ship sprite in world units — unchanged from the old placeholder (AC#4). */
-        const val DEFAULT_SIZE = 18f
-
         /**
          * Degrees added to the heading so the nose-up-authored sprite tracks the math-convention heading.
          * The one knob for post-visual-gate heading correction (AC#11). −90° = sprite authored nose-up.
