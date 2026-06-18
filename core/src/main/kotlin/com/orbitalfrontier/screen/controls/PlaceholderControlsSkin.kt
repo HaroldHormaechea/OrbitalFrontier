@@ -14,6 +14,8 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.render.AtlasRegions
 import com.orbitalfrontier.render.GameAssets
+import com.orbitalfrontier.render.GameFont
+import com.orbitalfrontier.render.GameFontLoader
 import com.orbitalfrontier.render.Palette
 
 /**
@@ -23,8 +25,11 @@ import com.orbitalfrontier.render.Palette
  * glyph buttons are drawn from the **design-system sprites** (AC#2/#3); when it is absent (`null`) they fall
  * back to the original generated solid shapes, so the screens that only use this skin for labels / the
  * settings button (and JVM contexts without a GL atlas) keep working unchanged. The non-sprite styles
- * (settings button, labels) adopt the design-system [Palette] either way (AC#8). The built-in [BitmapFont]
- * is retained (custom fonts deferred).
+ * (settings button, labels) adopt the design-system [Palette] either way (AC#8). UC28: the label/button
+ * text is the bundled game font ([GameFont], a [BitmapFont] loaded by [GameFontLoader]) — replacing the old
+ * built-in font. The Scene2D screens render through a ×[com.orbitalfrontier.render.UiScale.factor] viewport
+ * (ADR 0015), so the font is downscaled by [GameFont.NORM] alone here (NO extra uiScale — the viewport
+ * already magnifies); every screen that uses this skin inherits the new font with no constructor change.
  *
  * **Texture ownership.** The atlas is **borrowed** — its region drawables are never disposed here. This skin
  * owns and disposes only the generated [Texture]s it creates (the fallback shapes + the settings-button
@@ -36,7 +41,7 @@ class PlaceholderControlsSkin(
 ) : Disposable {
     private val textures = ArrayList<Texture>()
 
-    val font: BitmapFont = BitmapFont()
+    val font: BitmapFont = GameFontLoader.load().apply { data.setScale(GameFont.NORM) }
 
     val touchpadStyle: Touchpad.TouchpadStyle =
         Touchpad.TouchpadStyle().apply {

@@ -10,25 +10,26 @@ import kotlin.math.roundToInt
 /**
  * Minimal heads-up display: current speed, heading and fuel, updated every frame (AC#9; UC07 AC#3).
  *
- * Heading is converted radians→degrees and normalized to [0, 360). Uses libGDX's built-in
- * [BitmapFont] (no asset pipeline yet) drawn in screen space. A reusable [StringBuilder] and
- * integer formatting avoid per-frame String/`String.format` allocation, protecting the 60 FPS
- * budget (AC#14, coding-guidelines § performance). The fuel line turns red and appends "LOW" while
- * the tank is below the low-fuel threshold — the player-facing cue that speed is being limited.
+ * Heading is converted radians→degrees and normalized to [0, 360). Uses the bundled game font
+ * ([GameFont], a [BitmapFont] loaded by [GameFontLoader]) drawn in screen space. A reusable
+ * [StringBuilder] and integer formatting avoid per-frame String/`String.format` allocation, protecting
+ * the 60 FPS budget (AC#14, coding-guidelines § performance). The fuel line turns red and appends "LOW"
+ * while the tank is below the low-fuel threshold — the player-facing cue that speed is being limited.
  *
- * [uiScale] (ADR 0015) magnifies the whole overlay: the built-in font is scaled by it once at
- * construction and every base layout constant (margins, line height) is multiplied by it at its use
- * site — the constants stay authored at their base (×1) values so [UiScale.factor] remains the single
- * knob. The font is bitmap, so [BitmapFont.getData].setScale bilinearly stretches it (slightly blurry);
- * acceptable as a placeholder until a real scaled font/atlas exists.
+ * [uiScale] (ADR 0015) magnifies the whole overlay: the font is scaled by it once at construction and
+ * every base layout constant (margins, line height) is multiplied by it at its use site — the constants
+ * stay authored at their base (×1) values so [UiScale.factor] remains the single knob. The font is baked
+ * at [GameFont.BAKE_CAP_PX] and *downscaled* by [GameFont.NORM] × [uiScale] with Linear filtering (UC28),
+ * so the master glyphs are minified rather than bilinearly up-stretched like the old built-in font —
+ * crisp text at any supported DPI (UC28 AC#2).
  */
 class HudRenderer(
     private val uiScale: Float = UiScale.factor,
 ) : Disposable {
     private val batch = SpriteBatch()
     private val font =
-        BitmapFont().apply {
-            data.setScale(uiScale)
+        GameFontLoader.load().apply {
+            data.setScale(GameFont.NORM * uiScale)
             color = TEXT_COLOR
         }
     private val line = StringBuilder(24)
@@ -98,7 +99,7 @@ class HudRenderer(
         const val MARGIN = 16f
         const val LINE_HEIGHT = 22f
 
-        // Degree sign; the placeholder built-in font may render it as a blank — acceptable for now.
+        // Degree sign (U+00B0). In GameFont.REQUIRED_GLYPHS, so the bundled font always renders it (UC28).
         const val DEGREE = '°'
 
         // UC27: high-emphasis steel readout colour for normal HUD text (AC#8); status lines override

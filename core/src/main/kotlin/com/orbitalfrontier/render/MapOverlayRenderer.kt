@@ -3,7 +3,6 @@ package com.orbitalfrontier.render
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
@@ -39,12 +38,13 @@ class MapOverlayRenderer(
     private val shapeRenderer = ShapeRenderer()
     private val projection = Matrix4()
 
-    // UC24 name labels: a screen-space text pass over the markers. The built-in BitmapFont is scaled by
-    // uiScale (like HudRenderer) at a slightly larger base than the minimap's labels — the roomy zoomed
-    // panel can afford bigger, more legible names (AC#4). GlyphLayout measures each name once per draw to
-    // centre the label over its marker; the name is read straight off the POI (no per-frame allocation).
+    // UC24 name labels: a screen-space text pass over the markers. The bundled game font (GameFont, via
+    // GameFontLoader) is downscaled by GameFont.NORM × uiScale (like HudRenderer) at a slightly larger
+    // base than the minimap's labels — the roomy zoomed panel can afford bigger, more legible names (AC#4).
+    // GlyphLayout measures each name once per draw to centre the label over its marker; the name is read
+    // straight off the POI (no per-frame allocation).
     private val batch = SpriteBatch()
-    private val labelFont = BitmapFont().apply { data.setScale(uiScale * LABEL_FONT_SCALE) }
+    private val labelFont = GameFontLoader.load().apply { data.setScale(GameFont.NORM * uiScale * LABEL_FONT_SCALE) }
     private val glyphLayout = GlyphLayout()
 
     fun render(
