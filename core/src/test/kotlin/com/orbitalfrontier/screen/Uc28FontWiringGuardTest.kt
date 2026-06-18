@@ -15,7 +15,8 @@ import java.io.File
  *
  * ACs covered (structural/wiring half):
  *  - **AC#1** — the runtime built-in `BitmapFont` is replaced by the bundled font in HudRenderer and the
- *    controls skin (PlaceholderControlsSkin), and by extension the map-label renderers.
+ *    controls skin (OrbitalUiSkin, the UC29 rename of PlaceholderControlsSkin), and by extension the
+ *    map-label renderers.
  *  - **AC#4** — font sizing flows through `UiScale.factor`: the screen-space overlays (HUD, map labels)
  *    multiply the downscale by `uiScale`; the Scene2D skin relies on the already-magnified viewport and so
  *    applies `GameFont.NORM` alone — pinned per consumer so the single-knob discipline can't silently break.
@@ -73,9 +74,9 @@ class Uc28FontWiringGuardTest {
         // AC#4: the Scene2D screens render through a ×UiScale.factor viewport (ADR 0015), so the skin must
         // NOT double-apply uiScale — it scales by GameFont.NORM only. Pinned so a future edit can't
         // accidentally re-introduce a uiScale multiply here and double-magnify the menu text.
-        val src = readSource("screen/controls/PlaceholderControlsSkin.kt")
+        val src = readSource("screen/controls/OrbitalUiSkin.kt")
         assertTrue(
-            "AC#4: PlaceholderControlsSkin must scale by GameFont.NORM (viewport already applies uiScale)",
+            "AC#4: OrbitalUiSkin must scale by GameFont.NORM (viewport already applies uiScale)",
             src.contains("setScale(GameFont.NORM)"),
         )
     }
@@ -86,7 +87,7 @@ class Uc28FontWiringGuardTest {
                 "render/HudRenderer.kt",
                 "render/MinimapRenderer.kt",
                 "render/MapOverlayRenderer.kt",
-                "screen/controls/PlaceholderControlsSkin.kt",
+                "screen/controls/OrbitalUiSkin.kt",
             ).map { it to readSource(it) }
 
         /**

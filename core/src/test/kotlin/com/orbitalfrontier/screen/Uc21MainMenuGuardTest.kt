@@ -136,9 +136,16 @@ class Uc21MainMenuGuardTest {
             "AC#4: Continue is disabled (not hidden) when there is no usable save",
             buildMenu.contains("!continueEnabled") && buildMenu.contains("isDisabled = true"),
         )
+        // UC29 AC#4: greying moved from a screen-local `DISABLED_TINT` colour to the design-system skin's
+        // `disabled` drawable + `disabledFontColor`, driven purely by `isDisabled = true`. The contract is
+        // unchanged (disabled + greyed, never hidden); only the mechanism is now skin-driven.
         assertTrue(
-            "AC#4: the disabled Continue is greyed via a tint",
-            buildMenu.contains("DISABLED_TINT"),
+            "AC#4 (UC29): the disabled Continue is greyed by the skin's disabled style, driven by isDisabled",
+            buildMenu.contains("isDisabled = true"),
+        )
+        assertTrue(
+            "UC29 AC#4: greying is skin-driven — the retired screen-local DISABLED_TINT must be gone",
+            !SCREEN_SOURCE.contains("DISABLED_TINT"),
         )
     }
 
