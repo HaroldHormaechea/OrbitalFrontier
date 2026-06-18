@@ -1,8 +1,8 @@
 # Design Note — Combat & Encounters
 
-- **Status:** in-progress (UC13 implemented — real-time combat MVP; combat missions, shields, loot still deferred)
-- **Last updated:** 2026-06-08
-- **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding decisions); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
+- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen implemented; combat missions, shields, loot still deferred)
+- **Last updated:** 2026-06-18
+- **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding combat decisions); [ADR 0022](../adr/0022-ship-destruction-screen.md) (the destruction/game-over screen); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
 
 ## Summary
 
@@ -59,7 +59,22 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
 - A **HUD ship schematic** (`ShipSchematicRenderer`) shows per-section health bars (green→amber→red); an
   "IN COMBAT" HUD cue appears while a fight is live. Hostiles and projectiles draw in world space
   (`HostileRenderer`).
-- On destruction the player reappears at their last station, minus some cargo.
+- **Destruction / game-over screen (UC33, [ADR 0022](../adr/0022-ship-destruction-screen.md)).** A hull
+  hit that drops the ship to 0 no longer silently teleports the player home. Instead the simulation
+  **halts** and a modal **destruction screen** appears: a dim tap-swallowing backdrop, a "SHIP DESTROYED"
+  title, and three consequence lines — **cargo lost** (the jettisoned units), the **credit/insurance
+  penalty** ("Insurance: covered — 0 credits" in the MVP; no permadeath, no credit loss), and the
+  **respawn location** (the station's name, or "Alpha Reach" at the game-start fallback). A single
+  **CONTINUE** button returns control at the respawn station, where the ship already sits. The flight
+  controls and the HUD pause button hide while the screen is up, and a held stick/FIRE is neutralised so
+  it can't sit live under the frozen overlay (mirrors the pause overlay, UC32).
+- The freeze reuses the UC32 pattern: a pure `render/DestructionState` gate read once per frame, **nested
+  under** the pause gate, so a pending destruction skips the whole `advanceSimulation(dt)` while
+  `renderFrame` keeps drawing the frozen scene. The consequence itself is the pure, libGDX-free
+  `combat/DestructionSummary` (cargo lost, credit penalty, respawn-location name), built by
+  `DestructionSummary.from(RespawnResult, name)` — so a JVM test drives a destruction and asserts the
+  summary without any GL (AC#5). The `Respawn` rule (relocate, jettison `respawnCargoLossFraction`,
+  repair, clear combat) is unchanged; the screen only surfaces and confirms it.
 
 ## Data & state
 
@@ -69,6 +84,14 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
 - **Persisted (durable consequences):** each ship's `OwnedShip.sectionDamage` (new `ship_section_damage`
   table, full-snapshot per ship like cargo; absent section = pristine) and `WorldState.lastDockedStation`
   (`game_state.last_docked_station_id`). Schema v10→v11 (additive; see ADR 0012 / ADR 0002).
+- **Destruction persistence (UC33) — no schema change.** The respawn is a complete world mutation
+  (position, sector, lightened cargo, repaired sections, cleared combat) committed **before** the player
+  taps CONTINUE, and written **durably at the moment of destruction** via the new
+  `AutosaveController.onCriticalEvent("respawn")` (enqueue + `saveExecutor.flush()`, the event-driven
+  analogue of `onPauseOrExit`). A crash/close on the consequence screen therefore reloads the
+  **post-respawn** state; because combat is transient, no encounter reloads and the cargo-loss penalty
+  applies exactly once (AC#4). No new tables or migration — the existing world snapshot already carries
+  everything (see [ADR 0022](../adr/0022-ship-destruction-screen.md)).
 - Max section HP and the weapon fit are **derived** stats (`ShipStats`), never stored.
 
 ## Dependencies & interactions

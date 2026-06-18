@@ -37,6 +37,19 @@ class AutosaveController(
     }
 
     /**
+     * Autosave on a **critical** world event and **block until it is durably written** (UC33 AC#4) — the
+     * event-driven analogue of [onPauseOrExit]. Used for a transition a crash must never duplicate or
+     * skip: a destruction respawn. The respawn is committed and durably persisted *before* the player is
+     * handed the consequence screen, so closing the app on that screen reloads the post-respawn state and
+     * the cargo-loss penalty is applied exactly once. Unlike the fire-and-forget [onEvent], this flushes
+     * the single-writer executor (the same blocking guarantee as the pause/exit path).
+     */
+    fun onCriticalEvent(reason: String) {
+        enqueueSave(reason)
+        saveExecutor.flush()
+    }
+
+    /**
      * Accumulate frame time; enqueue a periodic save once [intervalSeconds] of flight has elapsed,
      * then reset the accumulator. Called every frame — must stay allocation-free and log-free on the
      * common (no-save) path.
