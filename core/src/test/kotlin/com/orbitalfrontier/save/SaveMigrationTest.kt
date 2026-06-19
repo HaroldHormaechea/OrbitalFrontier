@@ -84,6 +84,25 @@ class SaveMigrationTest {
             binders = { bindString(0, name) },
         ).value
 
+    /**
+     * Whether the `game_state` table holds any row, read by **direct SQL** (used by the per-step migration
+     * tests to assert a seeded save survives a single step). Deliberately not the repository's `hasSave`:
+     * since UC38 the repository's generated queries reference the v17 `slot_id` column, which an
+     * intermediate (pre-v17) schema does not have, so `hasSave` on an intermediate schema would degrade to
+     * `false`. A direct row check is schema-version-agnostic and keeps each per-step test scoped to its step.
+     */
+    private fun gameStateRowExists(): Boolean =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT COUNT(*) FROM game_state",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value((cursor.getLong(0) ?: 0L) > 0L)
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
     @Test
     fun `migrating a real v1 database to v2 preserves settings, adds game-state tables, and bumps the version`() {
         buildRealV1Database()
@@ -105,13 +124,19 @@ class SaveMigrationTest {
         assertTrue("game_state table must exist after migration", tableExists("game_state"))
         assertTrue("ship table must exist after migration", tableExists("ship"))
 
-        // A migrated v1 DB has no game state yet → New Game (AC#5).
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
-        assertNull("a migrated v1 DB has no saved game state", gameStateRepo.loadGameState())
-        assertFalse("a migrated v1 DB reports no save", gameStateRepo.hasSave())
+        // A migrated v1 DB has no game state yet → New Game (AC#5), read by direct SQL (the repository's
+        // load/hasSave now reference the v17 slot_id column, absent on a v2 schema).
+        assertFalse("a migrated v1 DB reports no game-state row", gameStateRowExists())
 
-        // The stored save-format version is bumped to 2 (AC#4).
+        // The stored save-format version is bumped to 2 (AC#4) — assert the v1->v2 step before continuing.
         assertEquals(2L, queries.selectSaveVersion().executeAsOne())
+
+        // Continue the chain to the current (slot-aware, v17) schema so the repository can be exercised; a
+        // v1-origin DB is settings-only, so it still reads back as no save through the slot API (UC38 AC#3).
+        OrbitalFrontier.Schema.migrate(driver, 2L, 17L)
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
+        assertNull("a migrated v1 DB has no saved game state", gameStateRepo.loadGameState(SlotId.LEGACY))
+        assertFalse("a migrated v1 DB reports no save", gameStateRepo.hasSave(SlotId.LEGACY))
     }
 
     // --- UC05 AC#4: v2 -> v3 adds the dock column additively, preserving existing game data ---
@@ -215,7 +240,7 @@ class SaveMigrationTest {
         val (sector, docked) = readGameStateColumns()
         assertEquals("the saved sector must survive", "beta", sector)
         assertNull("a migrated v2 save reads back as in flight (no dock column value)", docked)
-        assertTrue("a migrated v2 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v2 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 3 (AC#4).
         assertEquals(3L, queries.selectSaveVersion().executeAsOne())
@@ -291,7 +316,7 @@ class SaveMigrationTest {
         val (sector, docked) = readGameStateColumns()
         assertEquals("the saved sector must survive", "beta", sector)
         assertEquals("the dock state must survive", "beta-station", docked)
-        assertTrue("a migrated v3 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v3 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 4 (AC#4).
         assertEquals(4L, queries.selectSaveVersion().executeAsOne())
@@ -398,7 +423,7 @@ class SaveMigrationTest {
         val (sector, docked) = readGameStateColumns()
         assertEquals("the saved sector must survive", "beta", sector)
         assertNull("a migrated v4 save reads back as in flight (seeded with no dock)", docked)
-        assertTrue("a migrated v4 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v4 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 5 (AC#6).
         assertEquals(5L, queries.selectSaveVersion().executeAsOne())
@@ -503,7 +528,7 @@ class SaveMigrationTest {
         val (sector, _) = readGameStateColumns()
         assertEquals("the saved sector must survive", "beta", sector)
         assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
-        assertTrue("a migrated v5 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v5 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 6 (AC#1).
         assertEquals(6L, queries.selectSaveVersion().executeAsOne())
@@ -613,7 +638,7 @@ class SaveMigrationTest {
         assertEquals("the migration backfills the existing ship to the starter type", "starter", readShipType())
         assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
         assertEquals("the saved credits must survive", 1234L, readGameStateCredits())
-        assertTrue("a migrated v6 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v6 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 7 (AC#6).
         assertEquals(7L, queries.selectSaveVersion().executeAsOne())
@@ -731,7 +756,7 @@ class SaveMigrationTest {
         assertEquals("the migrated save keeps the starter ship_type", "starter", readShipType())
         assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
         assertEquals("the saved credits must survive", 1234L, readGameStateCredits())
-        assertTrue("a migrated v7 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v7 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 8 (AC#4).
         assertEquals(8L, queries.selectSaveVersion().executeAsOne())
@@ -851,7 +876,7 @@ class SaveMigrationTest {
         assertEquals("the migrated save keeps the starter ship_type", "starter", readShipType())
         assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
         assertEquals("the saved credits must survive", 1234L, readGameStateCredits())
-        assertTrue("a migrated v8 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v8 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 9 (AC#4).
         assertEquals(9L, queries.selectSaveVersion().executeAsOne())
@@ -972,7 +997,7 @@ class SaveMigrationTest {
         assertEquals("the migrated save keeps the starter ship_type", "starter", readShipType())
         assertEquals("the saved fuel must survive", 42.0, readShipFuel()!!, 1e-9)
         assertEquals("the saved credits must survive", 1234L, readGameStateCredits())
-        assertTrue("a migrated v9 DB still reports a save", SqlDelightGameStateRepository(database, NoOpLogger).hasSave())
+        assertTrue("a migrated v9 DB still reports a save", gameStateRowExists())
 
         // The stored save-format version is bumped to 10 (AC#5).
         assertEquals(10L, queries.selectSaveVersion().executeAsOne())
@@ -1131,11 +1156,11 @@ class SaveMigrationTest {
         // Continue to the current schema so the v13-aware repository can load (it reads the v12 reputation
         // table + the v13 owned_station/station_module tables; the canonical per-step migration assertions
         // live in the dedicated v11->v12 and v12->v13 tests).
-        OrbitalFrontier.Schema.migrate(driver, 11L, 13L)
+        OrbitalFrontier.Schema.migrate(driver, 11L, 17L)
 
         // The full save now loads through the v13-aware repository: the prior single starter ship with its
         // sector + cargo + fuel + credits + revealed contact intact, 0 crew, pristine sections, no last dock.
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         val loaded = gameStateRepo.loadGameState()
         assertNotNull("a migrated v10 save must still load", loaded)
         assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
@@ -1289,9 +1314,9 @@ class SaveMigrationTest {
 
         // Continue to the current schema so the v13-aware repository can load (it reads the v13
         // owned_station/station_module tables; the canonical v12->v13 assertions live in the dedicated test).
-        OrbitalFrontier.Schema.migrate(driver, 12L, 13L)
+        OrbitalFrontier.Schema.migrate(driver, 12L, 17L)
 
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         val loaded = gameStateRepo.loadGameState()
         assertNotNull("a migrated v11 save must still load", loaded)
         assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
@@ -1310,7 +1335,7 @@ class SaveMigrationTest {
         // The new tables/columns are writable, not just present: a non-neutral standing + a faction-attributed
         // mission saved on top of the migrated DB round-trips.
         gameStateRepo.saveGameState(loaded.copy(reputation = Reputation(mapOf(Factions.LEAGUE.id to 25))))
-        val reSaved = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reSaved = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
         assertEquals(
             "a non-neutral standing saved into the migrated DB round-trips",
             25,
@@ -1455,7 +1480,14 @@ class SaveMigrationTest {
         assertEquals("v12 settings must survive", "LEFT_HANDED", readHandedness())
         assertEquals("the recorded last dock must survive", "alpha-station", readLastDockedStation())
 
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
+        // The stored save-format version is bumped to 13 (AC#4) — assert the v12->v13 step before continuing.
+        assertEquals(13L, queries.selectSaveVersion().executeAsOne())
+
+        // Continue to the current (slot-aware, v17) schema so the repository can load the migrated save (its
+        // queries reference the v17 slot_id column; the per-step v13..v17 assertions live in their own tests).
+        OrbitalFrontier.Schema.migrate(driver, 13L, 17L)
+
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         val loaded = gameStateRepo.loadGameState()
         assertNotNull("a migrated v12 save must still load", loaded)
         assertEquals("the saved sector must survive", "beta", loaded!!.currentSector.value)
@@ -1468,9 +1500,6 @@ class SaveMigrationTest {
         assertTrue("a migrated v12 save reads back with no owned stations", loaded.stations.isEmpty)
         assertEquals("zero owned stations after migration (AC#4)", 0, loaded.stations.size)
 
-        // The stored save-format version is bumped to 13 (AC#4).
-        assertEquals(13L, queries.selectSaveVersion().executeAsOne())
-
         // The new tables are writable, not just present: a founded station saved on top of the migrated DB
         // round-trips (id + anchor sector + module slot), proving the additive migration is fully functional.
         val founded =
@@ -1480,7 +1509,7 @@ class SaveMigrationTest {
                 modules = mapOf(0 to StationModuleCatalog.COMMERCE_HUB),
             )
         gameStateRepo.saveGameState(loaded.copy(stations = StationRegistry(listOf(founded))))
-        val reSaved = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reSaved = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
         assertEquals("a station saved into the migrated DB round-trips", 1, reSaved!!.stations.size)
         assertEquals(
             "the round-tripped station keeps its commerce hub",
@@ -1490,11 +1519,11 @@ class SaveMigrationTest {
     }
 
     @Test
-    fun `the full v1 to v16 chain preserves settings, lands every schema change, and ends at version 16`() {
+    fun `the full v1 to v17 chain preserves settings, lands every schema change, and ends at version 17`() {
         buildRealV1Database()
 
-        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 14.sqm (v14->v15), 15.sqm (v15->v16).
-        OrbitalFrontier.Schema.migrate(driver, 1L, 16L)
+        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 15.sqm (v15->v16), 16.sqm (v16->v17).
+        OrbitalFrontier.Schema.migrate(driver, 1L, 17L)
 
         val database = OrbitalFrontier(driver)
         val queries = database.orbitalFrontierQueries
@@ -1536,10 +1565,18 @@ class SaveMigrationTest {
         assertTrue("settings.joystick_sensitivity column must exist", columnExists("settings", "joystick_sensitivity"))
         assertTrue("settings.joystick_deadzone column must exist", columnExists("settings", "joystick_deadzone"))
         assertTrue("settings.ui_scale column must exist", columnExists("settings", "ui_scale"))
+        // …and the v17 save-slot additions (UC38): the active-slot pointer on meta + the per-slot game_state
+        // display metadata columns (name / last-saved / play-time).
+        assertTrue("meta.active_slot_id column must exist", columnExists("meta", "active_slot_id"))
+        assertTrue("game_state.name column must exist", columnExists("game_state", "name"))
+        assertTrue("game_state.last_saved_epoch_millis column must exist", columnExists("game_state", "last_saved_epoch_millis"))
+        assertTrue("game_state.play_time_seconds column must exist", columnExists("game_state", "play_time_seconds"))
 
-        // A migrated-from-v1 DB has no game state (settings-only origin) → New Game.
-        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
-        assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState())
+        // A migrated-from-v1 DB has no game state (settings-only origin) → New Game (read via the slot API).
+        val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
+        assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState(SlotId.LEGACY))
+        // Every slot reads back empty for a settings-only origin (UC38 AC#1).
+        assertTrue("a v1-origin DB lists only empty slots", gameStateRepo.listSlots().all { it is SaveSlotSummary.Empty })
 
         val settingsRepo = SqlDelightSettingsRepository(database, NoOpLogger)
         // The migrated settings row backfills the audio defaults (audio enabled at default levels).
@@ -1569,7 +1606,7 @@ class SaveMigrationTest {
         )
 
         // Ends at the current schema version.
-        assertEquals(16L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(17L, queries.selectSaveVersion().executeAsOne())
     }
 
     /**
@@ -1854,5 +1891,184 @@ class SaveMigrationTest {
             freshRepo.loadAudioSettings(),
         )
         assertTrue("the UC37 writes must not clobber the migrated tutorial flag", freshRepo.loadTutorialCompleted())
+    }
+
+    // --- UC38 AC#3/#4: v16 -> v17 partitions every game-state table by slot_id, backfilling the legacy ---
+    // --- single autosave into slot 0 ("Autosave"), and adds the active-slot pointer + slot metadata.    ---
+
+    /**
+     * Build the exact v16 (UC37) schema — `meta` (NO `active_slot_id`) + the full v16 `settings` + the
+     * **single-row** v16 `game_state` (CHECK (id = 0), NO `name` / `last_saved_epoch_millis` /
+     * `play_time_seconds`) + every game-state table keyed WITHOUT a `slot_id` — seeded with a rich real
+     * save (sector + last dock + credits + a starter ship + cargo + a revealed contact + a faction-attributed
+     * mission + a non-neutral reputation + an owned station) so the v16→v17 table-rebuild migration is
+     * exercised against **data-bearing** tables, not empty ones. This is the v16 baseline the production .sq
+     * describes; UC38's 16.sqm repartitions all 11 game-state tables by `slot_id` (the legacy save → slot 0).
+     */
+    private fun buildRealV16Database() {
+        driver.execute(null, "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)", 0)
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL, " +
+                "master_muted INTEGER NOT NULL DEFAULT 0, sfx_volume REAL NOT NULL DEFAULT 1.0, " +
+                "music_volume REAL NOT NULL DEFAULT 0.5, tutorial_completed INTEGER NOT NULL DEFAULT 0, " +
+                "joystick_sensitivity REAL NOT NULL DEFAULT 1.0, joystick_deadzone REAL NOT NULL DEFAULT 0.15, " +
+                "ui_scale REAL NOT NULL DEFAULT 2.0)",
+            0,
+        )
+        // v16 game_state: SINGLE-ROW (CHECK (id = 0)) — no slot_id, no slot display metadata yet.
+        driver.execute(
+            null,
+            "CREATE TABLE game_state (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), " +
+                "current_sector TEXT NOT NULL, active_ship_id INTEGER NOT NULL, docked_station_id TEXT, " +
+                "credits INTEGER NOT NULL DEFAULT 0, last_docked_station_id TEXT)",
+            0,
+        )
+        // v16 ship: single-keyed (id PK), with fuel/ship_type/crew.
+        driver.execute(
+            null,
+            "CREATE TABLE ship (id INTEGER NOT NULL PRIMARY KEY, pos_x REAL NOT NULL, pos_y REAL NOT NULL, " +
+                "vel_x REAL NOT NULL, vel_y REAL NOT NULL, heading REAL NOT NULL, ang_vel REAL NOT NULL, " +
+                "fuel REAL NOT NULL DEFAULT 100, ship_type TEXT NOT NULL DEFAULT 'starter', crew INTEGER NOT NULL DEFAULT 0)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE ship_upgrade (ship_id INTEGER NOT NULL, slot_category TEXT NOT NULL, " +
+                "slot_index INTEGER NOT NULL, upgrade_id TEXT NOT NULL, PRIMARY KEY (ship_id, slot_category, slot_index))",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE cargo (ship_id INTEGER NOT NULL, resource TEXT NOT NULL, units INTEGER NOT NULL, " +
+                "PRIMARY KEY (ship_id, resource))",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE ship_section_damage (ship_id INTEGER NOT NULL, section TEXT NOT NULL, " +
+                "current_hp INTEGER NOT NULL, PRIMARY KEY (ship_id, section))",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE field_deposit (field_id TEXT NOT NULL, resource TEXT NOT NULL, " +
+                "remaining_units INTEGER NOT NULL, PRIMARY KEY (field_id, resource))",
+            0,
+        )
+        driver.execute(null, "CREATE TABLE revealed_contact (contact_id TEXT NOT NULL PRIMARY KEY)", 0)
+        driver.execute(
+            null,
+            "CREATE TABLE mission (id TEXT NOT NULL PRIMARY KEY, type TEXT NOT NULL, source TEXT NOT NULL, " +
+                "status TEXT NOT NULL, reward_credits INTEGER NOT NULL, reward_resource TEXT, " +
+                "reward_resource_units INTEGER NOT NULL DEFAULT 0, quota_resource TEXT, quota_units INTEGER NOT NULL DEFAULT 0, " +
+                "pickup TEXT, destination TEXT, remaining_ticks INTEGER NOT NULL DEFAULT 0, picked_up INTEGER NOT NULL DEFAULT 0, " +
+                "faction_id TEXT)",
+            0,
+        )
+        driver.execute(null, "CREATE TABLE reputation (faction_id TEXT NOT NULL PRIMARY KEY, value INTEGER NOT NULL)", 0)
+        driver.execute(null, "CREATE TABLE owned_station (id INTEGER NOT NULL PRIMARY KEY, sector TEXT NOT NULL)", 0)
+        driver.execute(
+            null,
+            "CREATE TABLE station_module (station_id INTEGER NOT NULL, slot_index INTEGER NOT NULL, " +
+                "module_type TEXT NOT NULL, PRIMARY KEY (station_id, slot_index))",
+            0,
+        )
+
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 16)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO settings(id, handedness, master_muted, sfx_volume, music_volume, tutorial_completed, " +
+                "joystick_sensitivity, joystick_deadzone, ui_scale) " +
+                "VALUES (0, 'LEFT_HANDED', 0, 1.0, 0.5, 1, 1.0, 0.15, 2.0)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO game_state(id, current_sector, active_ship_id, docked_station_id, credits, last_docked_station_id) " +
+                "VALUES (0, 'beta', 0, NULL, 1234, 'alpha-station')",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO ship(id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type, crew) " +
+                "VALUES (0, 12.5, -7.5, 1.0, 2.0, 0.25, -0.5, 42.0, 'starter', 0)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO cargo(ship_id, resource, units) VALUES (0, 'IRON_ORE', 9)", 0)
+        driver.execute(null, "INSERT INTO revealed_contact(contact_id) VALUES ('alpha-derelict')", 0)
+        driver.execute(
+            null,
+            "INSERT INTO mission(id, type, source, status, reward_credits, quota_resource, quota_units, " +
+                "remaining_ticks, picked_up, faction_id) " +
+                "VALUES ('board:alpha-station:mining', 'MINING', 'BOARD', 'ACTIVE', 400, 'HYDROGEN', 8, 0, 0, 'league')",
+            0,
+        )
+        driver.execute(null, "INSERT INTO reputation(faction_id, value) VALUES ('league', 25)", 0)
+        driver.execute(null, "INSERT INTO owned_station(id, sector) VALUES (0, 'beta')", 0)
+    }
+
+    @Test
+    fun `migrating a real v16 database to v17 backfills the legacy save into slot 0 and adds slot metadata`() {
+        buildRealV16Database()
+
+        // Apply the sequential v16 -> v17 migration (runs migrations/16.sqm — the first table-rebuild step).
+        OrbitalFrontier.Schema.migrate(driver, 16L, 17L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The v17 additions exist: the active-slot pointer on meta + the per-slot display metadata columns.
+        assertTrue("meta.active_slot_id column must exist after migration", columnExists("meta", "active_slot_id"))
+        assertTrue("game_state.slot_id column must exist after migration", columnExists("game_state", "slot_id"))
+        assertTrue("game_state.name column must exist after migration", columnExists("game_state", "name"))
+        assertTrue(
+            "game_state.last_saved_epoch_millis column must exist after migration",
+            columnExists("game_state", "last_saved_epoch_millis"),
+        )
+        assertTrue("game_state.play_time_seconds column must exist after migration", columnExists("game_state", "play_time_seconds"))
+        // The game-state tables are repartitioned: ship/cargo/etc. gain slot_id.
+        assertTrue("ship.slot_id column must exist after migration", columnExists("ship", "slot_id"))
+        assertTrue("cargo.slot_id column must exist after migration", columnExists("cargo", "slot_id"))
+
+        // Data survival: the pre-UC38 settings are untouched (settings are global, not per-slot).
+        assertEquals("v16 settings must survive", "LEFT_HANDED", readHandedness())
+
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
+
+        // AC#3: the legacy single autosave is backfilled into slot 0 (SlotId.LEGACY), which the autosave /
+        // Continue pointer now targets (DEFAULT 0).
+        assertEquals("the active slot defaults to the legacy slot", SlotId.LEGACY, repo.activeSlot())
+        assertTrue("the migrated save lives in the legacy slot", repo.hasSave(SlotId.LEGACY))
+        assertFalse("no other slot holds a save after migration", repo.hasSave(SlotId(1)))
+
+        // AC#3: the whole rich save reads back from slot 0 — sector, credits, last dock, cargo, the revealed
+        // contact, the faction-attributed mission, the non-neutral reputation, and the owned station all survive.
+        val loaded = repo.loadGameState(SlotId.LEGACY)
+        assertNotNull("the legacy save must load from slot 0", loaded)
+        assertEquals("the saved sector survives", "beta", loaded!!.currentSector.value)
+        assertEquals("the saved credits survive", 1234L, loaded.credits)
+        assertEquals("the saved last dock survives", "alpha-station", loaded.lastDockedStation?.value)
+        assertEquals("the saved cargo survives", 9, loaded.cargo.contents[ResourceType.IRON_ORE])
+        assertTrue("the revealed contact survives", loaded.revealedContacts.any { it.value == "alpha-derelict" })
+        assertTrue("the accepted mission survives", loaded.missions.accepted.any { it.id.value == "board:alpha-station:mining" })
+        assertEquals("the non-neutral reputation survives", 25, loaded.reputation.valueFor(Factions.LEAGUE.id))
+        assertNotNull("the owned station survives", loaded.stations.station(StationId(0)))
+
+        // AC#1/#3: slot 0 reads back as an occupied "Autosave" slot with backfilled metadata (unknown
+        // last-saved / play-time = 0); every other configured slot is empty.
+        val slots = repo.listSlots()
+        assertEquals("one summary per configured slot", SaveSlots.COUNT, slots.size)
+        val legacy = slots[0]
+        assertTrue("slot 0 is occupied after the backfill", legacy is SaveSlotSummary.Occupied)
+        legacy as SaveSlotSummary.Occupied
+        assertEquals("the legacy slot is named 'Autosave'", "Autosave", legacy.name)
+        assertEquals("a pre-UC38 save has unknown (0) last-saved", 0L, legacy.lastSavedEpochMillis)
+        assertEquals("a pre-UC38 save has 0 backfilled play time", 0L, legacy.playTimeSeconds)
+        assertEquals("the legacy slot summary carries the saved credits", 1234L, legacy.credits)
+        assertTrue("slots 1..N read back empty", slots.drop(1).all { it is SaveSlotSummary.Empty })
+
+        // The stored save-format version is bumped to 17 (the current schema).
+        assertEquals(17L, queries.selectSaveVersion().executeAsOne())
     }
 }

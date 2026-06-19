@@ -68,11 +68,11 @@ class Uc10ScanSaveReloadReplayTest {
 
         val replayedWorld = worldStateFrom(finalState)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(replayedWorld)
 
         // Fresh repository over the same DB == app restart; the reload goes back through SQL.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         // EXACT equality — revealedContacts survive the round-trip alongside the fleet + sector (AC#4).
         assertEquals(replayedWorld, reloaded)

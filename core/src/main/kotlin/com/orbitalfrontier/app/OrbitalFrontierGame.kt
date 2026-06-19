@@ -9,8 +9,11 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.menu.SaveSlotModel
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.platform.AudioService
+import com.orbitalfrontier.platform.Clock
+import com.orbitalfrontier.platform.FixedClock
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
@@ -21,7 +24,9 @@ import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
+import com.orbitalfrontier.save.SaveSlotRepository
 import com.orbitalfrontier.save.SettingsRepository
+import com.orbitalfrontier.save.SlotId
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
 import com.orbitalfrontier.screen.HireScreen
@@ -29,6 +34,7 @@ import com.orbitalfrontier.screen.MainMenuScreen
 import com.orbitalfrontier.screen.MissionBoardScreen
 import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
+import com.orbitalfrontier.screen.SaveSlotScreen
 import com.orbitalfrontier.screen.SettingsScreen
 import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
@@ -72,6 +78,10 @@ class OrbitalFrontierGame(
     private val logger: Logger,
     private val sqlDriverFactory: SqlDriverFactory,
     private val saveExecutor: SaveExecutor,
+    // UC38: wall-clock port used by the save-slot repository to stamp each slot's last-saved time. The
+    // Android launcher passes a real AndroidClock; defaults to FixedClock so non-Android backends / tests
+    // (and the time-free pure simulation) need not wire it (ADR 0006 — the clock lives at the save boundary).
+    private val clock: Clock = FixedClock,
     // UC25: debug-build flag (the launcher passes BuildConfig.DEBUG). Forwarded to PlayScreen, which
     // wires the debug-only point-and-go navigation aid only when true. Defaults false so non-Android
     // backends / tests stay release-safe.
@@ -102,8 +112,21 @@ class OrbitalFrontierGame(
     // enterGame() later (the menu defers New-Game-vs-Continue from startup to a player choice). Set once
     // in create(), before the menu can fire a callback.
     private lateinit var gameStateRepository: GameStateRepository
+
+    // UC38: slot-management capability (list / rename / delete / active-slot pointer). Backed by the same
+    // SqlDelightGameStateRepository instance as [gameStateRepository] (it realises both interfaces).
+    private lateinit var saveSlotRepository: SaveSlotRepository
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var handedness: Handedness
+
+    // UC38: the slot the current session targets — the autosave writes here and Continue resumes it. Read
+    // from meta.active_slot_id in create(); updated (and persisted via setActiveSlot) on new-game-into /
+    // load / save-into a slot. The AutosaveController reads it through a supplier so autosave always follows.
+    private var activeSlot: SlotId = SlotId.LEGACY
+
+    // UC38: the save/load slot screen, built on demand (LOAD from the main menu, SAVE from the pause
+    // overlay) and owned here so it can be disposed (libGDX only hide()s the previous screen).
+    private var saveSlotScreen: SaveSlotScreen? = null
 
     // UC19: the on-foot walk-around screen, kept alive across a shop visit so the avatar's position is
     // preserved when the trade desk closes and this screen is re-shown. Disposed only on re-board / dispose().
@@ -157,9 +180,13 @@ class OrbitalFrontierGame(
         // a usable save (non-null) enables Continue and makes Start double-confirm before wiping; a
         // null one (no save, or a corrupt save the repository degraded to null) disables Continue and
         // lets Start begin immediately.
-        val repository = SqlDelightGameStateRepository(database, logger)
+        val repository = SqlDelightGameStateRepository(database, logger, clock)
         gameStateRepository = repository
-        val loaded = repository.loadGameState()
+        saveSlotRepository = repository
+        // UC38: resume the slot the player last played / saved into (meta.active_slot_id; legacy slot 0 on a
+        // fresh or migrated DB — the legacy single autosave appears as slot 0, AC#3).
+        activeSlot = repository.activeSlot()
+        val loaded = repository.loadGameState(activeSlot)
 
         // Show the main menu first, on every launch (UC21 AC#1/#5). Start / Continue route into the
         // game via enterGame(); only then is the play screen / hub built.
@@ -179,27 +206,118 @@ class OrbitalFrontierGame(
         MainMenuScreen(
             logger = logger,
             continueEnabled = loaded != null,
-            // Continue: resume the existing save (AC#2). loaded is non-null here (Continue is only
-            // enabled when it is), so the !! is safe.
+            // Continue: resume the active slot's save (AC#2; UC38 — the slot is meta.active_slot_id). loaded
+            // is non-null here (Continue is only enabled when it is), so the !! is safe.
             onContinue = {
-                logger.info(TAG, "Continue: restored save (sector=${loaded!!.currentSector.value})")
-                enterGame(loaded)
+                logger.info(TAG, "Continue: restored slot ${activeSlot.value} (sector=${loaded!!.currentSector.value})")
+                enterGame(loaded, activeSlot)
             },
-            // Start: begin a brand-new game (AC#3). clearSave() is UNCONDITIONAL — a no-op on an
-            // empty DB and a full wipe on a usable OR corrupt save; it is decoupled from the warnings
-            // (the menu model gates those on whether a save exists). It is safe to call at menu time:
-            // there is no AutosaveController yet (the play screen, hence autosaving, is built only in
-            // enterGame() below), so there is no concurrent writer to race with the wipe.
+            // Start: begin a brand-new game in the ACTIVE slot (AC#3; UC38 — the slot Continue would resume).
+            // clearSave(slot) is UNCONDITIONAL — a no-op on an empty slot and a full wipe on a usable OR
+            // corrupt one; it is decoupled from the warnings (the menu model gates those on whether a save
+            // exists). Safe at menu time: there is no AutosaveController yet (the play screen, hence
+            // autosaving, is built only in enterGame() below), so there is no concurrent writer to race.
             onStartNewGame = {
-                logger.info(TAG, "New Game: wiping any existing save; seeding defaults (credits=$STARTING_CREDITS)")
-                gameStateRepository.clearSave()
-                // New game seeds a starting wallet (UC08) and the default single-starter-ship fleet
-                // (UC09 — WorldState defaults to Fleet.starter()).
-                enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS))
+                logger.info(TAG, "New Game: wiping slot ${activeSlot.value}; seeding defaults (credits=$STARTING_CREDITS)")
+                newGameIntoSlot(activeSlot)
             },
             // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu.
             onOpenSettings = { openSettings() },
+            // UC38: LOAD GAME opens the save-slot screen in LOAD mode (resume / new-game-into / delete a slot).
+            onLoadGame = { openSaveSlots(SaveSlotModel.Mode.LOAD, returnToMenuOnBack = true) },
         )
+
+    /**
+     * Begin a brand-new game in [slot] (UC38): make it the active slot, wipe any existing save there, and
+     * enter gameplay with the freshly-seeded [WorldState] (a starting wallet — UC08 — and the default
+     * single-starter-ship fleet — UC09). Used by the menu's Start and by "new game into an empty slot" on
+     * the load screen (AC#2). The slot's player-facing name is set lazily on the first save (its default).
+     */
+    private fun newGameIntoSlot(slot: SlotId) {
+        activeSlot = slot
+        saveSlotRepository.setActiveSlot(slot)
+        gameStateRepository.clearSave(slot)
+        enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS), slot)
+    }
+
+    /**
+     * Open the save/load slot screen (UC38 AC#1/#2), owning it so it can be disposed (libGDX only hide()s
+     * the previous screen). In LOAD [mode] (from the main menu) tapping a slot resumes it, an empty slot
+     * starts a new game, and DELETE removes a slot; in SAVE [mode] (from the pause overlay) tapping a slot
+     * persists the live game into it (with an overwrite warning for an occupied slot). BACK returns to the
+     * main menu when [returnToMenuOnBack], else to the (paused) play screen.
+     */
+    private fun openSaveSlots(
+        mode: SaveSlotModel.Mode,
+        returnToMenuOnBack: Boolean,
+    ) {
+        val screen =
+            SaveSlotScreen(
+                logger = logger,
+                mode = mode,
+                slotsSupplier = { saveSlotRepository.listSlots() },
+                onLoad = { slot -> loadSlot(slot) },
+                onDelete = { slot -> saveSlotRepository.deleteSlot(slot) },
+                onSave = { slot -> saveIntoSlot(slot) },
+                onNewGameInto = { slot -> newGameIntoSlot(slot) },
+                onBack = { if (returnToMenuOnBack) returnToMenuFromSaveSlots() else returnToPlayFromSaveSlots() },
+            )
+        saveSlotScreen = screen
+        setScreen(screen)
+    }
+
+    /** Resume the chosen [slot] (UC38 AC#2): make it active and enter gameplay with its loaded snapshot. */
+    private fun loadSlot(slot: SlotId) {
+        val loaded = gameStateRepository.loadGameState(slot)
+        if (loaded == null) {
+            logger.warn(TAG, "Load slot ${slot.value} found no save; ignoring")
+            return
+        }
+        activeSlot = slot
+        saveSlotRepository.setActiveSlot(slot)
+        disposeSaveSlots()
+        logger.info(TAG, "Loaded slot ${slot.value} (sector=${loaded.currentSector.value})")
+        enterGame(loaded, slot)
+    }
+
+    /**
+     * Manual save of the live game into [slot] (UC38 AC#2), reached from the pause overlay (SAVE mode). The
+     * game stays paused. Re-points the autosave at [slot] (save-as) and flushes a durable write through the
+     * single-writer executor, then returns to the (paused) play screen. The snapshot is taken on the render
+     * thread; the write runs on the executor (mirrors the autosave path).
+     */
+    private fun saveIntoSlot(slot: SlotId) {
+        val screen = playScreen
+        if (screen == null) {
+            logger.warn(TAG, "Save into slot ${slot.value} with no play screen; ignoring")
+            return
+        }
+        activeSlot = slot
+        saveSlotRepository.setActiveSlot(slot)
+        val snapshot = screen.currentWorldState()
+        saveExecutor.execute { gameStateRepository.saveGameState(slot, snapshot) }
+        saveExecutor.flush()
+        logger.info(TAG, "Saved live game into slot ${slot.value}")
+        returnToPlayFromSaveSlots()
+    }
+
+    /** Return from the save-slot screen to the (kept-alive) main menu, disposing the now-hidden slot screen. */
+    private fun returnToMenuFromSaveSlots() {
+        mainMenuScreen?.let { setScreen(it) }
+        disposeSaveSlots()
+    }
+
+    /** Return from the save-slot screen to the (kept-alive, paused) play screen, disposing the slot screen. */
+    private fun returnToPlayFromSaveSlots() {
+        playScreen?.let { setScreen(it) }
+        disposeSaveSlots()
+    }
+
+    /** Dispose + null the save-slot screen (libGDX only hide()s the previous screen). */
+    private fun disposeSaveSlots() {
+        saveSlotScreen?.dispose()
+        saveSlotScreen = null
+    }
 
     /**
      * Open the main-menu settings screen (UC37 AC#4), owning it so it can be disposed (libGDX only hide()s
@@ -243,7 +361,14 @@ class OrbitalFrontierGame(
      * crashing ("never stranded") — builds the [AutosaveController] bound to the live play screen, then
      * shows the hub (if resumed docked) or the play screen.
      */
-    private fun enterGame(worldState: WorldState) {
+    private fun enterGame(
+        worldState: WorldState,
+        slot: SlotId,
+    ) {
+        // UC38: bind this session to [slot] — the autosave writes here (via the controller's slotSupplier)
+        // and a later save-as updates it. The active-slot pointer was already persisted by the caller
+        // (newGameIntoSlot / loadSlot / Continue's create()-read), so this just tracks it in memory.
+        activeSlot = slot
         val resumedStation = resolveDockedStation(worldState)
         val initialWorldState =
             if (worldState.dockedStation != null && resumedStation == null) {
@@ -265,6 +390,8 @@ class OrbitalFrontierGame(
                 saveExecutor = saveExecutor,
                 logger = logger,
                 snapshotSupplier = { playScreen?.currentWorldState() ?: initialWorldState },
+                // UC38: the autosave follows the live active slot, so a save-as to another slot re-targets it.
+                slotSupplier = { activeSlot },
             )
         autosave = controller
 
@@ -290,6 +417,9 @@ class OrbitalFrontierGame(
                 // UC32: the pause overlay's Quit button flushes a durable autosave (in PlayScreen) and then
                 // hands back here to rebuild + show the main menu and dispose the play screen.
                 onQuitToMainMenu = { returnToMainMenu() },
+                // UC38: the pause overlay's SAVE button opens the save-slot screen in SAVE mode (manual save).
+                // The game stays paused; BACK / a save returns to this same (paused) play screen.
+                onOpenSaveSlots = { openSaveSlots(SaveSlotModel.Mode.SAVE, returnToMenuOnBack = false) },
                 audio = audio,
                 debug = debug,
             )
@@ -537,7 +667,9 @@ class OrbitalFrontierGame(
      */
     private fun returnToMainMenu() {
         audio.stopMusic()
-        val loaded = gameStateRepository.loadGameState()
+        // UC38: re-resolve the active slot (a save-as may have moved it) and rebuild the menu from its save.
+        activeSlot = saveSlotRepository.activeSlot()
+        val loaded = gameStateRepository.loadGameState(activeSlot)
         val menu = buildMainMenu(loaded)
         mainMenuScreen?.dispose()
         mainMenuScreen = menu
@@ -621,6 +753,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose settings screen on shutdown", e)
         }
         settingsScreen = null
+        try {
+            saveSlotScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose save-slot screen on shutdown", e)
+        }
+        saveSlotScreen = null
         try {
             playScreen?.dispose()
         } catch (e: Exception) {

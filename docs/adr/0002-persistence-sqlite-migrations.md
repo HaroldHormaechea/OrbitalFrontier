@@ -1,7 +1,16 @@
 # ADR 0002 — Persistence: SQLite from the start with versioned migrations
 
-- **Status:** Accepted (confirmed by the project owner 2026-06-07)
+- **Status:** Accepted (confirmed by the project owner 2026-06-07); **superseded in part by
+  [ADR 0026](0026-save-slots.md)**
 - **Date:** 2026-06-07
+
+> **Forward note (UC38 / ADR 0026).** The "**single save slot, autosave only**" decision below is
+> **superseded in part** by [ADR 0026](0026-save-slots.md): the game now keeps **multiple save slots**,
+> partitioned by a `slot_id` column added to every game-state table's primary key, with manual save / load
+> / delete / new-game-into-slot and a `meta.active_slot_id` pointer. Everything else in this ADR still
+> stands — SQLite from the start, one DB for world + player + settings, a stored schema version, and
+> sequential version-by-version migrations — and the slots all live on that same single migration chain
+> (the legacy single autosave migrates into slot 0).
 
 ## Context
 

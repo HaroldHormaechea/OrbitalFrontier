@@ -57,11 +57,11 @@ class Uc04SaveReloadReplayTest {
 
         val replayedWorld = worldStateFrom(finalState)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(replayedWorld)
 
         // Fresh repository over the same DB == app restart.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         // EXACT equality — sector + every ship kinematic field, Float→Double→Float is lossless (AC#8).
         assertEquals(replayedWorld, reloaded)

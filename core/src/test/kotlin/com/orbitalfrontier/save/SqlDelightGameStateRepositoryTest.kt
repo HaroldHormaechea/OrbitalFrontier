@@ -71,7 +71,7 @@ class SqlDelightGameStateRepositoryTest {
         runCatching { driver.close() }
     }
 
-    private fun newRepository() = SqlDelightGameStateRepository(database, logger)
+    private fun newRepository() = SqlDelightGameStateRepository(database, logger, com.orbitalfrontier.platform.FixedClock)
 
     /** The active ship's awkward-Float kinematics shared by every sample state (exact round-trip bait). */
     private val sampleKinematics =
@@ -431,7 +431,7 @@ class SqlDelightGameStateRepositoryTest {
         // 2) A repository whose writes fail mid-transaction (the upsert throws), sharing the same
         //    underlying connection so we can verify the prior save survived the rollback.
         val failingDatabase = OrbitalFrontier(WriteFailingDriver(driver))
-        val failingRepo = SqlDelightGameStateRepository(failingDatabase, logger)
+        val failingRepo = SqlDelightGameStateRepository(failingDatabase, logger, com.orbitalfrontier.platform.FixedClock)
 
         val doomed =
             WorldState(

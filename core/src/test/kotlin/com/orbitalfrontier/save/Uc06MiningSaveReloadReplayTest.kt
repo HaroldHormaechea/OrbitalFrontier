@@ -66,11 +66,11 @@ class Uc06MiningSaveReloadReplayTest {
 
         val replayedWorld = worldStateFrom(finalState)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(replayedWorld)
 
         // Fresh repository over the same DB == app restart; the reload goes back through SQL.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         // EXACT equality — sector + kinematics + cargo + field depletion (AC#4/#5).
         assertEquals(replayedWorld, reloaded)

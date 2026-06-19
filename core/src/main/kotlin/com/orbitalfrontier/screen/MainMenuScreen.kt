@@ -43,6 +43,10 @@ class MainMenuScreen(
     // UC37 AC#4: SETTINGS opens the standalone main-menu settings screen. Defaults to a no-op so any
     // headless/JVM context (or a test) that builds the menu without a settings host need not wire it.
     private val onOpenSettings: () -> Unit = {},
+    // UC38: LOAD GAME opens the save-slot screen (load mode) — pick a slot to resume, start a new game
+    // into an empty slot, or delete a slot (AC#1/#2). Defaulted to a no-op so headless/JVM contexts need
+    // not wire it; always available (it manages saves, not the current game).
+    private val onLoadGame: () -> Unit = {},
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -95,6 +99,10 @@ class MainMenuScreen(
             continueButton.isDisabled = true
         }
         root.add(continueButton).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
+
+        // UC38: LOAD GAME opens the save-slot screen (load mode). Always available — it manages saves
+        // (resume / new-game-into / delete a slot), independent of whether the active slot has a save.
+        root.add(menuButton("LOAD GAME") { onLoadGame() }).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
 
         // UC37 AC#4: SETTINGS is always available (it configures preferences, not save state), so unlike
         // CONTINUE it is never disabled. The owner opens the standalone settings screen.

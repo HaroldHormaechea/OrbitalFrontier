@@ -3,6 +3,7 @@ package com.orbitalfrontier.app
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.save.OrbitalFrontier
+import com.orbitalfrontier.save.SlotId
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.SectorId
@@ -106,7 +107,7 @@ class Uc17StartingCreditsTest {
         runCatching { driver.close() }
     }
 
-    private fun newRepository() = SqlDelightGameStateRepository(database, NoopLogger)
+    private fun newRepository() = SqlDelightGameStateRepository(database, NoopLogger, com.orbitalfrontier.platform.FixedClock)
 
     @Test
     fun `AC3 - an existing save's credit balance reloads unchanged and is never re-seeded to 50k`() {
@@ -116,10 +117,10 @@ class Uc17StartingCreditsTest {
         assertNotEquals("precondition: the stored balance is not the new-game default", 50_000L, storedCredits)
 
         val existing = WorldState(currentSector = SectorId("beta"), credits = storedCredits)
-        newRepository().saveGameState(existing)
+        newRepository().saveGameState(SlotId.LEGACY, existing)
 
         // Fresh repository over the same in-memory DB == an app restart; the reload goes back through SQL.
-        val reloaded = newRepository().loadGameState()
+        val reloaded = newRepository().loadGameState(SlotId.LEGACY)
 
         assertEquals("AC#3: the whole saved state must reload unchanged", existing, reloaded)
         assertEquals("AC#3: the saved wallet persists as stored", storedCredits, reloaded?.credits)
@@ -135,9 +136,9 @@ class Uc17StartingCreditsTest {
         // Even a coincidental 50k balance must come back as the *stored* value through the load path,
         // confirming the load branch returns the save verbatim rather than seeding.
         val existing = WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = 50_000L)
-        newRepository().saveGameState(existing)
+        newRepository().saveGameState(SlotId.LEGACY, existing)
 
-        val reloaded = newRepository().loadGameState()
+        val reloaded = newRepository().loadGameState(SlotId.LEGACY)
 
         assertEquals(existing, reloaded)
         assertEquals(50_000L, reloaded?.credits)
@@ -146,7 +147,7 @@ class Uc17StartingCreditsTest {
     @Test
     fun `a fresh database reports no save (the trigger for new-game seeding)`() {
         // Sanity anchor: the New-Game branch in create() is taken precisely when loadGameState() is null.
-        assertNull("a brand-new install has no save to load", newRepository().loadGameState())
+        assertNull("a brand-new install has no save to load", newRepository().loadGameState(SlotId.LEGACY))
     }
 
     private companion object {

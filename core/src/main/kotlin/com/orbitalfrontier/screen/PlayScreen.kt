@@ -181,6 +181,11 @@ class PlayScreen(
     // and shows the main menu and disposes this screen. Defaults to a no-op so headless/JVM tests that
     // exercise the pause gate need not wire it.
     private val onQuitToMainMenu: () -> Unit = {},
+    // UC38: open the save-slot screen in SAVE mode from the pause overlay (manual save, AC#2). The app
+    // ([com.orbitalfrontier.app.OrbitalFrontierGame]) shows the save UI over this (paused) screen, persists
+    // the live snapshot into the chosen slot, and re-shows this screen. Defaults to a no-op so headless/JVM
+    // tests that exercise the pause gate need not wire it.
+    private val onOpenSaveSlots: () -> Unit = {},
     // UC31: the injected audio port. SFX are triggered here from the SAME gameplay event seams the
     // autosave/HUD use (combat events, the thrust transition, a productive mining tick, dock, jump,
     // mission accept/complete), so sound is event-driven and the pure simulation stays audio-free
@@ -309,6 +314,15 @@ class PlayScreen(
     // countdown is frame-rate-independent. We accumulate dt and fire one advance per [MISSION_TICK_SECONDS]
     // — the model timer stays the authority; this is just its dt-paced surface (ADR 0011).
     private var missionTickAccumulator = 0f
+
+    // Play time (UC38 AC#1): the accumulated wall-of-play seconds shown per save slot, seeded from the
+    // loaded/initial snapshot so resuming a slot continues its counter. Accumulated on the render thread
+    // from the per-frame `dt` ONLY while the sim actually advances (not while paused / on the destruction
+    // screen), so it tracks real play time. The fractional remainder is carried in [playTimeAccumulator]
+    // so sub-second frames are not lost; whole seconds roll into [playTimeSeconds] and are folded onto the
+    // autosave snapshot in [currentWorldState]. It is NOT part of the deterministic sim (replay ignores it).
+    private var playTimeSeconds: Long = initialWorldState.playTimeSeconds.coerceAtLeast(0)
+    private var playTimeAccumulator = 0f
 
     // Combat (UC13): the live encounter, seeded from the loaded/initial snapshot (NONE on load — combat
     // is transient and never persisted, ADR 0012). [Combat.step] folds each tick's result back in;
@@ -526,6 +540,7 @@ class PlayScreen(
             },
         )
         pauseOverlay.onResume = { resumeGame() }
+        pauseOverlay.onSave = { onOpenSaveSlots() } // UC38: manual save (AC#2); game stays paused.
         pauseOverlay.onSettings = { enterPauseSettings() }
         pauseOverlay.onBack = { exitPauseSettings() }
         pauseOverlay.onQuit = { quitToMainMenu() }
@@ -687,7 +702,10 @@ class PlayScreen(
         // play until the player taps CONTINUE — AC#1). The gate is nested inside the pause gate so the two
         // compose; while either is raised no game time passes and only [renderFrame] runs (AC#2/#5).
         if (!paused) {
-            if (!destructionState.isPending) advanceSimulation(dt)
+            if (!destructionState.isPending) {
+                advanceSimulation(dt)
+                accumulatePlayTime(dt) // UC38 AC#1: count play time only while the sim actually advances.
+            }
         }
         // Render the ship from the live Box2D transform: this frame's step when running, the frozen
         // kinematics when paused. After a gate jump the advance already reset the body to the arrival point.
@@ -1561,7 +1579,25 @@ class PlayScreen(
             reputation = reputation,
             // Owned stations (UC15): the live registry, folded onto the snapshot for the autosave.
             stations = stations,
+            // Play time (UC38 AC#1): the accumulated wall-of-play seconds, folded onto the snapshot so each
+            // save/autosave persists it and the slot list shows it.
+            playTimeSeconds = playTimeSeconds,
         )
+    }
+
+    /**
+     * Accumulate real play time (UC38 AC#1) from this frame's [dt]. Called only while the sim advances
+     * (not paused / not on the destruction screen), so it tracks play time, not wall-clock-while-idle. The
+     * fractional remainder is carried so sub-second frames are not lost; whole seconds roll into
+     * [playTimeSeconds]. Render-thread only, allocation-free — it must not perturb the 60 FPS budget.
+     */
+    private fun accumulatePlayTime(dt: Float) {
+        playTimeAccumulator += dt
+        if (playTimeAccumulator >= 1f) {
+            val wholeSeconds = playTimeAccumulator.toLong()
+            playTimeSeconds += wholeSeconds
+            playTimeAccumulator -= wholeSeconds.toFloat()
+        }
     }
 
     /** The player's current credit balance (UC08) — read by the station trade desk for its readout. */

@@ -36,6 +36,7 @@ still wins on any conflict â keep them in sync.
 | [0023](0023-notification-event-feed.md) | In-game notification feed: pure libGDX-free notify model (purity-guarded), two-level flood defense (per-tick combat→null + drop/refresh coalescing), event-driven enqueue from existing seams, top-centre toast band, transient-MVP / persistent-feed deferred | Accepted |
 | [0024](0024-first-run-tutorial-onboarding.md) | First-run tutorial & onboarding: pure libGDX-free step machine observing existing event seams (determinism-safe), draw-only hint overlay with visual-only control highlight, cross-screen two-part copy, additive v15 settings flag, replayable from settings | Accepted |
 | [0025](0025-settings-screen.md) | Full settings screen: one shared grouped SettingsPanel hosted by the in-flight overlay + a new main-menu screen; joystick sensitivity/deadzone tuning applied only at the joystick boundary (determinism-safe); UiScale promoted to a clamped mutable persisted control (rendering-only, on-rebuild HUD boundary); additive v16 settings migration; UC38/UC39 groups documented-omitted not faked | Accepted |
+| [0026](0026-save-slots.md) | Save slots: `slot_id` partition column in the single DB (over per-slot files/blobs); first table-rebuild migration (v16→v17) backfilling the legacy save into slot 0; `meta.active_slot_id` pointer; minSdk-24-safe seed-then-targeted-UPDATE name-clobber guard (no UPSERT); injected wall-clock for last-saved; play-time on WorldState outside replay equality | Accepted (supersedes ADR 0002 in part) |
 
 ## Adding an ADR
 

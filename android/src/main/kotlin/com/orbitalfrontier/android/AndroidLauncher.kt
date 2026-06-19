@@ -32,11 +32,13 @@ class AndroidLauncher : AndroidApplication() {
         val logger = AndroidLogger()
         val sqlDriverFactory = AndroidSqlDriverFactory(applicationContext)
         saveExecutor = AndroidSaveExecutor(logger)
+        // UC38: the real wall clock, used by the save-slot repository to stamp each slot's last-saved time.
+        val clock = AndroidClock()
 
         // UC25: BuildConfig.DEBUG is true only for the debug variant, so the debug-only point-and-go
         // navigation aid is armed-capable on debug builds and entirely inert on release.
         initialize(
-            OrbitalFrontierGame(logger, sqlDriverFactory, saveExecutor, debug = BuildConfig.DEBUG),
+            OrbitalFrontierGame(logger, sqlDriverFactory, saveExecutor, clock, debug = BuildConfig.DEBUG),
             configuration,
         )
     }

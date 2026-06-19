@@ -26,6 +26,11 @@ class AutosaveController(
     private val saveExecutor: SaveExecutor,
     private val logger: Logger,
     private val snapshotSupplier: () -> WorldState,
+    // UC38: which save slot the autosave writes to. A supplier (not a fixed value) so the autosave always
+    // follows the live active slot — load-slot / save-into-slot update the app's active-slot field, and the
+    // very next autosave targets the new slot. Defaults to the legacy slot so existing call sites / tests
+    // that predate save slots keep writing the single autosave (slot 0) unchanged.
+    private val slotSupplier: () -> SlotId = { SlotId.LEGACY },
     private val intervalSeconds: Float = DEFAULT_INTERVAL_SECONDS,
 ) {
     /** Seconds of flight accumulated since the last periodic save; render-thread only. */
@@ -75,8 +80,11 @@ class AutosaveController(
     private fun enqueueSave(reason: String) {
         // Snapshot on the render thread (immutable WorldState); the write runs on the executor.
         val snapshot = snapshotSupplier()
-        logger.info(TAG, "Autosave enqueued (reason=$reason): sector=${snapshot.currentSector.value}")
-        saveExecutor.execute { repository.saveGameState(snapshot) }
+        // Snapshot the target slot on the render thread too (UC38), so the executor thread writes to the
+        // slot that was active at enqueue time even if the active slot changes before the write runs.
+        val slot = slotSupplier()
+        logger.info(TAG, "Autosave enqueued (reason=$reason): slot=${slot.value}, sector=${snapshot.currentSector.value}")
+        saveExecutor.execute { repository.saveGameState(slot, snapshot) }
     }
 
     private companion object {

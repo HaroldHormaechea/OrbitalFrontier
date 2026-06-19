@@ -23,11 +23,13 @@ class AutosaveControllerTest {
         repo: GameStateRepository,
         executor: SaveExecutor,
         snapshot: WorldState = WorldState(),
+        slotSupplier: () -> SlotId = { SlotId.LEGACY },
     ) = AutosaveController(
         repository = repo,
         saveExecutor = executor,
         logger = NoOpLogger,
         snapshotSupplier = { snapshot },
+        slotSupplier = slotSupplier,
         intervalSeconds = interval,
     )
 
@@ -114,19 +116,57 @@ class AutosaveControllerTest {
         }
     }
 
-    /** Capturing fake repository: records each persisted snapshot so triggers are observable. */
+    // --- UC38: the autosave targets the slot the slotSupplier names, snapshotted at enqueue time ---
+
+    @Test
+    fun `the autosave writes to the slot supplied by the slotSupplier`() {
+        val repo = FakeGameStateRepository()
+        val controller = controller(repo, InlineSaveExecutor(), slotSupplier = { SlotId(3) })
+
+        controller.onEvent("jump")
+
+        assertEquals("the save must target the supplied slot", listOf(SlotId(3)), repo.savedSlots)
+    }
+
+    @Test
+    fun `the active slot is read per save, so a later slot change retargets the next autosave`() {
+        val repo = FakeGameStateRepository()
+        // A mutable active slot the supplier reads live (mirrors the app's active-slot field, UC38 AC#3).
+        var activeSlot = SlotId.LEGACY
+        val controller = controller(repo, InlineSaveExecutor(), slotSupplier = { activeSlot })
+
+        controller.onEvent("first") // targets the legacy slot
+        activeSlot = SlotId(2) // the player loaded / saved into another slot
+        controller.onEvent("second") // the next autosave follows the new active slot
+
+        assertEquals(
+            "each enqueue snapshots the live active slot",
+            listOf(SlotId.LEGACY, SlotId(2)),
+            repo.savedSlots,
+        )
+    }
+
+    /**
+     * Capturing fake repository: records each persisted snapshot (and the [SlotId] it was written to, UC38)
+     * so triggers — and the slot the autosave targeted — are observable.
+     */
     private class FakeGameStateRepository : GameStateRepository {
         val saved = mutableListOf<WorldState>()
+        val savedSlots = mutableListOf<SlotId>()
 
-        override fun loadGameState(): WorldState? = saved.lastOrNull()
+        override fun loadGameState(slot: SlotId): WorldState? = saved.lastOrNull()
 
-        override fun saveGameState(state: WorldState) {
+        override fun saveGameState(
+            slot: SlotId,
+            state: WorldState,
+        ) {
             saved += state
+            savedSlots += slot
         }
 
-        override fun hasSave(): Boolean = saved.isNotEmpty()
+        override fun hasSave(slot: SlotId): Boolean = saved.isNotEmpty()
 
-        override fun clearSave() {
+        override fun clearSave(slot: SlotId) {
             saved.clear()
         }
     }

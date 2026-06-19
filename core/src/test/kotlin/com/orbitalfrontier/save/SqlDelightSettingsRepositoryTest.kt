@@ -57,11 +57,11 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC37 bumped the schema to v16 (the settings joystick_sensitivity/joystick_deadzone/ui_scale
-        // columns on top of the UC36 tutorial flag); ensureInitialized seeds SaveVersion.CURRENT (16L),
-        // pinned to OrbitalFrontier.Schema.version.
+        // UC38 bumped the schema to v17 (the save-slot partitioning + per-slot display metadata + the
+        // active-slot pointer, on top of the UC37 joystick/UI-scale columns); ensureInitialized seeds
+        // SaveVersion.CURRENT (17L), pinned to OrbitalFrontier.Schema.version.
         assertEquals(OrbitalFrontier.Schema.version, version)
-        assertEquals(16L, version)
+        assertEquals(17L, version)
     }
 
     @Test
@@ -71,7 +71,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-16 row", 16L, version)
+        assertEquals("repeated init keeps a single version-17 row", 17L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---
