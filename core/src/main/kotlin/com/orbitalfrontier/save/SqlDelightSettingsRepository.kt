@@ -1,8 +1,10 @@
 package com.orbitalfrontier.save
 
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.settings.AudioSettings
 import com.orbitalfrontier.settings.Handedness
+import com.orbitalfrontier.settings.JoystickTuning
 
 /**
  * SQLDelight-backed [SettingsRepository] (ADR 0003).
@@ -124,6 +126,68 @@ class SqlDelightSettingsRepository(
         } catch (e: Exception) {
             // Graceful degradation: keep the last good value, log, and do not crash the app.
             logger.error(TAG, "Failed to persist tutorial_completed=$completed; last good value kept", e)
+        }
+    }
+
+    override fun loadJoystickTuning(): JoystickTuning {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            if (stored == null) {
+                logger.info(TAG, "No settings row; using default joystick tuning=${JoystickTuning.DEFAULT}")
+                JoystickTuning.DEFAULT
+            } else {
+                JoystickTuning(
+                    sensitivity = stored.joystick_sensitivity.toFloat(),
+                    deadzone = stored.joystick_deadzone.toFloat(),
+                ).coerced()
+            }
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load joystick tuning; using default=${JoystickTuning.DEFAULT}", e)
+            JoystickTuning.DEFAULT
+        }
+    }
+
+    override fun saveJoystickTuning(tuning: JoystickTuning) {
+        val coerced = tuning.coerced()
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the joystick columns (everything else untouched).
+                seedDefaultSettingsRow()
+                queries.updateJoystickTuning(coerced.sensitivity.toDouble(), coerced.deadzone.toDouble())
+            }
+            logger.info(TAG, "Persisted joystick tuning=$coerced")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist joystick tuning=$coerced; last good value kept", e)
+        }
+    }
+
+    override fun loadUiScale(): Float {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            if (stored == null) {
+                logger.info(TAG, "No settings row; using default UI scale=${UiScale.DEFAULT_FACTOR}")
+                UiScale.DEFAULT_FACTOR
+            } else {
+                // Coerce on read so a corrupt/out-of-range stored value degrades to a safe in-range factor.
+                UiScale.coerce(stored.ui_scale.toFloat())
+            }
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load UI scale; using default=${UiScale.DEFAULT_FACTOR}", e)
+            UiScale.DEFAULT_FACTOR
+        }
+    }
+
+    override fun saveUiScale(factor: Float) {
+        val coerced = UiScale.coerce(factor)
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the ui_scale column (everything else untouched).
+                seedDefaultSettingsRow()
+                queries.updateUiScale(coerced.toDouble())
+            }
+            logger.info(TAG, "Persisted UI scale=$coerced")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist UI scale=$coerced; last good value kept", e)
         }
     }
 

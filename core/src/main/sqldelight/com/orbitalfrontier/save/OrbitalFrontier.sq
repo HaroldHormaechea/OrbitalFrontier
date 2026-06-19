@@ -283,9 +283,12 @@ INSERT OR IGNORE INTO meta(id, save_version) VALUES (0, ?);
 
 -- Read every persisted preference in one row (null on first run / before any save). UC31 widened
 -- this from handedness-only so the audio settings load in the same single-row read; UC36 widens it
--- again so the first-run tutorial flag loads in the same read.
+-- again for the first-run tutorial flag; UC37 widens it once more so the joystick tuning + UI scale
+-- load in the same single-row read.
 selectSettings:
-SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed FROM settings WHERE id = 0;
+SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed,
+       joystick_sensitivity, joystick_deadzone, ui_scale
+FROM settings WHERE id = 0;
 
 -- Seed the single settings row with defaults once; idempotent (no-op if the row already exists). The
 -- caller binds the defaults, so the per-field UPDATE writes below always hit an existing row (UC31).
@@ -311,6 +314,19 @@ UPDATE settings SET master_muted = ?, sfx_volume = ?, music_volume = ? WHERE id 
 -- DEFAULT 0 (it is omitted from that INSERT), so a fresh row reads back as "tutorial not yet shown".
 updateTutorialCompleted:
 UPDATE settings SET tutorial_completed = ? WHERE id = 0;
+
+-- Targeted joystick-tuning write (UC37): updates ONLY the two joystick columns together, so persisting
+-- sensitivity/deadzone never touches handedness, the audio columns, or the tutorial flag. Relies on the
+-- row already existing (seedSettings runs first in the same transaction). `seedSettings` omits these
+-- columns, so a fresh row reads them back at their schema DEFAULTs (1.0 / 0.15).
+updateJoystickTuning:
+UPDATE settings SET joystick_sensitivity = ?, joystick_deadzone = ? WHERE id = 0;
+
+-- Targeted UI-scale write (UC37): updates ONLY the ui_scale column, so persisting the UI magnification
+-- never touches any other preference. Relies on the row already existing. `seedSettings` omits this
+-- column, so a fresh row reads it back at its schema DEFAULT 2.0 (the ADR 0015 ×2 baseline).
+updateUiScale:
+UPDATE settings SET ui_scale = ? WHERE id = 0;
 
 -- Read the save header (UC09: header only — ships are read separately via selectAllShips so the
 -- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New
