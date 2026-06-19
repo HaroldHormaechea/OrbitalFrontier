@@ -15,8 +15,10 @@ import java.io.File
  * ACs covered here (structural/wiring half):
  *  - **AC#1** — the panel groups AUDIO / CONTROLS / DISPLAY / GAMEPLAY (replacing the single-button overlay).
  *  - **AC#4** — the screen is reachable from the main menu (a SETTINGS button wired to `onOpenSettings`).
- *  - **Dependency pitfall** — the use-case-dependent groups (Accessibility/UC39, Save Management/UC38) are
- *    omitted honestly with a note, not faked with dead controls.
+ *
+ * UC39 has since built the ACCESSIBILITY group, retiring UC37's honest "coming later" omitted-groups note;
+ * that group's presence is now guarded in [Uc39SettingsScreenGuardTest], so the stale note assertions are
+ * dropped here.
  */
 class Uc37SettingsScreenGuardTest {
     // --- AC#1: the grouped settings panel replaces the single-button overlay -----------------------
@@ -40,20 +42,6 @@ class Uc37SettingsScreenGuardTest {
         assertTrue("AC#1: joystick deadzone row is present", SETTINGS_PANEL_SOURCE.contains("row(deadzoneButton)"))
         // DISPLAY ships the UI-scale row (AC#3: UiScale lives under the new screen).
         assertTrue("AC#3: UI-scale row is present", SETTINGS_PANEL_SOURCE.contains("row(uiScaleButton)"))
-    }
-
-    // --- Dependency pitfall: the not-yet-built groups are stated, never stubbed --------------------
-
-    @Test
-    fun `the omitted use-case-dependent groups are noted honestly, not faked`() {
-        assertTrue(
-            "Dependency pitfall: the omitted groups are surfaced as a note row",
-            SETTINGS_PANEL_SOURCE.contains("note(OMITTED_GROUPS_NOTE)"),
-        )
-        assertTrue(
-            "Dependency pitfall: the note names Accessibility + Save Management as later additions",
-            SETTINGS_PANEL_SOURCE.contains("ACCESSIBILITY AND SAVE MANAGEMENT"),
-        )
     }
 
     // --- AC#4: the screen is reachable from the main menu ------------------------------------------

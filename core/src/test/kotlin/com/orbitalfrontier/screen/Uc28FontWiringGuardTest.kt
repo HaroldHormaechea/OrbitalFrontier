@@ -19,7 +19,8 @@ import java.io.File
  *    map-label renderers.
  *  - **AC#4** — font sizing flows through `UiScale.factor`: the screen-space overlays (HUD, map labels)
  *    multiply the downscale by `uiScale`; the Scene2D skin relies on the already-magnified viewport and so
- *    applies `GameFont.NORM` alone — pinned per consumer so the single-knob discipline can't silently break.
+ *    never multiplies by `uiScale` — it applies `GameFont.NORM × TextScale.factor` (UC39 made the skin font
+ *    independently text-scalable). Pinned per consumer so the single-knob discipline can't silently break.
  *
  * The no-arg `BitmapFont()` ban targets the empty-parens form specifically: [GameFontLoader] legitimately
  * constructs `BitmapFont(Gdx.files.internal(...))` (the arg form) and is intentionally NOT in this set.
@@ -70,14 +71,19 @@ class Uc28FontWiringGuardTest {
     }
 
     @Test
-    fun `the controls skin scales by NORM alone because the viewport already magnifies`() {
+    fun `the controls skin scales by NORM times TextScale and never double-applies uiScale`() {
         // AC#4: the Scene2D screens render through a ×UiScale.factor viewport (ADR 0015), so the skin must
-        // NOT double-apply uiScale — it scales by GameFont.NORM only. Pinned so a future edit can't
-        // accidentally re-introduce a uiScale multiply here and double-magnify the menu text.
+        // NOT double-apply uiScale. UC39 made the skin font independently text-scalable, so it scales by
+        // GameFont.NORM × TextScale.factor. Pinned so a future edit can't accidentally re-introduce a
+        // uiScale multiply here (which would double-magnify the menu text) or drop the text-scale factor.
         val src = readSource("screen/controls/OrbitalUiSkin.kt")
         assertTrue(
-            "AC#4: OrbitalUiSkin must scale by GameFont.NORM (viewport already applies uiScale)",
-            src.contains("setScale(GameFont.NORM)"),
+            "AC#4/UC39: OrbitalUiSkin must scale by GameFont.NORM × TextScale.factor",
+            src.contains("setScale(GameFont.NORM * TextScale.factor)"),
+        )
+        assertTrue(
+            "AC#4: OrbitalUiSkin must NOT multiply the skin font by uiScale (the viewport already applies it)",
+            !src.contains("GameFont.NORM * uiScale"),
         )
     }
 

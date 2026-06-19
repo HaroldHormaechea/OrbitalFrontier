@@ -2,8 +2,11 @@ package com.orbitalfrontier.save
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.MotionPreference
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 import org.junit.After
@@ -57,11 +60,11 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC38 bumped the schema to v17 (the save-slot partitioning + per-slot display metadata + the
-        // active-slot pointer, on top of the UC37 joystick/UI-scale columns); ensureInitialized seeds
-        // SaveVersion.CURRENT (17L), pinned to OrbitalFrontier.Schema.version.
+        // UC39 bumped the schema to v18 (the accessibility settings columns — colorblind_mode / text_scale /
+        // reduced_motion — on top of UC38's save-slot partitioning); ensureInitialized seeds
+        // SaveVersion.CURRENT (18L), pinned to OrbitalFrontier.Schema.version.
         assertEquals(OrbitalFrontier.Schema.version, version)
-        assertEquals(17L, version)
+        assertEquals(18L, version)
     }
 
     @Test
@@ -71,7 +74,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-17 row", 17L, version)
+        assertEquals("repeated init keeps a single version-18 row", 18L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---
@@ -467,6 +470,189 @@ class SqlDelightSettingsRepositoryTest {
         assertEquals("UI scale survives a handedness write", 2.5f, fresh.loadUiScale(), 0f)
         // Sanity: the new preferences really persisted, not just defaulted to the same values.
         assertNotEquals("the persisted tuning is genuinely non-default", JoystickTuning.DEFAULT, fresh.loadJoystickTuning())
+    }
+
+    // --- UC39 AC#1: colour-vision mode persists + reloads -----------------------------------------
+
+    @Test
+    fun `first run with no settings row returns the default colour-vision mode`() {
+        assertEquals(ColorVisionMode.DEFAULT, newRepository().loadColorVisionMode())
+    }
+
+    @Test
+    fun `a saved colour-vision mode survives a reload`() {
+        newRepository().saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+
+        assertEquals(ColorVisionMode.COLORBLIND_SAFE, newRepository().loadColorVisionMode())
+    }
+
+    @Test
+    fun `the latest saved colour-vision mode wins`() {
+        val repo = newRepository()
+        repo.saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+        repo.saveColorVisionMode(ColorVisionMode.STANDARD)
+
+        assertEquals(ColorVisionMode.STANDARD, newRepository().loadColorVisionMode())
+    }
+
+    @Test
+    fun `an unrecognized stored colour-vision mode falls back to the default and warns`() {
+        // Inject a corrupt value the same way the repository writes (seed the row, then the targeted UPDATE).
+        seedRow()
+        database.orbitalFrontierQueries.updateColorblindMode("NOT_A_REAL_MODE")
+
+        assertEquals(ColorVisionMode.DEFAULT, newRepository().loadColorVisionMode())
+        assertTrue("corruption should be logged at WARN", logger.warnings.isNotEmpty())
+    }
+
+    @Test
+    fun `saveColorVisionMode does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        repo.saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC39 AC#2: text scale persists + reloads -------------------------------------------------
+
+    @Test
+    fun `first run with no settings row returns the default text scale`() {
+        assertEquals(TextScale.DEFAULT_FACTOR, newRepository().loadTextScale(), 0f)
+    }
+
+    @Test
+    fun `a saved text scale survives a reload`() {
+        newRepository().saveTextScale(1.3f)
+
+        assertEquals(1.3f, newRepository().loadTextScale(), 0f)
+    }
+
+    @Test
+    fun `the latest saved text scale wins`() {
+        val repo = newRepository()
+        repo.saveTextScale(1.15f)
+        repo.saveTextScale(0.85f)
+
+        assertEquals(0.85f, newRepository().loadTextScale(), 0f)
+    }
+
+    @Test
+    fun `loadTextScale coerces an out-of-range stored value back into range`() {
+        // Inject out-of-range factors directly to prove the read path coerces (both bounds).
+        seedRow()
+        val queries = database.orbitalFrontierQueries
+        queries.updateTextScale(9.0)
+        assertEquals("an over-max factor clamps to the maximum", TextScale.MAX_FACTOR, newRepository().loadTextScale(), 0f)
+        queries.updateTextScale(0.1)
+        assertEquals("a below-min factor clamps to the minimum", TextScale.MIN_FACTOR, newRepository().loadTextScale(), 0f)
+    }
+
+    @Test
+    fun `saveTextScale does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        repo.saveTextScale(1.3f)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC39 AC#3: reduced-motion flag persists + reloads ----------------------------------------
+
+    @Test
+    fun `first run with no settings row reports motion on`() {
+        // No row yet → reads back as the motion-on default (full parallax), not an exception.
+        assertEquals(MotionPreference.DEFAULT_REDUCED, newRepository().loadReducedMotion())
+        assertFalse(newRepository().loadReducedMotion())
+    }
+
+    @Test
+    fun `a saved reduced-motion flag survives a reload`() {
+        newRepository().saveReducedMotion(true)
+
+        assertTrue(newRepository().loadReducedMotion())
+    }
+
+    @Test
+    fun `the latest saved reduced-motion flag wins`() {
+        val repo = newRepository()
+        repo.saveReducedMotion(true)
+        repo.saveReducedMotion(false)
+
+        assertFalse(newRepository().loadReducedMotion())
+    }
+
+    @Test
+    fun `saveReducedMotion does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        repo.saveReducedMotion(true)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC39 Risk (per-field writes, mirroring UC31 Risk 1): each accessibility preference is
+    //     column-scoped, so writing one never clobbers the others or any pre-UC39 column ---
+
+    @Test
+    fun `each UC39 preference write leaves every sibling preference intact`() {
+        val repo = newRepository()
+        // Establish a distinct, non-default value for every column, including the pre-UC39 ones.
+        val audio = AudioSettings(masterMuted = true, sfxVolume = 0.3f, musicVolume = 0.6f)
+        val tuning = JoystickTuning(sensitivity = 2.0f, deadzone = 0.55f)
+        repo.saveHandedness(Handedness.RIGHT_HANDED)
+        repo.saveAudioSettings(audio)
+        repo.saveTutorialCompleted(true)
+        repo.saveJoystickTuning(tuning)
+        repo.saveUiScale(2.5f)
+        repo.saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+        repo.saveTextScale(1.3f)
+        repo.saveReducedMotion(true)
+
+        // A later text-scale write must touch ONLY the text_scale column.
+        repo.saveTextScale(0.85f)
+        var fresh = newRepository()
+        assertEquals("text scale landed", 0.85f, fresh.loadTextScale(), 0f)
+        assertEquals("colour-vision untouched by a text-scale write", ColorVisionMode.COLORBLIND_SAFE, fresh.loadColorVisionMode())
+        assertTrue("reduced-motion untouched by a text-scale write", fresh.loadReducedMotion())
+        assertEquals("UI scale untouched by a text-scale write", 2.5f, fresh.loadUiScale(), 0f)
+        assertEquals("handedness untouched by a text-scale write", Handedness.RIGHT_HANDED, fresh.loadHandedness())
+        assertEquals("audio untouched by a text-scale write", audio, fresh.loadAudioSettings())
+
+        // A later colour-vision write must touch ONLY the colorblind_mode column.
+        repo.saveColorVisionMode(ColorVisionMode.STANDARD)
+        fresh = newRepository()
+        assertEquals("colour-vision landed", ColorVisionMode.STANDARD, fresh.loadColorVisionMode())
+        assertEquals("text scale untouched by a colour-vision write", 0.85f, fresh.loadTextScale(), 0f)
+        assertTrue("reduced-motion untouched by a colour-vision write", fresh.loadReducedMotion())
+
+        // A later reduced-motion write must touch ONLY the reduced_motion column.
+        repo.saveReducedMotion(false)
+        fresh = newRepository()
+        assertFalse("reduced-motion landed", fresh.loadReducedMotion())
+        assertEquals("colour-vision untouched by a reduced-motion write", ColorVisionMode.STANDARD, fresh.loadColorVisionMode())
+        assertEquals("text scale untouched by a reduced-motion write", 0.85f, fresh.loadTextScale(), 0f)
+        assertEquals("joystick tuning untouched by the UC39 writes", tuning, fresh.loadJoystickTuning())
+        assertTrue("tutorial flag untouched by the UC39 writes", fresh.loadTutorialCompleted())
+    }
+
+    @Test
+    fun `a handedness write does not clobber the UC39 accessibility preferences`() {
+        val repo = newRepository()
+        repo.saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+        repo.saveTextScale(1.3f)
+        repo.saveReducedMotion(true)
+
+        repo.saveHandedness(Handedness.LEFT_HANDED)
+
+        val fresh = newRepository()
+        assertEquals("handedness landed", Handedness.LEFT_HANDED, fresh.loadHandedness())
+        assertEquals("colour-vision survives a handedness write", ColorVisionMode.COLORBLIND_SAFE, fresh.loadColorVisionMode())
+        assertEquals("text scale survives a handedness write", 1.3f, fresh.loadTextScale(), 0f)
+        assertTrue("reduced-motion survives a handedness write", fresh.loadReducedMotion())
     }
 
     /** Seed the single settings row the same way the repository does, so a targeted UPDATE hits a row. */

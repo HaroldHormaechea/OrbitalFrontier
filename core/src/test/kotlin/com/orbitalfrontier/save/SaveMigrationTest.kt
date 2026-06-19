@@ -7,8 +7,10 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.platform.NoOpLogger
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 import com.orbitalfrontier.station.OwnedStation
@@ -1655,12 +1657,15 @@ class SaveMigrationTest {
         // The stored save-format version is bumped to 14 — assert the v13->v14 step before continuing.
         assertEquals(14L, queries.selectSaveVersion().executeAsOne())
 
-        // Continue the chain to the current schema so the v16-aware repository can read selectSettings
-        // (UC36 widened it to read settings.tutorial_completed and UC37 widened it again for the joystick/
-        // UI-scale columns, which a v14-only DB lacks — the same pattern the v11->v12 test uses to reach a
-        // repository-loadable schema). The v14->v15 and v15->v16 steps are purely additive, so the audio
-        // backfill below is unchanged.
+        // Continue the chain to the v16 schema so the repository can read selectSettings (UC36 widened it to
+        // read settings.tutorial_completed and UC37 widened it again for the joystick/UI-scale columns, which
+        // a v14-only DB lacks — the same pattern the v11->v12 test uses to reach a repository-loadable
+        // schema). The v14->v15 and v15->v16 steps are purely additive, so the audio backfill below is
+        // unchanged. UC39 then widened selectSettings once more; the v16->v17 step repartitions game-state
+        // tables this settings-only fixture doesn't build, so the additive UC39 settings columns are applied
+        // directly (see [addUc39SettingsColumns]) to reach the repository-readable v18 settings shape.
         OrbitalFrontier.Schema.migrate(driver, 14L, 16L)
+        addUc39SettingsColumns()
 
         // Backfill: a pre-UC31 save had no audio prefs, so the migrated row reads back at the DEFAULTs
         // (unmuted, SFX 1.0, music 0.5) — audio enabled at default levels, no data loss (UC31 AC#3).
@@ -1754,11 +1759,14 @@ class SaveMigrationTest {
         // The stored save-format version is bumped to 15 — assert the v14->v15 step before continuing.
         assertEquals(15L, queries.selectSaveVersion().executeAsOne())
 
-        // Continue the chain to the current schema so the v16-aware repository can read selectSettings
-        // (UC37 widened it again to also read joystick_sensitivity/joystick_deadzone/ui_scale, which a
-        // v15-only DB lacks — the same pattern the v13->v14 test uses to reach a repository-loadable
-        // schema). The v15->v16 step is purely additive, so the survival assertions below are unchanged.
+        // Continue the chain to the v16 schema so the repository can read selectSettings (UC37 widened it for
+        // joystick_sensitivity/joystick_deadzone/ui_scale, which a v15-only DB lacks — the same pattern the
+        // v13->v14 test uses to reach a repository-loadable schema). The v15->v16 step is purely additive, so
+        // the survival assertions below are unchanged. UC39 then widened selectSettings once more; the
+        // v16->v17 step repartitions game-state tables this settings-only fixture doesn't build, so the
+        // additive UC39 settings columns are applied directly (see [addUc39SettingsColumns]).
         OrbitalFrontier.Schema.migrate(driver, 15L, 16L)
+        addUc39SettingsColumns()
 
         // Data survival (via the repository): the pre-UC36 audio columns survive the additive migrations.
         val repo = SqlDelightSettingsRepository(database, NoOpLogger)
@@ -1834,6 +1842,22 @@ class SaveMigrationTest {
             binders = null,
         ).value
 
+    /**
+     * Bring a **settings-only** migration fixture's `settings` table up to the current (v18) repository-
+     * readable shape by applying just the additive accessibility columns from `migrations/17.sqm`.
+     *
+     * These legacy fixtures (v13/v14/v15) build only `meta` + `settings`, not the slot-partitioned game-state
+     * tables that the v16->v17 step (`16.sqm`) rebuilds, so the full `Schema.migrate` chain to v18 cannot run
+     * here. The repository's `selectSettings`, however, now reads the UC39 columns, so the test adds exactly
+     * those three columns (kept in lock-step with 17.sqm; the full real migration is exercised in
+     * `migrating a real v17 database to v18 …`) to reach a repository-loadable schema.
+     */
+    private fun addUc39SettingsColumns() {
+        driver.execute(null, "ALTER TABLE settings ADD COLUMN colorblind_mode TEXT NOT NULL DEFAULT 'STANDARD'", 0)
+        driver.execute(null, "ALTER TABLE settings ADD COLUMN text_scale REAL NOT NULL DEFAULT 1.0", 0)
+        driver.execute(null, "ALTER TABLE settings ADD COLUMN reduced_motion INTEGER NOT NULL DEFAULT 0", 0)
+    }
+
     @Test
     fun `migrating a real v15 database to v16 adds the joystick plus UI-scale columns, backfills defaults, and bumps version`() {
         buildRealV15Database()
@@ -1855,22 +1879,29 @@ class SaveMigrationTest {
         assertEquals("joystick_deadzone backfills to 0.15", 0.15, readReal("joystick_deadzone")!!, 0.0)
         assertEquals("ui_scale backfills to 2.0", 2.0, readReal("ui_scale")!!, 0.0)
 
-        // Data survival: the pre-UC37 handedness + audio + tutorial columns are untouched by the migration.
+        // Data survival: the pre-UC37 handedness column is untouched by the migration (raw SQL, schema-agnostic).
         assertEquals("the v15 handedness must survive the v15->v16 migration", "RIGHT_HANDED", readHandedness())
+
+        // The stored save-format version is bumped to 16 — assert the v15->v16 step before continuing.
+        assertEquals(16L, queries.selectSaveVersion().executeAsOne())
+
+        // UC39 widened selectSettings for the colorblind_mode/text_scale/reduced_motion columns a v16-only DB
+        // lacks; the v16->v17 step repartitions game-state tables this settings-only fixture doesn't build, so
+        // the additive UC39 settings columns are applied directly (see [addUc39SettingsColumns]) to reach the
+        // repository-readable v18 settings shape. They are pure additions, so the survival + default reads
+        // below are unchanged.
+        addUc39SettingsColumns()
         val repo = SqlDelightSettingsRepository(database, NoOpLogger)
         assertEquals(
-            "the v15 audio settings must survive the v15->v16 migration",
+            "the v15 audio settings must survive the v15->...->v18 migrations",
             AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f),
             repo.loadAudioSettings(),
         )
-        assertTrue("the v15 tutorial flag must survive the v15->v16 migration", repo.loadTutorialCompleted())
+        assertTrue("the v15 tutorial flag must survive the migrations", repo.loadTutorialCompleted())
 
         // The repository reads the backfilled values back as the DEFAULT value types.
         assertEquals("a migrated v15 save reads back the default joystick tuning", JoystickTuning.DEFAULT, repo.loadJoystickTuning())
         assertEquals("a migrated v15 save reads back the default UI scale", UiScale.DEFAULT_FACTOR, repo.loadUiScale(), 0f)
-
-        // The stored save-format version is bumped to 16.
-        assertEquals(16L, queries.selectSaveVersion().executeAsOne())
 
         // The new columns are writable, not just present: tuning + UI-scale writes on top of the migrated DB
         // round-trip, and (per-field discipline) leave the migrated handedness / audio / tutorial untouched.
@@ -2070,5 +2101,136 @@ class SaveMigrationTest {
 
         // The stored save-format version is bumped to 17 (the current schema).
         assertEquals(17L, queries.selectSaveVersion().executeAsOne())
+    }
+
+    // --- UC39 AC#4: v17 -> v18 adds the three accessibility columns to the global settings row, ----
+    // --- backfilling a pre-UC39 save to the prior behaviour (standard palette, ×1 text, motion on). --
+
+    /**
+     * Build the exact v17 (UC38) `settings` schema — handedness + the UC31 audio columns + the UC36 tutorial
+     * flag + the UC37 joystick/UI-scale columns, but NONE of the UC39 accessibility columns (exactly what
+     * 17.sqm adds) — plus a minimal `meta`. The v17→v18 migration is settings-only and additive (it never
+     * touches the slot-partitioned game-state tables), so — like the v15→v16 settings-only test — only `meta`
+     * + `settings` need to exist for it to run and for the settings repository to read back. A fully
+     * non-default settings row is seeded so the migration's data-survival assertion is meaningful.
+     */
+    private fun buildRealV17Database() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL, " +
+                "master_muted INTEGER NOT NULL DEFAULT 0, sfx_volume REAL NOT NULL DEFAULT 1.0, " +
+                "music_volume REAL NOT NULL DEFAULT 0.5, tutorial_completed INTEGER NOT NULL DEFAULT 0, " +
+                "joystick_sensitivity REAL NOT NULL DEFAULT 1.0, joystick_deadzone REAL NOT NULL DEFAULT 0.15, " +
+                "ui_scale REAL NOT NULL DEFAULT 2.0)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 17)", 0)
+        // A muted, left-handed save with non-default volumes, the tutorial already completed, and non-default
+        // joystick + UI-scale — so every pre-UC39 column carries a value the migration must preserve.
+        driver.execute(
+            null,
+            "INSERT INTO settings(id, handedness, master_muted, sfx_volume, music_volume, tutorial_completed, " +
+                "joystick_sensitivity, joystick_deadzone, ui_scale) " +
+                "VALUES (0, 'LEFT_HANDED', 1, 0.25, 0.75, 1, 2.0, 0.4, 2.5)",
+            0,
+        )
+    }
+
+    /** Read the single settings row's TEXT column directly via SQL (the colorblind_mode backfill assertion). */
+    private fun readText(column: String): String? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM settings WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    /** Read the single settings row's INTEGER column directly via SQL (the reduced_motion backfill assertion). */
+    private fun readLong(column: String): Long? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM settings WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    @Test
+    fun `migrating a real v17 database to v18 adds the accessibility columns, backfills defaults, and bumps version`() {
+        buildRealV17Database()
+
+        // Apply the sequential v17 -> v18 migration (runs migrations/17.sqm — purely additive on settings).
+        OrbitalFrontier.Schema.migrate(driver, 17L, 18L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The three new accessibility columns now exist on the single-row settings table.
+        assertTrue("settings.colorblind_mode column must exist after migration", columnExists("settings", "colorblind_mode"))
+        assertTrue("settings.text_scale column must exist after migration", columnExists("settings", "text_scale"))
+        assertTrue("settings.reduced_motion column must exist after migration", columnExists("settings", "reduced_motion"))
+
+        // Backfill: a pre-UC39 save had none of these prefs, so the migrated row reads them back at the
+        // schema DEFAULTs 'STANDARD' / 1.0 / 0 — the standard palette, ×1 text, motion on (no behaviour change).
+        assertEquals("colorblind_mode backfills to 'STANDARD'", "STANDARD", readText("colorblind_mode"))
+        assertEquals("text_scale backfills to 1.0", 1.0, readReal("text_scale")!!, 0.0)
+        assertEquals("reduced_motion backfills to 0", 0L, readLong("reduced_motion"))
+
+        // Data survival: every pre-UC39 column is untouched by the migration.
+        assertEquals("the v17 handedness must survive the v17->v18 migration", "LEFT_HANDED", readHandedness())
+        val repo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertEquals(
+            "the v17 audio settings must survive the v17->v18 migration",
+            AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f),
+            repo.loadAudioSettings(),
+        )
+        assertTrue("the v17 tutorial flag must survive the v17->v18 migration", repo.loadTutorialCompleted())
+        assertEquals(
+            "the v17 joystick tuning must survive the v17->v18 migration",
+            JoystickTuning(sensitivity = 2.0f, deadzone = 0.4f),
+            repo.loadJoystickTuning(),
+        )
+        assertEquals("the v17 UI scale must survive the v17->v18 migration", 2.5f, repo.loadUiScale(), 0f)
+
+        // The repository reads the backfilled accessibility values back as the DEFAULT value types.
+        assertEquals("a migrated v17 save reads back the default colour-vision mode", ColorVisionMode.DEFAULT, repo.loadColorVisionMode())
+        assertEquals("a migrated v17 save reads back the default text scale", TextScale.DEFAULT_FACTOR, repo.loadTextScale(), 0f)
+        assertFalse("a migrated v17 save reads back motion-on (reduced=false)", repo.loadReducedMotion())
+
+        // The stored save-format version is bumped to 18 (the current schema).
+        assertEquals(18L, queries.selectSaveVersion().executeAsOne())
+
+        // The new columns are writable, not just present: accessibility writes on top of the migrated DB
+        // round-trip, and (per-field discipline) leave the migrated handedness / audio / tutorial untouched.
+        repo.saveColorVisionMode(ColorVisionMode.COLORBLIND_SAFE)
+        repo.saveTextScale(1.3f)
+        repo.saveReducedMotion(true)
+        val freshRepo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertEquals("colour-vision mode round-trips on the migrated DB", ColorVisionMode.COLORBLIND_SAFE, freshRepo.loadColorVisionMode())
+        assertEquals("text scale round-trips on the migrated DB", 1.3f, freshRepo.loadTextScale(), 0f)
+        assertTrue("reduced-motion round-trips on the migrated DB", freshRepo.loadReducedMotion())
+        assertEquals(
+            "the UC39 writes must not clobber the migrated handedness",
+            Handedness.LEFT_HANDED,
+            freshRepo.loadHandedness(),
+        )
+        assertEquals(
+            "the UC39 writes must not clobber the migrated audio settings",
+            AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f),
+            freshRepo.loadAudioSettings(),
+        )
+        assertTrue("the UC39 writes must not clobber the migrated tutorial flag", freshRepo.loadTutorialCompleted())
     }
 }
