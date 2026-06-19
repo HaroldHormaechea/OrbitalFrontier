@@ -232,6 +232,10 @@ object Missions {
                     null
                 }
             }
+            // UC41: a BOUNTY has NO manual turn-in — it auto-completes and pays the moment its kill quota
+            // is met, via the pure [BountyTracking.applyKills] folded into the combat step. A TurnIn order
+            // therefore never resolves one (it stays ACTIVE until its kills land), so this is always null.
+            MissionType.BOUNTY -> null
         }
 
     /** Add the optional resource bonus (if any) to [cargo], clamped to the hold's free space. */

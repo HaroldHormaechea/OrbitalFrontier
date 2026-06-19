@@ -96,6 +96,10 @@ data class HudViewModel(
                         "$pickup$ARROW$destination"
                     }
                 }
+                // BOUNTY (UC41) → "Bounty <killProgress>/<killTarget>". The displayed field IS the
+                // completion field ([Mission.killProgress] vs [Mission.killTarget]), so the readout and the
+                // auto-complete condition (in [com.orbitalfrontier.mission.BountyTracking]) never disagree.
+                MissionType.BOUNTY -> "Bounty ${mission.killProgress}/${mission.killTarget}"
             }
         }
 

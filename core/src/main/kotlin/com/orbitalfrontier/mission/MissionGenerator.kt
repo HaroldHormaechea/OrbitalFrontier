@@ -4,6 +4,7 @@ import com.orbitalfrontier.common.DeterministicRng
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.world.BountyContract
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
@@ -59,9 +60,11 @@ object MissionGenerator {
         world: SectorWorld,
         stationId: PoiId,
         params: MissionParams = MissionParams(),
+        bountyContracts: List<BountyContract> = emptyList(),
+        bountyParams: BountyParams = BountyParams(),
     ): List<Mission> {
         val (sectorId, station) = locateStation(world, stationId) ?: return emptyList()
-        val offers = ArrayList<Mission>(3)
+        val offers = ArrayList<Mission>(4)
 
         miningOffer(
             world = world,
@@ -86,6 +89,11 @@ object MissionGenerator {
         // string-seeded, so appending it never perturbs the bytes of the mining/courier offers above.
         premiumOffer(world, station, params)?.let { offers += it }
 
+        // UC41: the combat-bounty offer(s) this station posts — appended LAST so they never perturb the
+        // bytes of the mining/courier/premium offers above. The SAME canonical offer is surfaced by both
+        // boardOffers and radioOffers (AC#1): the id is `"bounty:<targetZoneId>"`, independent of source.
+        offers += bountyOffers(station, MissionSource.BOARD, bountyContracts, bountyParams)
+
         return offers
     }
 
@@ -102,6 +110,8 @@ object MissionGenerator {
         currentSector: SectorId,
         shipPosition: Vec2,
         params: MissionParams = MissionParams(),
+        bountyContracts: List<BountyContract> = emptyList(),
+        bountyParams: BountyParams = BountyParams(),
     ): List<Mission> {
         val sector = world.sectorOrNull(currentSector) ?: return emptyList()
         val range = params.radioRange
@@ -122,6 +132,10 @@ object MissionGenerator {
                 // UC14: a radio mining offer is credited to its broadcasting station's faction.
                 factionId = station.factionId,
             )?.let { offers += it }
+            // UC41: the SAME bounty offer this station posts on its board, also broadcast over radio (AC#1).
+            // Identical canonical id (`"bounty:<targetZoneId>"`), so the takenIds filter dedups it across
+            // board and radio and an accepted bounty never re-appears on either surface.
+            offers += bountyOffers(station, MissionSource.RADIO, bountyContracts, bountyParams)
         }
         return offers
     }
@@ -257,6 +271,39 @@ object MissionGenerator {
             unlockThreshold = PREMIUM_UNLOCK_THRESHOLD,
         )
     }
+
+    /**
+     * Build the combat-bounty offers [station] posts (UC41) from the authored [bountyContracts], surfaced
+     * with [source] (BOARD or RADIO). One [MissionType.BOUNTY] per contract the station issues, ordered by
+     * the stable [BountyContract.targetZoneId] string (determinism-safe — never authored order/hashCode).
+     *
+     * The offer is **fully deterministic with no RNG**: its id is the single canonical
+     * `"bounty:<targetZoneId>"` (so the SAME offer surfaces from both board and radio, AC#1), its reward is
+     * [BountyParams.reward] of the contract's kill quota, and its faction attribution is the issuing
+     * station's own faction (the bounty contract is the station's). [killProgress] starts at 0.
+     */
+    private fun bountyOffers(
+        station: Station,
+        source: MissionSource,
+        bountyContracts: List<BountyContract>,
+        bountyParams: BountyParams,
+    ): List<Mission> =
+        bountyContracts
+            .filter { it.issuingStation == station.id }
+            .sortedBy { it.targetZoneId }
+            .map { contract ->
+                Mission(
+                    id = MissionId("bounty:${contract.targetZoneId}"),
+                    type = MissionType.BOUNTY,
+                    source = source,
+                    status = MissionStatus.AVAILABLE,
+                    rewardCredits = bountyParams.reward(contract.killTarget),
+                    targetZoneId = contract.targetZoneId,
+                    killTarget = contract.killTarget,
+                    killProgress = 0,
+                    factionId = station.factionId,
+                )
+            }
 
     /** Every station across the whole sector graph, in authored sector/POI order. */
     private fun allStations(world: SectorWorld): List<Station> = world.sectors.flatMap { it.stations }
