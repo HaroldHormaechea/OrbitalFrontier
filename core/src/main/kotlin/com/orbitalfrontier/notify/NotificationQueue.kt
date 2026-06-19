@@ -87,6 +87,32 @@ class NotificationQueue(
             .map { it.notification }
             .toList()
 
+    /**
+     * A pure snapshot of the currently visible notifications **with their life fraction** (UC40 AC#2),
+     * top-of-stack first — the animation-aware sibling of [visible]. Each entry's [VisibleNotification.
+     * lifeFraction] is its visible age as a fraction of [NotificationPolicy.displaySeconds], clamped to
+     * `0..1` (0 just shown, 1 about to auto-dismiss). The device-side
+     * [com.orbitalfrontier.render.NotificationRenderer] drives the fade-in/out + upward drift off this pure
+     * fraction, so the *timing* stays here (engine-free, unit-testable) and only the pixels live in the
+     * renderer. [visible] is kept intact so existing callers/tests are unaffected.
+     */
+    fun visibleWithProgress(): List<VisibleNotification> =
+        entries.asSequence()
+            .take(policy.maxVisible)
+            .map { VisibleNotification(it.notification, (it.age / policy.displaySeconds).coerceIn(0f, 1f)) }
+            .toList()
+
     /** Total live entries (visible + waiting) — for tests/diagnostics; the renderer uses [visible]. */
     fun size(): Int = entries.size
 }
+
+/**
+ * A visible notification paired with its life fraction `0..1` (UC40 AC#2) — the pure unit the animated
+ * renderer consumes. Engine-free value data (ADR 0001): the fraction is computed by
+ * [NotificationQueue.visibleWithProgress] and the renderer maps it to alpha + drift, so the fade/drift
+ * curve is testable without a GL context.
+ */
+data class VisibleNotification(
+    val notification: GameNotification,
+    val lifeFraction: Float,
+)

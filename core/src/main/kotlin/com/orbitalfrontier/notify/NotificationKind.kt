@@ -51,4 +51,17 @@ enum class NotificationKind(
 
     /** Credits decreased (a purchase, a penalty) — coalesced so a burst of spends collapses into one toast. */
     CREDIT_LOSS(NotificationSeverity.WARNING, coalescable = true),
+
+    /**
+     * The player tried to buy something they cannot afford (UC40 AC#3) — an [NotificationSeverity.ERROR]
+     * cue, coalesced so repeated mis-taps on an unaffordable item collapse into one toast.
+     */
+    INSUFFICIENT_CREDITS(NotificationSeverity.ERROR, coalescable = true),
+
+    /**
+     * The player attempted an economy action the resolver refused for a reason other than funds — a full
+     * cargo hold, no free slot, an item not offered, a ship already active (UC40 AC#3). An
+     * [NotificationSeverity.ERROR] cue, coalesced so a burst of invalid taps collapses into one toast.
+     */
+    ACTION_REJECTED(NotificationSeverity.ERROR, coalescable = true),
 }

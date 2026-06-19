@@ -16,4 +16,12 @@ enum class NotificationSeverity {
 
     /** A caution the player may want to act on (low fuel, a timeout, a loss) — drawn in the warning colour. */
     WARNING,
+
+    /**
+     * A rejected/failed action the player just attempted — an unaffordable buy or an otherwise invalid
+     * economy action (UC40 AC#3) — drawn in the distinct **danger** colour. Deliberately a step beyond
+     * [WARNING]: a routine spend (an amber [NotificationKind.CREDIT_LOSS] WARNING) must read as clearly
+     * different from a *refusal*, so the renderer must NOT reuse the warning colour for this tier.
+     */
+    ERROR,
 }

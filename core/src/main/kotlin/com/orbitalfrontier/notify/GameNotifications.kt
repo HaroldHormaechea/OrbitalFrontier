@@ -41,6 +41,22 @@ object GameNotifications {
     fun lowFuel(): GameNotification = GameNotification(NotificationKind.LOW_FUEL, "LOW FUEL")
 
     /**
+     * The player tried to buy something they cannot afford (UC40 AC#3) — a styled [NotificationKind.
+     * INSUFFICIENT_CREDITS] error toast in place of the old bare status string. The classification (cost
+     * vs. balance) is made by the pure [com.orbitalfrontier.economy.PurchaseGate] at the call site; this is
+     * just the cue.
+     */
+    fun insufficientCredits(): GameNotification = GameNotification(NotificationKind.INSUFFICIENT_CREDITS, "INSUFFICIENT CREDITS")
+
+    /**
+     * The player attempted an economy action the resolver refused for a reason other than funds (UC40 AC#3)
+     * — a styled [NotificationKind.ACTION_REJECTED] error toast. [reason] is a short ASCII line (the bundled
+     * font's glyph set, UC28; the renderer ellipsizes); it defaults to a generic message for callers that
+     * cannot name the specific cause.
+     */
+    fun actionRejected(reason: String = "ACTION UNAVAILABLE"): GameNotification = GameNotification(NotificationKind.ACTION_REJECTED, reason)
+
+    /**
      * The notification for a credit change from [old] to [new], or `null` when the balance is unchanged
      * (UC35 AC#1). A rise is a [NotificationKind.CREDIT_GAIN] ("+N CR"); a drop a
      * [NotificationKind.CREDIT_LOSS] ("-N CR"). The single chokepoint
