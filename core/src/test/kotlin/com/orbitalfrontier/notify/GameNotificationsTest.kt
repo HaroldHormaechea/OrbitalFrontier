@@ -174,6 +174,30 @@ class GameNotificationsTest {
         assertTrue("a caller that cannot name the cause still gets a non-empty styled line", n.message.isNotBlank())
     }
 
+    // --- UC43 AC#4: the reputation-changed builder surfaces a WARNING/coalescable standing toast --------
+
+    @Test
+    fun `reputationChanged is a WARNING toast that names the faction and shows the signed delta`() {
+        val n = GameNotifications.reputationChanged("INDEPENDENTS", -5)
+        assertEquals("a faction-standing change is the REPUTATION-CHANGED cue", NotificationKind.REPUTATION_CHANGED, n.kind)
+        assertEquals("it is styled at the WARNING tier", NotificationSeverity.WARNING, n.severity)
+        assertEquals("the message names the faction and shows the signed (loss) delta", "INDEPENDENTS -5", n.message)
+    }
+
+    @Test
+    fun `reputationChanged renders a positive delta with an explicit plus sign`() {
+        // The builder is sign-agnostic (a future ally-on-kill gain would reuse it); a gain shows "+N".
+        val n = GameNotifications.reputationChanged("TRADE LEAGUE", 5)
+        assertEquals(NotificationKind.REPUTATION_CHANGED, n.kind)
+        assertEquals("a gain is shown with a leading +", "TRADE LEAGUE +5", n.message)
+    }
+
+    @Test
+    fun `reputationChanged coalesces on its kind`() {
+        // The new kind is coalescable, so a burst of faction kills collapses into one live toast.
+        assertEquals(NotificationKind.REPUTATION_CHANGED, GameNotifications.reputationChanged("INDEPENDENTS", -5).coalesceKey)
+    }
+
     // --- AC#1/AC#2: severity classification lives with the model, per kind ------------------------------
 
     @Test
@@ -184,6 +208,9 @@ class GameNotificationsTest {
                 NotificationKind.MISSION_FAILED_TIMEOUT,
                 NotificationKind.ENTERED_COMBAT,
                 NotificationKind.CREDIT_LOSS,
+                // UC43: a faction-standing change (e.g. souring a faction by destroying its ship) is a
+                // WARNING cue — the renderer colours by *severity*, so no renderer change was needed.
+                NotificationKind.REPUTATION_CHANGED,
             )
         // UC40 AC#3: a refused/failed economy action is a step beyond WARNING — the ERROR tier — so an
         // unaffordable buy or an otherwise-invalid action reads as a distinct refusal, not a routine caution.
@@ -223,6 +250,9 @@ class GameNotificationsTest {
                 // toast rather than flooding the feed, so both new ERROR kinds are coalescable too.
                 NotificationKind.INSUFFICIENT_CREDITS,
                 NotificationKind.ACTION_REJECTED,
+                // UC43: several faction kills in quick succession collapse into one standing toast rather
+                // than flooding the feed, so the new kind is coalescable too.
+                NotificationKind.REPUTATION_CHANGED,
             )
         for (kind in NotificationKind.entries) {
             assertEquals("$kind coalescable flag", kind in coalescable, kind.coalescable)
