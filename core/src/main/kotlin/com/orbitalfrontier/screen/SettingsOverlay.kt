@@ -6,6 +6,7 @@ import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 
@@ -21,7 +22,10 @@ import com.orbitalfrontier.settings.JoystickTuning
  * lives in [SettingsPanel]; this class only wires the play-screen-specific live targets:
  *  - [onHandednessChanged] re-lays-out the on-screen controls,
  *  - [onJoystickTuningChanged] updates the live joystick boundary,
- *  - [onUiScaleChanged] re-applies the UI scale to the play stage's viewport, and
+ *  - [onUiScaleChanged] re-applies the UI scale to the play stage's viewport,
+ *  - [onColorVisionModeChanged] / [onTextScaleChanged] / [onReducedMotionChanged] apply the UC39
+ *    accessibility prefs live (palette already on the global Palette; text scale re-applies to the play
+ *    skin; reduced motion is a global the starfield reads each frame), and
  *  - [onReplayTutorial] restarts the first-run onboarding.
  *
  * The [SaveExecutor]'s lifecycle is owned by the app, not this overlay, so the overlay holds no disposable
@@ -35,10 +39,16 @@ class SettingsOverlay(
     initialAudio: AudioSettings,
     initialJoystickTuning: JoystickTuning,
     initialUiScale: Float,
+    initialColorVisionMode: ColorVisionMode,
+    initialTextScale: Float,
+    initialReducedMotion: Boolean,
     audio: AudioService,
     onHandednessChanged: (Handedness) -> Unit,
     onJoystickTuningChanged: (JoystickTuning) -> Unit,
     onUiScaleChanged: (Float) -> Unit,
+    onColorVisionModeChanged: (ColorVisionMode) -> Unit,
+    onTextScaleChanged: (Float) -> Unit,
+    onReducedMotionChanged: (Boolean) -> Unit,
     onReplayTutorial: () -> Unit = {},
 ) {
     private val panel =
@@ -50,10 +60,16 @@ class SettingsOverlay(
             initialAudio = initialAudio,
             initialJoystickTuning = initialJoystickTuning,
             initialUiScale = initialUiScale,
+            initialColorVisionMode = initialColorVisionMode,
+            initialTextScale = initialTextScale,
+            initialReducedMotion = initialReducedMotion,
             audio = audio,
             onHandednessChanged = onHandednessChanged,
             onJoystickTuningChanged = onJoystickTuningChanged,
             onUiScaleChanged = onUiScaleChanged,
+            onColorVisionModeChanged = onColorVisionModeChanged,
+            onTextScaleChanged = onTextScaleChanged,
+            onReducedMotionChanged = onReducedMotionChanged,
             onReplayTutorial = onReplayTutorial,
         )
 

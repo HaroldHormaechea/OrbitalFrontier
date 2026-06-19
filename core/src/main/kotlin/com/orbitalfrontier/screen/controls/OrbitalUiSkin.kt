@@ -24,6 +24,7 @@ import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GameFont
 import com.orbitalfrontier.render.GameFontLoader
 import com.orbitalfrontier.render.Palette
+import com.orbitalfrontier.render.TextScale
 
 /**
  * The finished design-system UI skin for every Scene2D widget in the game (UC29). It is the single
@@ -44,10 +45,16 @@ import com.orbitalfrontier.render.Palette
  * skin for labels / buttons (and JVM contexts without a GL atlas) keep working unchanged. The action-arc
  * and joystick geometry is untouched by UC29.
  *
- * UC28 (unchanged): the label/button text is the bundled game font ([GameFont], a [BitmapFont] loaded by
+ * UC28: the label/button text is the bundled game font ([GameFont], a [BitmapFont] loaded by
  * [GameFontLoader]). The Scene2D screens render through a ×[com.orbitalfrontier.render.UiScale.factor]
- * viewport (ADR 0015), so the font is downscaled by [GameFont.NORM] alone here (NO extra uiScale — the
- * viewport already magnifies).
+ * viewport (ADR 0015), so the font is downscaled by [GameFont.NORM] here (NO extra uiScale — the viewport
+ * already magnifies).
+ *
+ * UC39 (AC#2): the font is additionally scaled by the global [TextScale.factor] — the accessibility
+ * text-size knob, applied **on top of** the UI scale so the player can enlarge UI text independently of the
+ * chrome. The scale is captured at construction; a live change re-applies via [applyTextScale] (the host
+ * settings surface calls it and re-flows its layout). The in-flight HUD/world-space text is deliberately
+ * NOT affected (it follows UiScale only); see [TextScale].
  *
  * **Texture ownership.** The atlas is **borrowed** — its region drawables are never disposed here. This
  * skin owns and disposes only the generated [Texture]s it creates (the nine-patch chrome + the fallback
@@ -59,7 +66,16 @@ class OrbitalUiSkin(
 ) : Disposable {
     private val textures = ArrayList<Texture>()
 
-    val font: BitmapFont = GameFontLoader.load().apply { data.setScale(GameFont.NORM) }
+    val font: BitmapFont = GameFontLoader.load().apply { data.setScale(GameFont.NORM * TextScale.factor) }
+
+    /**
+     * UC39: re-apply the global [TextScale.factor] to the skin [font] after a live text-size change, so the
+     * already-built widgets pick up the new size without rebuilding the skin. The host calls this (then
+     * re-flows its layout / invalidates the stage) right after [TextScale.set]. Idempotent.
+     */
+    fun applyTextScale() {
+        font.data.setScale(GameFont.NORM * TextScale.factor)
+    }
 
     val touchpadStyle: Touchpad.TouchpadStyle =
         Touchpad.TouchpadStyle().apply {

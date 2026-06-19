@@ -29,7 +29,6 @@ enum class ColorVisionMode {
          * future-written save row), so a bad value can never crash the palette restore — it falls back to
          * the standard palette with the caller free to log a WARN.
          */
-        fun parse(value: String?): ColorVisionMode =
-            entries.firstOrNull { it.name == value } ?: DEFAULT
+        fun parse(value: String?): ColorVisionMode = entries.firstOrNull { it.name == value } ?: DEFAULT
     }
 }

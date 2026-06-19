@@ -78,12 +78,14 @@ import com.orbitalfrontier.render.HudViewModel
 import com.orbitalfrontier.render.MapOverlayRenderer
 import com.orbitalfrontier.render.MapOverlayState
 import com.orbitalfrontier.render.MinimapRenderer
+import com.orbitalfrontier.render.MotionPreference
 import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.PauseState
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.render.WorldObjectRenderer
 import com.orbitalfrontier.render.applyUiScale
@@ -455,6 +457,11 @@ class PlayScreen(
                 // to the joystick, and the global UI scale already restored by the app at startup.
                 initialJoystickTuning = initialJoystickTuning,
                 initialUiScale = UiScale.factor,
+                // UC39: seed the accessibility controls from the live globals the app restored at startup
+                // (mirrors initialUiScale = UiScale.factor) — colour-vision mode, text scale, reduced motion.
+                initialColorVisionMode = Palette.mode,
+                initialTextScale = TextScale.factor,
+                initialReducedMotion = MotionPreference.reduced,
                 audio = audio,
                 onHandednessChanged = { newHandedness ->
                     handedness = newHandedness
@@ -468,6 +475,16 @@ class PlayScreen(
                 // The screen-space HUD/minimap renderers captured the factor at construction, so they reflect
                 // the new scale on the next screen rebuild (no app restart) — documented in ADR 0025.
                 onUiScaleChanged = { applyUiScaleLive() },
+                // UC39: colour-vision mode is already on the global Palette; the in-flight HUD/minimap/map
+                // overlay read its mode-aware accessors every frame, so the change is visible next frame with
+                // nothing extra to do here.
+                onColorVisionModeChanged = {},
+                // UC39: a text-size change is already in the global TextScale knob; re-apply it to this
+                // screen's skin font and re-flow the open panel so the resized UI text shows immediately.
+                onTextScaleChanged = { applyTextScaleLive() },
+                // UC39: reduced motion is already in the global MotionPreference; the starfield reads it each
+                // frame, so the static/scrolling field switches on the next frame with nothing extra here.
+                onReducedMotionChanged = {},
                 // UC36 AC#3: REPLAY TUTORIAL restarts the onboarding from the first step (the persisted
                 // first-run flag is left set, so this is a one-session replay, not a re-arm of first-run).
                 onReplayTutorial = { replayTutorial() },
@@ -1170,6 +1187,19 @@ class PlayScreen(
         (stage.viewport as? ScreenViewport)?.applyUiScale()
         stage.viewport.update(Gdx.graphics.width, Gdx.graphics.height, true)
         layoutControls()
+    }
+
+    /**
+     * UC39: re-apply the (already-updated global) [com.orbitalfrontier.render.TextScale] to this screen's
+     * skin font and re-flow the open settings panel so a text-size change made in flight resizes the UI
+     * text live. The settings panel is the surface visible when this fires, so invalidating its scroll
+     * pane's hierarchy is enough to re-measure/re-flow the resized labels (the shared skin font carries the
+     * new scale to every other widget on its next layout). The in-flight HUD/world-space text follows
+     * UiScale only and is intentionally unaffected (see [com.orbitalfrontier.render.TextScale]).
+     */
+    private fun applyTextScaleLive() {
+        skin.applyTextScale()
+        settingsOverlay.actor.invalidateHierarchy()
     }
 
     /** Position the controls for the current handedness (AC#7/#8). Idempotent. */
