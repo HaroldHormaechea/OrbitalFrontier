@@ -9,6 +9,7 @@ import com.orbitalfrontier.combat.DestroyedHostile
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.PlayerCombatInput
+import com.orbitalfrontier.combat.ProgressionLevel
 import com.orbitalfrontier.combat.Respawn
 import com.orbitalfrontier.combat.Salvage
 import com.orbitalfrontier.combat.ShipSection
@@ -518,9 +519,21 @@ class Simulation(
             // position inside an authored zone in this sector. Seeded by the sim [tick] so the replay
             // reproduces the identical encounter; the spawner no-ops while a fight is already active.
             if (!combat.active) {
+                // UC45 AC#3 lockstep: the difficulty input is the player's progression level, derived from
+                // the active ship's installed-upgrade count — IDENTICAL to PlayScreen.runCombat. None zones
+                // ignore it (so existing replays are unperturbed); a ByProgression zone scales by it.
+                val progression = ProgressionLevel.of(combatFleet.active.loadout.allInstalled().size)
                 for (zone in MvpSectorMap.encounterZones(nextSector)) {
                     val spawned =
-                        EncounterSpawner.naturalSpawn(combat, zone, state.ship.position, nextShip.position, state.tick, combatParams)
+                        EncounterSpawner.naturalSpawn(
+                            combat,
+                            zone,
+                            state.ship.position,
+                            nextShip.position,
+                            state.tick,
+                            combatParams,
+                            progression,
+                        )
                     if (spawned !== combat) {
                         combat = spawned
                         break

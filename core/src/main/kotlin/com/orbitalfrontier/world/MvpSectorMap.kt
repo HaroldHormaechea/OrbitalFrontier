@@ -2,6 +2,8 @@ package com.orbitalfrontier.world
 
 import com.orbitalfrontier.combat.EncounterZone
 import com.orbitalfrontier.combat.HostileArchetypes
+import com.orbitalfrontier.combat.HostileSpawn
+import com.orbitalfrontier.combat.SpawnScaling
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarket
@@ -59,6 +61,15 @@ object MvpSectorMap {
      *    fixture roams Gamma** (only the UC03 jump leaves Alpha, and it goes to Beta), and the natural-spawn
      *    check filters by the player's current sector — so this zone can never perturb any existing replay
      *    (the UC43 fixture-stability top risk), while the UC43 replay starts in Gamma to fly into it.
+     *  - `beta-regroup-picket` (UC45) — Beta's first natural zone, a single
+     *    [HostileArchetypes.REGROUP_MARAUDER] NE of Beta's centre at `(600, 700)` r260, disjoint from the
+     *    `y≈0` eastward corridor the UC03 jump flies down (≈700 wu off it) and from beta-station/belt/gate,
+     *    so it perturbs no existing replay.
+     *  - `gamma-marauder-pack` (UC45) — a **multi-archetype, progression-scaled** Gamma zone at
+     *    `(-700, -300)` r260 (AC#1/#3/#5): an [HostileArchetypes.INDEPENDENT_MARAUDER] alongside a
+     *    [HostileArchetypes.REGROUP_MARAUDER] and a [HostileArchetypes.PRECISION_RAIDER], scaled by
+     *    progression. Disjoint from `gamma-independent-marauder` (700,700) (~1720 wu away) and from the
+     *    UC43 fixture's NE-only flight path, and the only zone the UC45 multi-hostile fixture flies into.
      *
      * Each zone is tagged with the sector's String id so `combat` needs no `world` dependency. [TUNE]
      */
@@ -83,6 +94,40 @@ object MvpSectorMap {
                 radius = 260f,
                 archetypeId = HostileArchetypes.INDEPENDENT_MARAUDER.id,
                 hostileCount = 1,
+            ),
+            // UC45: Beta's first natural zone. Single REGROUP_MARAUDER at (600,700) r260 — ~700 wu off the
+            // y≈0 corridor the UC03 jump flies down (CONDITION #1: disjoint, so UC03 never trips it), and
+            // clear of beta-station (300,-300), beta-belt (-500,500) and the beta→gamma gate (≈650,1126).
+            EncounterZone(
+                id = "beta-regroup-picket",
+                sectorId = "beta",
+                center = Vec2(600f, 700f),
+                radius = 260f,
+                archetypeId = HostileArchetypes.REGROUP_MARAUDER.id,
+                hostileCount = 1,
+            ),
+            // UC45 (AC#1/#3/#5): the multi-archetype, progression-scaled Gamma zone the UC45 fixture flies
+            // into. Composition mixes an aggressive marauder with a retreat-and-regroup and a weakest-section
+            // targeter; ByProgression scales in extra REGROUP_MARAUDER reinforcements. Center (-700,-300)
+            // r260 is ~1720 wu from gamma-independent-marauder (700,700) and clear of UC43's NE-only path
+            // (CONDITION #1: disjoint). |center| ≈ 762 wu, inside the 1800-wu content radius.
+            EncounterZone(
+                id = "gamma-marauder-pack",
+                sectorId = "gamma",
+                center = Vec2(-700f, -300f),
+                radius = 260f,
+                composition =
+                    listOf(
+                        HostileSpawn(HostileArchetypes.INDEPENDENT_MARAUDER.id, 1),
+                        HostileSpawn(HostileArchetypes.REGROUP_MARAUDER.id, 1),
+                        HostileSpawn(HostileArchetypes.PRECISION_RAIDER.id, 1),
+                    ),
+                scaling =
+                    SpawnScaling.ByProgression(
+                        reinforcementArchetypeId = HostileArchetypes.REGROUP_MARAUDER.id,
+                        hostilesPerLevel = 1,
+                        maxBonusHostiles = 2,
+                    ),
             ),
         )
 

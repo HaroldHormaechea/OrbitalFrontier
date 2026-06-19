@@ -144,8 +144,11 @@ _Deferred (each a future UC/ADR — do not resolve silently in code):_
   kill, [ADR 0029](../adr/0029-combat-bounty-missions.md)); richer combat-mission flows (escort, objectives
   beyond a kill quota) remain deferred.
 - **Shields / armour** — intentionally omitted; the MVP is HULL + sections only.
-- **Richer AI** (formations, retreat-and-regroup, targeting the player's weakest section) and **difficulty
-  scaling** by a spawn director.
+- **Richer AI** — retreat-and-regroup and targeting the player's weakest section are **built** (UC45:
+  `AiBehavior.RETREAT_AND_REGROUP` + opt-in `targetsWeakestSection` / "weakest-at-fire-time" direct-apply,
+  [ADR 0033](../adr/0033-richer-enemy-ai-and-spawn-director.md)). **Difficulty scaling** by a spawn director
+  is **built** (UC45: progression-driven opt-in `SpawnDirector`/`SpawnScaling` + multi-archetype
+  `EncounterZone.composition`, ADR 0033). **Formations / flanking remain deferred** (no AC requires them).
 - **Balancing** — every weapon/HP/AI number is a `[TUNE]` placeholder.
 
 ## References

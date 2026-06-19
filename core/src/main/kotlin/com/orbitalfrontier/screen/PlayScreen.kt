@@ -28,6 +28,7 @@ import com.orbitalfrontier.combat.DestructionSummary
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.PlayerCombatInput
+import com.orbitalfrontier.combat.ProgressionLevel
 import com.orbitalfrontier.combat.Respawn
 import com.orbitalfrontier.combat.Salvage
 import com.orbitalfrontier.combat.SalvageDrop
@@ -1529,9 +1530,21 @@ class PlayScreen(
         playerPosition: Vec2,
     ) {
         if (!combat.active && dockedStation == null) {
+            // UC45 AC#3: difficulty input = the player's progression level, derived from the active ship's
+            // installed-upgrade count. Computed here and passed into the spawner so a ByProgression zone
+            // scales; None zones ignore it. Mirrored exactly in sim.Simulation.step (the lockstep).
+            val progression = ProgressionLevel.of(fleet.active.loadout.allInstalled().size)
             for (zone in MvpSectorMap.encounterZones(currentSector)) {
                 val spawned =
-                    EncounterSpawner.naturalSpawn(combat, zone, previousShipPosition, playerPosition, combatSpawnTick, combatParams)
+                    EncounterSpawner.naturalSpawn(
+                        combat,
+                        zone,
+                        previousShipPosition,
+                        playerPosition,
+                        combatSpawnTick,
+                        combatParams,
+                        progression,
+                    )
                 if (spawned !== combat) {
                     combat = spawned
                     combatSpawnTick++
