@@ -51,7 +51,7 @@ Statuses:
 | 39 | [use-cases/39-accessibility-options.md](use-cases/39-accessibility-options.md) | Accessibility options | done | 2026-06-19 |
 | 40 | [use-cases/40-purchase-confirmation-feedback.md](use-cases/40-purchase-confirmation-feedback.md) | Purchase/sale confirmation & economy feedback | done | 2026-06-19 |
 | 41 | [use-cases/41-combat-bounty-missions.md](use-cases/41-combat-bounty-missions.md) | Combat / bounty mission type | done | 2026-06-19 |
-| 42 | [use-cases/42-loot-salvage-economy.md](use-cases/42-loot-salvage-economy.md) | Loot & salvage from destroyed hostiles | in-progress | 2026-06-19 |
+| 42 | [use-cases/42-loot-salvage-economy.md](use-cases/42-loot-salvage-economy.md) | Loot & salvage from destroyed hostiles | done | 2026-06-19 |
 | 43 | [use-cases/43-combat-driven-reputation.md](use-cases/43-combat-driven-reputation.md) | Combat-driven reputation | pending | 2026-06-18 |
 | 44 | [use-cases/44-combat-hud-feedback.md](use-cases/44-combat-hud-feedback.md) | Combat HUD — targeting, health bars & hit feedback | pending | 2026-06-18 |
 | 45 | [use-cases/45-enemy-ai-spawn-director.md](use-cases/45-enemy-ai-spawn-director.md) | Richer enemy AI & encounter variety | pending | 2026-06-18 |
