@@ -602,6 +602,10 @@ class OrbitalFrontierGame(
                 onBack = { returnToHub() },
                 // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
                 notifications = sharedNotifications,
+                // UC47: the junkyard's buy-used desk + a live available-stock supplier (baseline − purchased,
+                // computed by PlayScreen against the durable depletion). A non-junkyard station stocks none.
+                usedPartMarket = station.usedPartMarket,
+                usedStockSupplier = { upgradeId -> playScreen?.usedStockAvailable(station.id, upgradeId) ?: 0 },
             )
         outfitScreen = desk
         setScreen(desk)

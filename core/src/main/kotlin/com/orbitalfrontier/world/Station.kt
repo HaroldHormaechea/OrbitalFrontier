@@ -74,6 +74,15 @@ data class Station(
      * [StationKind] (ADR 0014). [com.orbitalfrontier.station.StationBuilder] gates a build on this flag.
      */
     val buildsStations: Boolean = false,
+    /**
+     * The upgrades this junkyard offers as **discounted used parts** (UC47 AC#1); [OutfitMarket.EMPTY]
+     * when it has no used-part desk (every non-junkyard station, and the default). Authored map data
+     * carried with the world, not persisted (ADR 0008) — the same treatment as [outfitMarket]; it is a
+     * separate desk so a junkyard can stock a different *used* set than the *new* parts it refits with.
+     * Only meaningful at a [StationKind.JUNKYARD]; [com.orbitalfrontier.outfit.Outfitting] gates a
+     * BuyUsed on both the junkyard kind and membership here.
+     */
+    val usedPartMarket: OutfitMarket = OutfitMarket.EMPTY,
 ) : Poi, Transponder, Named {
     override val contactKind: ContactKind get() = ContactKind.STATION
 

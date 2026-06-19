@@ -1,0 +1,29 @@
+-- Migration v20 -> v21 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v21 (UC47, ADR 0035) adds the **junkyard buy-used depletion**. A junkyard now sells discounted USED
+-- parts whose available stock is `baseline − purchased`: the baseline is recomputed deterministically on
+-- load (UsedPartPricing.baselineStock keyed on the stable junkyard/part slugs), and only the player's
+-- cumulative purchases move into the save, in a new per-slot `junkyard_stock` table:
+--
+--  * `station_id`  — the junkyard's PoiId slug (a TEXT key, like the station_market table's `station_id`).
+--  * `upgrade_id`  — the UpgradeId slug of the used part (stable across catalog reordering).
+--  * `purchased`   — the cumulative count the player has bought used here (always >= 1 for a stored row;
+--                    only NON-ZERO rows are stored, an absent (station, upgrade) is undepleted). Persisting
+--                    the *purchases* (not the remaining count) is what kills the reload-restock exploit.
+--
+-- A pre-UC47 save had no junkyard_stock rows, so its migrated save reads this table back EMPTY → every used
+-- part is at its full baseline → byte-identical to a game that never bought used parts. CREATE TABLE is
+-- supported by the bundled SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe — the
+-- same rationale as every prior additive migration. No table is rebuilt; all prior data is untouched. There
+-- is NO UPSERT / NO `ON CONFLICT` — the table is rewritten as a full delete-then-insert snapshot per slot
+-- (delete-all-then-insert), so additive CREATE TABLE alone suffices. Parameterized only.
+
+CREATE TABLE junkyard_stock (
+    slot_id INTEGER NOT NULL,
+    station_id TEXT NOT NULL,
+    upgrade_id TEXT NOT NULL,
+    purchased INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, station_id, upgrade_id)
+);
+
+UPDATE meta SET save_version = 21 WHERE id = 0;

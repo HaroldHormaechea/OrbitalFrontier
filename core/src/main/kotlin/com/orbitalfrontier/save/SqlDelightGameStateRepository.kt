@@ -18,6 +18,7 @@ import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.mission.MissionSource
 import com.orbitalfrontier.mission.MissionStatus
 import com.orbitalfrontier.mission.MissionType
+import com.orbitalfrontier.outfit.JunkyardStock
 import com.orbitalfrontier.outfit.Loadout
 import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.outfit.SlotCategory
@@ -167,6 +168,10 @@ class SqlDelightGameStateRepository(
                 // resource slug is skipped (WARN), a zero pressure dropped. Empty for a fresh / migrated
                 // pre-UC46 save (no station_market rows), so every station reads back at its authored base.
                 marketState = loadStationMarketState(slotId),
+                // Junkyard used-part depletion (UC47): the durable per-junkyard purchased counts; an unknown
+                // upgrade slug is skipped (WARN), a zero/negative purchased dropped. Empty for a fresh /
+                // migrated pre-UC47 save (no junkyard_stock rows), so every used part reads back at full baseline.
+                junkyardStock = loadJunkyardStock(slotId),
                 // Play time (UC38): the accumulated wall-of-play seconds shown per slot; coerced >= 0.
                 playTimeSeconds = header.play_time_seconds.coerceAtLeast(0),
             )
@@ -347,6 +352,25 @@ class SqlDelightGameStateRepository(
                     }
                 }
 
+                // Junkyard used-part depletion (UC47): full-snapshot rewrite of the non-zero per-(junkyard,
+                // upgrade) purchased counts for this slot (delete-then-plain-INSERT, minSdk-24-safe), exactly
+                // like the station_market table. Only positive purchases are stored — an undepleted
+                // (station, upgrade) is absent — so a never-bought-used save writes no rows and reads back at
+                // full baseline (byte-identical to pre-UC47).
+                queries.deleteAllJunkyardStockForSlot(slotId)
+                for ((stationId, purchases) in state.junkyardStock.purchasedByStation) {
+                    for ((upgradeId, purchased) in purchases) {
+                        if (purchased > 0) {
+                            queries.insertJunkyardStockEntry(
+                                slot_id = slotId,
+                                station_id = stationId.value,
+                                upgrade_id = upgradeId.value,
+                                purchased = purchased.toLong(),
+                            )
+                        }
+                    }
+                }
+
                 // Owned stations (UC15): one upserted owned_station row per station + a full-snapshot
                 // rewrite of its station_module rows (delete-then-INSERT, minSdk-24-safe), exactly like a
                 // ship's upgrades. A station's module slot map is gap-tolerant, so only the filled
@@ -469,6 +493,7 @@ class SqlDelightGameStateRepository(
                 queries.deleteAllMissionsForSlot(slotId)
                 queries.deleteAllReputationForSlot(slotId)
                 queries.deleteAllStationMarketForSlot(slotId)
+                queries.deleteAllJunkyardStockForSlot(slotId)
                 queries.deleteAllOwnedStationsForSlot(slotId)
                 queries.deleteAllStationModulesForSlot(slotId)
             }
@@ -661,6 +686,29 @@ class SqlDelightGameStateRepository(
             byStation.getOrPut(PoiId(row.station_id)) { LinkedHashMap() }[resource] = pressure
         }
         return if (byStation.isEmpty()) StationMarketState.EMPTY else StationMarketState(byStation)
+    }
+
+    /**
+     * Reconstruct a slot's junkyard used-part depletion from the `junkyard_stock` table (UC47). Each row
+     * is the cumulative count the player has bought of one used part at one junkyard; a row whose upgrade
+     * slug no longer resolves in the [UpgradeCatalog] is **skipped with a WARN** (so a removed part never
+     * strands a save), and a zero/negative purchased is dropped (canonical: only positive depletion is
+     * meaningful). Empty for a fresh / migrated pre-UC47 save (no rows) → every used part reads back at its
+     * full baseline. The baseline itself is NOT stored — it is recomputed on demand
+     * ([com.orbitalfrontier.outfit.UsedPartPricing.baselineStock]), so `available = baseline − purchased`.
+     */
+    private fun loadJunkyardStock(slotId: Long): JunkyardStock {
+        val byStation = LinkedHashMap<PoiId, LinkedHashMap<UpgradeId, Int>>()
+        for (row in queries.selectJunkyardStockForSlot(slotId).executeAsList()) {
+            val purchased = row.purchased.toInt()
+            if (purchased <= 0) continue
+            if (UpgradeCatalog.MVP.upgrade(UpgradeId(row.upgrade_id)) == null) {
+                logger.warn(TAG, "Slot $slotId: junkyard_stock references unknown upgrade '${row.upgrade_id}'; skipping")
+                continue
+            }
+            byStation.getOrPut(PoiId(row.station_id)) { LinkedHashMap() }[UpgradeId(row.upgrade_id)] = purchased
+        }
+        return if (byStation.isEmpty()) JunkyardStock.EMPTY else JunkyardStock(byStation)
     }
 
     /**

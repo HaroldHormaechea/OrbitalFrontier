@@ -23,9 +23,11 @@ import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.mission.MissionSource
 import com.orbitalfrontier.mission.MissionStatus
 import com.orbitalfrontier.mission.MissionType
+import com.orbitalfrontier.outfit.JunkyardStock
 import com.orbitalfrontier.outfit.Loadout
 import com.orbitalfrontier.outfit.SlotCategory
 import com.orbitalfrontier.outfit.UpgradeId
+import com.orbitalfrontier.outfit.UsedPartParams
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.OwnedShip
@@ -88,6 +90,12 @@ import kotlinx.serialization.Serializable
  *   silently invalidate this replay (the price moves it asserts are reproduced exactly). Marked
  *   `@EncodeDefault(NEVER)` so an artifact that ran under the default pricing tuning **omits** it on disk,
  *   keeping every pre-UC46 fixture byte-identical despite the codec's global `encodeDefaults = true`.
+ * @property usedPartConfig the pinned [UsedPartParams] snapshot the run was recorded under (UC47), same
+ *   rationale as [config] — a later retune of the used-part discount fraction or stock bounds can't
+ *   silently invalidate this replay (the discounted cost + the deterministic baseline stock it asserts are
+ *   reproduced exactly). Marked `@EncodeDefault(NEVER)` so an artifact that ran under the default used-part
+ *   tuning **omits** it on disk, keeping every pre-UC47 fixture byte-identical despite the codec's global
+ *   `encodeDefaults = true`.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -118,6 +126,10 @@ data class Playthrough(
     // every pre-UC46 fixture byte-identical despite the codec's global encodeDefaults = true.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val pricingConfig: PricingParamsDto = PricingParamsDto.DEFAULT,
+    // UC47: @EncodeDefault(NEVER) so a run under the default used-part tuning omits this on disk, keeping
+    // every pre-UC47 fixture byte-identical despite the codec's global encodeDefaults = true.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val usedPartConfig: UsedPartParamsDto = UsedPartParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -618,6 +630,16 @@ data class StateSnapshotDto(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val marketState: StationMarketStateDto = StationMarketStateDto.EMPTY,
+    /**
+     * The durable junkyard used-part depletion (UC47 AC#3) — the save-wide state carried on
+     * [SimulationState.junkyardStock]. Marked `@EncodeDefault(NEVER)` and defaulted to
+     * [JunkyardStockDto.EMPTY] so an empty (never-bought-used) state — every pre-UC47 fixture, and a fresh
+     * game — **omits** it on disk, keeping the committed fixtures byte-identical despite the codec's global
+     * `encodeDefaults = true`. A non-empty state is written as a compact `stationSlug → (upgradeSlug →
+     * purchasedCount)` map (only the positive rows, matching the domain [JunkyardStock]).
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val junkyardStock: JunkyardStockDto = JunkyardStockDto.EMPTY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -641,6 +663,8 @@ data class StateSnapshotDto(
             stations = stations.toStationRegistry(),
             // UC46: the dynamic market pressure (an absent / omitted field decodes to the empty state).
             marketState = marketState.toMarketState(),
+            // UC47: the junkyard used-part depletion (an absent / omitted field decodes to the empty state).
+            junkyardStock = junkyardStock.toJunkyardStock(),
         )
 
     /**
@@ -709,6 +733,8 @@ data class StateSnapshotDto(
                 stations = StationsDto.from(state.stations),
                 // UC46: the dynamic market pressure — empty state omits on disk (byte-identical pre-UC46).
                 marketState = StationMarketStateDto.from(state.marketState),
+                // UC47: the junkyard used-part depletion — empty state omits on disk (byte-identical pre-UC47).
+                junkyardStock = JunkyardStockDto.from(state.junkyardStock),
             )
     }
 }
@@ -748,6 +774,83 @@ data class StationMarketStateDto(
                     .mapKeys { (stationId, _) -> stationId.value }
                     .mapValues { (_, byResource) -> byResource.mapKeys { it.key.name } },
             )
+    }
+}
+
+/**
+ * Serializable mirror of [JunkyardStock] (UC47 AC#3). Stores the durable junkyard used-part depletion as
+ * a compact `stationSlug → (upgradeSlug → purchasedCount)` map — only the **positive** rows, exactly as
+ * the domain [JunkyardStock] keeps only positive depletion, so the on-disk form is minimal and diffable.
+ * [EMPTY] (the no-purchases default) is the value [StateSnapshotDto.junkyardStock] omits via
+ * `@EncodeDefault(NEVER)`, so a fresh game and every pre-UC47 fixture serialize without a junkyardStock
+ * field at all. String-keyed (PoiId slug / UpgradeId slug) for the same stability reason as cargo / field
+ * depletion. Decoding tolerates any slug (an UpgradeId only requires a non-blank value), matching how the
+ * repository skips an unknown slug on the persistence side.
+ */
+@Serializable
+data class JunkyardStockDto(
+    val purchased: Map<String, Map<String, Int>> = emptyMap(),
+) {
+    /** Reconstruct the domain [JunkyardStock] (stationSlug → upgradeSlug → purchasedCount). */
+    fun toJunkyardStock(): JunkyardStock {
+        if (purchased.isEmpty()) return JunkyardStock.EMPTY
+        return JunkyardStock(
+            purchased
+                .mapKeys { (stationSlug, _) -> PoiId(stationSlug) }
+                .mapValues { (_, byUpgrade) -> byUpgrade.mapKeys { UpgradeId(it.key) } },
+        )
+    }
+
+    companion object {
+        /** The no-purchases default — a fresh game and every pre-UC47 / migrated save. */
+        val EMPTY: JunkyardStockDto = JunkyardStockDto()
+
+        /** Snapshot [stock] into its serializable form (the positive purchased rows, slug/slug-keyed). */
+        fun from(stock: JunkyardStock): JunkyardStockDto =
+            JunkyardStockDto(
+                stock.purchasedByStation
+                    .mapKeys { (stationId, _) -> stationId.value }
+                    .mapValues { (_, byUpgrade) -> byUpgrade.mapKeys { it.key.value } },
+            )
+    }
+}
+
+/**
+ * Serializable mirror of [UsedPartParams] (UC47 config snapshot).
+ *
+ * [UsedPartParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live in
+ * exactly one place. Pinning the used-part tuning per artifact (mirroring [PricingParamsDto]) means a
+ * later retune of the discount fraction or stock bounds cannot silently invalidate an old recorded
+ * buy-used playthrough — the discounted cost + deterministic baseline stock it asserts are reproduced
+ * exactly. Defaulted (and `@EncodeDefault(NEVER)` on [Playthrough]) so older artifacts (recorded before
+ * buy-used) decode unchanged and omit it on disk.
+ */
+@Serializable
+data class UsedPartParamsDto(
+    val discountFraction: Double,
+    val minStock: Int,
+    val maxStock: Int,
+) {
+    /** Reconstruct the domain [UsedPartParams] (its `init` re-validates the values). */
+    fun toUsedPartParams(): UsedPartParams =
+        UsedPartParams(
+            discountFraction = discountFraction,
+            minStock = minStock,
+            maxStock = maxStock,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: UsedPartParams): UsedPartParamsDto =
+            UsedPartParamsDto(
+                discountFraction = params.discountFraction,
+                minStock = params.minStock,
+                maxStock = params.maxStock,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: UsedPartParamsDto = from(UsedPartParams())
     }
 }
 

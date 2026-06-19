@@ -165,6 +165,15 @@ object PlaythroughFixtures {
     const val UC46_DYNAMIC_PRICING: String = "uc46-dynamic-pricing"
 
     /**
+     * UC47 junkyard buy-used playthrough name (AC#2/#3/#5): start **docked at the Gamma Junkyard** — the
+     * only buy-used desk — with a wallet that covers one discounted part, buy a USED `engine-tune-i`, and
+     * hold one trailing tick. [Uc47BuyUsedReplayTest] asserts the DISCOUNTED price was charged, the part
+     * installed via the same flow as a new part, the junkyard's deterministic stock decremented by one,
+     * and the replay is bit-for-bit deterministic.
+     */
+    const val UC47_BUY_USED: String = "uc47-buy-used-part"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -206,6 +215,13 @@ object PlaythroughFixtures {
     const val UC46_LOTS: Int = 3
 
     /**
+     * Starting credit balance the UC47 buy-used fixture seeds — comfortably above the discounted
+     * `engine-tune-i` used price (round(300 * 0.6) = 180) so the single buy clears with a known non-zero
+     * remainder. Authored as a literal so the fixture stays self-contained.
+     */
+    const val UC47_STARTING_CREDITS: Long = 500L
+
+    /**
      * Power tuning **pinned for the UC07 low-fuel fixture only** — a deliberately thirsty draw
      * (10 fuel-units/s while thrusting vs. the default 2) so a short, compact playthrough actually
      * burns the tank below the low-fuel threshold (the default burn rate would need hundreds of
@@ -242,6 +258,7 @@ object PlaythroughFixtures {
             UC43_COMBAT_REPUTATION to ::uc43CombatReputation,
             UC45_ENEMY_AI to ::uc45EnemyAi,
             UC46_DYNAMIC_PRICING to ::uc46DynamicPricing,
+            UC47_BUY_USED to ::uc47BuyUsedPart,
         )
 
     /**
@@ -524,6 +541,47 @@ object PlaythroughFixtures {
         }
         // One trailing held tick proves credits + market pressure stay put with no further trade.
         recorder.extendToTick(UC46_LOTS)
+        return recorder.build()
+    }
+
+    /**
+     * UC47 junkyard buy-used scenario (AC#2/#3/#5): the ship starts **docked at the Gamma Junkyard** in
+     * the Gamma sector — the [com.orbitalfrontier.world.StationKind.JUNKYARD] whose buy-used desk
+     * (`GAMMA_USED_PARTS` in [MvpSectorMap]) stocks `engine-tune-i` used — with a single starter ship and
+     * a [UC47_STARTING_CREDITS] wallet. At tick 0 it issues one **BuyUsed(engine-tune-i)** order: the
+     * resolver charges the discounted used price (round(300 * 0.6) = 180), installs the engine into the
+     * lowest free engine slot via the SAME [com.orbitalfrontier.outfit.Loadout.install] path a new part
+     * would use (AC#2), and folds one unit of the junkyard's deterministic baseline stock into the
+     * persisted depletion ([SimulationState.junkyardStock], AC#3).
+     *
+     * The single trailing held tick proves the docked state — credits, loadout and the recorded depletion
+     * — stays put with no further order (so a None tick keeps `junkyardStock` byte-identical, the
+     * anti-restock-exploit invariant). Starting docked keeps the artifact tiny while exercising the full
+     * buy-used path against the real [MvpSectorMap]; [Uc47BuyUsedReplayTest] asserts the discounted charge
+     * and the install, and `Uc47JunkyardBuyUsedSaveReloadReplayTest` proves the depletion survives a
+     * save/reload without restocking.
+     */
+    fun uc47BuyUsedPart(): Playthrough {
+        val recorder =
+            PlaythroughRecorder(
+                name = UC47_BUY_USED,
+                seed = 47L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at the Gamma Junkyard (the only buy-used desk) in the Gamma sector — the
+                        // station lookup keys off currentSector, so it must be Gamma for the dock to resolve.
+                        currentSector = SectorId("gamma"),
+                        fleet = singleShipFleet(),
+                        dockedStation = PoiId("gamma-junkyard"),
+                        credits = UC47_STARTING_CREDITS,
+                    ),
+            )
+        // Tick 0: buy a USED engine-tune-i at the junkyard discount; installs like a new part and deducts
+        // one unit of the junkyard's deterministic baseline stock (the only path that mutates junkyardStock).
+        recorder.recordOutfit(0, OutfitOrder.BuyUsed(UpgradeCatalog.ENGINE_TUNE_I))
+        // One trailing held tick: docked + no order ⇒ credits, loadout and the recorded depletion stay put.
+        recorder.extendToTick(1)
         return recorder.build()
     }
 

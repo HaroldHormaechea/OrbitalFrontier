@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 20 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034).
+-- Orbital Frontier save schema, version 21 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034 / ADR 0035).
 --
--- This .sq file is ALWAYS the latest schema (currently v20). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v21). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
 -- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19;
--- 19.sqm: v19 -> v20).
+-- 19.sqm: v19 -> v20; 20.sqm: v20 -> v21).
 -- Never edit this baseline destructively to make a schema change — bump the version and add a migration.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
@@ -42,6 +42,14 @@
 -- table, minSdk-24-safe CREATE TABLE), so a pre-UC46 save reads it back empty → every station prices at its
 -- authored base → byte-identical to today. Only the pressure is persisted; drift + decay are recomputed
 -- from the tick (the ADR-0007 reconstructed-on-load philosophy). See the `station_market` table comment.
+--
+-- v21 (UC47, ADR 0035) adds the **junkyard buy-used depletion** state — a new per-slot `junkyard_stock`
+-- table holding how many of each used part the player has bought per junkyard. Purely additive (a new,
+-- empty table, minSdk-24-safe CREATE TABLE), so a pre-UC47 save reads it back empty → every used part at
+-- its full baseline → byte-identical to today. Only the *purchased* count is persisted; the baseline
+-- available stock is recomputed deterministically on load (UsedPartPricing.baselineStock), so
+-- `available = baseline − purchased` and a reload can never restock cheap parts. See the `junkyard_stock`
+-- table comment.
 --
 -- Slot isolation (UC38 AC#4): every read/write/delete is scoped by `slot_id`, so loading, saving or
 -- deleting one slot never reads or mutates another. `meta`/`settings` rows are single-row (CHECK (id = 0)).
@@ -240,6 +248,21 @@ CREATE TABLE station_market (
     resource TEXT NOT NULL,
     pressure INTEGER NOT NULL,
     PRIMARY KEY (slot_id, station_id, resource)
+);
+
+-- Junkyard used-part depletion (UC47; ADR 0035). One row per (slot, junkyard, upgrade) the player has
+-- bought at least one USED copy of, storing the cumulative `purchased` count. An absent (station, upgrade)
+-- is undepleted (purchased 0). Only the purchases are stored — the baseline available count is recomputed
+-- deterministically on load (UsedPartPricing.baselineStock), so `available = baseline − purchased`; this
+-- is what kills the reload-restock exploit. Mirrors the `station_market` / `reputation` tables: full
+-- delete-then-insert snapshot per slot, only the non-zero rows written. The `station_id` is a PoiId slug
+-- and `upgrade_id` an UpgradeId slug; an unknown upgrade slug degrades on load (skip with a WARN).
+CREATE TABLE junkyard_stock (
+    slot_id INTEGER NOT NULL,
+    station_id TEXT NOT NULL,
+    upgrade_id TEXT NOT NULL,
+    purchased INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, station_id, upgrade_id)
 );
 
 -- ============================================================================================
@@ -464,6 +487,19 @@ insertStationMarketEntry:
 INSERT INTO station_market(slot_id, station_id, resource, pressure) VALUES (?, ?, ?, ?);
 
 -- ============================================================================================
+-- junkyard_stock — per slot (UC47)
+-- ============================================================================================
+
+selectJunkyardStockForSlot:
+SELECT station_id, upgrade_id, purchased FROM junkyard_stock WHERE slot_id = ?;
+
+deleteAllJunkyardStockForSlot:
+DELETE FROM junkyard_stock WHERE slot_id = ?;
+
+insertJunkyardStockEntry:
+INSERT INTO junkyard_stock(slot_id, station_id, upgrade_id, purchased) VALUES (?, ?, ?, ?);
+
+-- ============================================================================================
 -- owned_station — per slot
 -- ============================================================================================
 
@@ -523,3 +559,5 @@ DELETE FROM station_module WHERE slot_id = ?;
 
 -- UC46: `station_market` is wiped per slot too — the wipe reuses `deleteAllStationMarketForSlot` (defined
 -- in the station_market section above), exactly as the reputation / mission tables reuse theirs.
+-- UC47: `junkyard_stock` is wiped per slot too — the wipe reuses `deleteAllJunkyardStockForSlot` (defined
+-- in the junkyard_stock section above), exactly like `station_market`.
