@@ -1,0 +1,26 @@
+-- Migration v18 -> v19 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v19 (UC41, ADR 0029) adds the **combat-bounty** mission type. A bounty is persisted in the existing
+-- per-slot `mission` table (it is just another [com.orbitalfrontier.mission.MissionType]); it needs three
+-- new columns, each additive + defaulted so a pre-UC41 mission row reads them back at the non-bounty
+-- defaults and is byte-for-byte the behaviour it already had:
+--
+--  1. `mission.target_zone_id` — a new TEXT column for the authored encounter-zone the bounty contracts
+--     (the offer's match key, the spawn zone id handed to EncounterSpawner.missionSpawn, AND the
+--     kill-attribution key — equal by construction). NULL for a non-bounty (mining/courier) mission.
+--  2. `mission.kill_target`    — a new INTEGER column for the kill quota, DEFAULT 0 (a non-bounty mission
+--     has no kill quota).
+--  3. `mission.kill_progress`  — a new INTEGER column for the durable kills-so-far, DEFAULT 0.
+--
+-- A pre-UC41 save had no bounty missions, so its migrated `mission` rows read these back at NULL / 0 / 0
+-- — exactly the defaults a mining/courier Mission carries — so the load is unchanged. ALTER TABLE ADD
+-- COLUMN is supported by the bundled SQLite on minSdk-24 devices (it long predates 24), so this is
+-- minSdk-safe — the same rationale as every prior additive migration. No table is rebuilt; all prior data
+-- is untouched. There is NO UPSERT — the `mission` table is rewritten as a full delete-then-insert
+-- snapshot per slot, so additive columns alone suffice.
+
+ALTER TABLE mission ADD COLUMN target_zone_id TEXT;
+ALTER TABLE mission ADD COLUMN kill_target INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE mission ADD COLUMN kill_progress INTEGER NOT NULL DEFAULT 0;
+
+UPDATE meta SET save_version = 19 WHERE id = 0;
