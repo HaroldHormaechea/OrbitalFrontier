@@ -36,6 +36,10 @@ class SettingsOverlay(
     initialAudio: AudioSettings,
     private val audio: AudioService,
     private val onHandednessChanged: (Handedness) -> Unit,
+    // UC36 AC#3: replay the first-run tutorial. Invoked on the render thread when REPLAY TUTORIAL is
+    // tapped; the play screen resets its tutorial state so the onboarding runs again. Defaults to a no-op
+    // so headless/JVM contexts that build the overlay without a tutorial host need not wire it.
+    private val onReplayTutorial: () -> Unit = {},
 ) {
     private var handedness: Handedness = initialHandedness
     private var audioSettings: AudioSettings = initialAudio.coerced()
@@ -45,6 +49,10 @@ class SettingsOverlay(
     private val sfxButton = TextButton(sfxLabel(audioSettings), skin.settingsButtonStyle)
     private val musicButton = TextButton(musicLabel(audioSettings), skin.settingsButtonStyle)
 
+    // UC36 AC#3: replay the first-run tutorial from settings. A plain action button (not a toggle) — its
+    // label never changes; tapping it hands off to [onReplayTutorial] on the render thread.
+    private val replayTutorialButton = TextButton(REPLAY_TUTORIAL_LABEL, skin.settingsButtonStyle)
+
     /** The stacked controls, laid out top-down. Positioned/sized/hidden by the play screen as one unit. */
     val actor: Table = Table()
 
@@ -53,9 +61,10 @@ class SettingsOverlay(
         muteButton.addListener(onTap { toggleMute() })
         sfxButton.addListener(onTap { cycleSfxVolume() })
         musicButton.addListener(onTap { cycleMusicVolume() })
+        replayTutorialButton.addListener(onTap { onReplayTutorial() })
 
         actor.top()
-        for (button in listOf(handednessButton, muteButton, sfxButton, musicButton)) {
+        for (button in listOf(handednessButton, muteButton, sfxButton, musicButton, replayTutorialButton)) {
             actor.add(button).width(ROW_WIDTH).height(ROW_HEIGHT).padBottom(ROW_GAP)
             actor.row()
         }
@@ -131,5 +140,8 @@ class SettingsOverlay(
         const val ROW_WIDTH = 200f
         const val ROW_HEIGHT = 44f
         const val ROW_GAP = 6f
+
+        /** Fixed label for the UC36 replay-tutorial action button (ASCII for the UC28 game font). */
+        const val REPLAY_TUTORIAL_LABEL = "REPLAY TUTORIAL"
     }
 }

@@ -1,11 +1,11 @@
--- Orbital Frontier save schema, version 14 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020).
+-- Orbital Frontier save schema, version 15 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024).
 --
--- This .sq file is ALWAYS the latest schema (currently v14). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v15). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3;
 -- 3.sqm: v3 -> v4; 4.sqm: v4 -> v5; 5.sqm: v5 -> v6; 6.sqm: v6 -> v7; 7.sqm: v7 -> v8; 8.sqm:
 -- v8 -> v9; 9.sqm: v9 -> v10; 10.sqm: v10 -> v11; 11.sqm: v11 -> v12; 12.sqm: v12 -> v13; 13.sqm:
--- v13 -> v14). Never edit this baseline destructively to make a schema change — bump the version and
--- add a migration instead.
+-- v13 -> v14; 14.sqm: v14 -> v15). Never edit this baseline destructively to make a schema change —
+-- bump the version and add a migration instead.
 --
 -- v1 (UC01) held only `meta` (save-format version) and `settings` (handedness). v2 (UC04) adds
 -- the first slice of actual game state — the single autosave "header" (`game_state`) plus the
@@ -80,12 +80,19 @@ CREATE TABLE meta (
 -- migration backfills an existing settings row (audio enabled, SFX 1.0, music 0.5) with no data loss.
 -- Per-field UPDATE writes (updateHandedness / updateAudioSettings) replace the old whole-row
 -- INSERT OR REPLACE so toggling one preference never clobbers another's column.
+-- v15 (UC36, ADR 0024) adds `tutorial_completed` — the first-run onboarding flag (0 = not yet shown,
+-- 1 = done/skipped). DEFAULT 0 so the v14 -> v15 migration backfills an existing settings row as "not
+-- completed" (a returning player who upgrades is shown the tutorial once, which is acceptable — the
+-- flag exists to stop it re-triggering every launch, AC#3). It is its own column with its own targeted
+-- UPDATE (updateTutorialCompleted), so persisting it never clobbers handedness or the audio columns
+-- (the same per-field discipline UC31 established).
 CREATE TABLE settings (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     handedness TEXT NOT NULL,
     master_muted INTEGER NOT NULL DEFAULT 0,
     sfx_volume REAL NOT NULL DEFAULT 1.0,
-    music_volume REAL NOT NULL DEFAULT 0.5
+    music_volume REAL NOT NULL DEFAULT 0.5,
+    tutorial_completed INTEGER NOT NULL DEFAULT 0
 );
 
 -- Single-row save "header": which sector the player is in, which owned ship is active, which
@@ -263,9 +270,10 @@ initMeta:
 INSERT OR IGNORE INTO meta(id, save_version) VALUES (0, ?);
 
 -- Read every persisted preference in one row (null on first run / before any save). UC31 widened
--- this from handedness-only so the audio settings load in the same single-row read.
+-- this from handedness-only so the audio settings load in the same single-row read; UC36 widens it
+-- again so the first-run tutorial flag loads in the same read.
 selectSettings:
-SELECT handedness, master_muted, sfx_volume, music_volume FROM settings WHERE id = 0;
+SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed FROM settings WHERE id = 0;
 
 -- Seed the single settings row with defaults once; idempotent (no-op if the row already exists). The
 -- caller binds the defaults, so the per-field UPDATE writes below always hit an existing row (UC31).
@@ -284,6 +292,13 @@ UPDATE settings SET handedness = ? WHERE id = 0;
 -- persisting volume/mute never touches the handedness column. Relies on the row already existing.
 updateAudioSettings:
 UPDATE settings SET master_muted = ?, sfx_volume = ?, music_volume = ? WHERE id = 0;
+
+-- Targeted first-run-tutorial-flag write (UC36 AC#3): updates ONLY the tutorial_completed column, so
+-- persisting "tutorial done" never touches handedness or the audio columns. Relies on the row already
+-- existing (seedSettings runs first in the same transaction). `seedSettings` leaves this column at its
+-- DEFAULT 0 (it is omitted from that INSERT), so a fresh row reads back as "tutorial not yet shown".
+updateTutorialCompleted:
+UPDATE settings SET tutorial_completed = ? WHERE id = 0;
 
 -- Read the save header (UC09: header only — ships are read separately via selectAllShips so the
 -- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New

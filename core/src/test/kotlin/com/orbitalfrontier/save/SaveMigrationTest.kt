@@ -1488,17 +1488,17 @@ class SaveMigrationTest {
     }
 
     @Test
-    fun `the full v1 to v14 chain preserves settings, lands every schema change, and ends at version 14`() {
+    fun `the full v1 to v15 chain preserves settings, lands every schema change, and ends at version 15`() {
         buildRealV1Database()
 
-        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 12.sqm (v12->v13), 13.sqm (v13->v14).
-        OrbitalFrontier.Schema.migrate(driver, 1L, 14L)
+        // SQLDelight applies the .sqm chain in order: 1.sqm (v1->v2) … 13.sqm (v13->v14), 14.sqm (v14->v15).
+        OrbitalFrontier.Schema.migrate(driver, 1L, 15L)
 
         val database = OrbitalFrontier(driver)
         val queries = database.orbitalFrontierQueries
 
         // v1 settings survive the whole chain.
-        assertEquals("v1 settings must survive the v1->v14 chain", "LEFT_HANDED", readHandedness())
+        assertEquals("v1 settings must survive the v1->v15 chain", "LEFT_HANDED", readHandedness())
 
         // Every schema change landed: the v2 tables, the v3 dock column, the v4 tables, the v5 fuel
         // column, the v6 credits column, the v7 ship_type column + ship_upgrade table, the v8
@@ -1524,24 +1524,33 @@ class SaveMigrationTest {
         // …the v13 owned_station + station_module tables (UC15)…
         assertTrue("owned_station table must exist", tableExists("owned_station"))
         assertTrue("station_module table must exist", tableExists("station_module"))
-        // …and the v14 audio-preference columns on settings (UC31).
+        // …the v14 audio-preference columns on settings (UC31)…
         assertTrue("settings.master_muted column must exist", columnExists("settings", "master_muted"))
         assertTrue("settings.sfx_volume column must exist", columnExists("settings", "sfx_volume"))
         assertTrue("settings.music_volume column must exist", columnExists("settings", "music_volume"))
+        // …and the v15 first-run-tutorial flag on settings (UC36).
+        assertTrue("settings.tutorial_completed column must exist", columnExists("settings", "tutorial_completed"))
 
         // A migrated-from-v1 DB has no game state (settings-only origin) → New Game.
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger)
         assertNull("a v1-origin DB has no saved game state", gameStateRepo.loadGameState())
 
+        val settingsRepo = SqlDelightSettingsRepository(database, NoOpLogger)
         // The migrated settings row backfills the audio defaults (audio enabled at default levels).
         assertEquals(
             "a v1-origin migrated save reads back the default audio settings",
             AudioSettings.DEFAULT,
-            SqlDelightSettingsRepository(database, NoOpLogger).loadAudioSettings(),
+            settingsRepo.loadAudioSettings(),
+        )
+        // The v15 tutorial flag backfills its DEFAULT 0, so a migrated player is shown the onboarding once
+        // (the flag's job is only to stop it RE-triggering every launch, UC36 AC#3).
+        assertFalse(
+            "a v1-origin migrated save reads back with the tutorial not yet completed",
+            settingsRepo.loadTutorialCompleted(),
         )
 
         // Ends at the current schema version.
-        assertEquals(14L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(15L, queries.selectSaveVersion().executeAsOne())
     }
 
     /**
@@ -1587,6 +1596,15 @@ class SaveMigrationTest {
             readHandedness(),
         )
 
+        // The stored save-format version is bumped to 14 — assert the v13->v14 step before continuing.
+        assertEquals(14L, queries.selectSaveVersion().executeAsOne())
+
+        // Continue the chain to the current schema so the v15-aware repository can read selectSettings
+        // (UC36 widened it to also read settings.tutorial_completed, which a v14-only DB lacks — the same
+        // pattern the v11->v12 test uses to reach a repository-loadable schema). The v14->v15 step is
+        // purely additive (it backfills tutorial_completed = 0), so the audio backfill below is unchanged.
+        OrbitalFrontier.Schema.migrate(driver, 14L, 15L)
+
         // Backfill: a pre-UC31 save had no audio prefs, so the migrated row reads back at the DEFAULTs
         // (unmuted, SFX 1.0, music 0.5) — audio enabled at default levels, no data loss (UC31 AC#3).
         val repo = SqlDelightSettingsRepository(database, NoOpLogger)
@@ -1595,9 +1613,6 @@ class SaveMigrationTest {
             AudioSettings.DEFAULT,
             repo.loadAudioSettings(),
         )
-
-        // The stored save-format version is bumped to 14.
-        assertEquals(14L, queries.selectSaveVersion().executeAsOne())
 
         // The new columns are writable, not just present: audio prefs saved on top of the migrated DB
         // round-trip, and (Risk 1) the targeted audio write leaves the migrated handedness untouched.
@@ -1609,6 +1624,100 @@ class SaveMigrationTest {
             "the audio write must not clobber the migrated handedness",
             Handedness.RIGHT_HANDED,
             freshRepo.loadHandedness(),
+        )
+    }
+
+    // --- UC36 AC#3: v14 -> v15 adds the settings.tutorial_completed flag additively, backfilling 0 ---
+
+    /**
+     * Build a minimal real v14 (UC31) database — just `meta` + the v14 `settings` table (handedness PLUS
+     * the three audio columns, before the UC36 tutorial flag) — and seed a settings row. The v14->v15
+     * migration (14.sqm) touches only `settings` and `meta`, so the rest of the v14 schema is irrelevant
+     * to this migration and is intentionally omitted (mirrors the minimal v1 / v13 builders).
+     */
+    private fun buildRealV14Database() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        // v14 settings: handedness + the three UC31 audio columns, but NO tutorial_completed yet (that is
+        // exactly what 14.sqm adds).
+        driver.execute(
+            null,
+            "CREATE TABLE settings (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), handedness TEXT NOT NULL, " +
+                "master_muted INTEGER NOT NULL DEFAULT 0, sfx_volume REAL NOT NULL DEFAULT 1.0, " +
+                "music_volume REAL NOT NULL DEFAULT 0.5)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 14)", 0)
+        // Seed a non-default settings row so the migration's data-survival is meaningful (a muted save with
+        // a right-handed layout and non-default volumes).
+        driver.execute(
+            null,
+            "INSERT INTO settings(id, handedness, master_muted, sfx_volume, music_volume) " +
+                "VALUES (0, 'RIGHT_HANDED', 1, 0.25, 0.75)",
+            0,
+        )
+    }
+
+    /** Read the single settings row's `tutorial_completed` column directly via SQL (the backfill assertion). */
+    private fun readTutorialCompleted(): Long? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT tutorial_completed FROM settings WHERE id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    @Test
+    fun `migrating a real v14 database to v15 adds the tutorial flag, preserves settings, backfills 0, and bumps the version`() {
+        buildRealV14Database()
+
+        // Apply the sequential v14 -> v15 migration (runs migrations/14.sqm).
+        OrbitalFrontier.Schema.migrate(driver, 14L, 15L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new tutorial_completed column now exists on the single-row settings table (purely additive).
+        assertTrue("settings.tutorial_completed column must exist after migration", columnExists("settings", "tutorial_completed"))
+
+        // Backfill: a pre-UC36 save had no flag, so the migrated row reads back at DEFAULT 0 — the player is
+        // shown the onboarding once after upgrading (AC#3: the flag only stops it RE-triggering each launch).
+        assertEquals("the migration backfills the existing settings row to 0 (tutorial not yet shown)", 0L, readTutorialCompleted())
+
+        // Data survival: the pre-UC36 handedness + audio columns are untouched by the additive migration.
+        assertEquals("the v14 handedness must survive the v14->v15 migration", "RIGHT_HANDED", readHandedness())
+        val repo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertEquals(
+            "the v14 audio settings must survive the v14->v15 migration",
+            AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f),
+            repo.loadAudioSettings(),
+        )
+        assertFalse("a migrated v14 save reads back with the tutorial not yet completed", repo.loadTutorialCompleted())
+
+        // The stored save-format version is bumped to 15.
+        assertEquals(15L, queries.selectSaveVersion().executeAsOne())
+
+        // The new column is writable, not just present: a tutorial-completion write on top of the migrated
+        // DB round-trips, and (per-field discipline) leaves the migrated handedness + audio columns untouched.
+        repo.saveTutorialCompleted(true)
+        val freshRepo = SqlDelightSettingsRepository(database, NoOpLogger)
+        assertTrue("tutorial flag round-trips on the migrated DB", freshRepo.loadTutorialCompleted())
+        assertEquals(
+            "the tutorial-flag write must not clobber the migrated handedness",
+            Handedness.RIGHT_HANDED,
+            freshRepo.loadHandedness(),
+        )
+        assertEquals(
+            "the tutorial-flag write must not clobber the migrated audio settings",
+            AudioSettings(masterMuted = true, sfxVolume = 0.25f, musicVolume = 0.75f),
+            freshRepo.loadAudioSettings(),
         )
     }
 }

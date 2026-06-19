@@ -1,5 +1,6 @@
 package com.orbitalfrontier.screen.controls
 
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Group
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Touchable
@@ -7,6 +8,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.ImageButton
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.Align
+import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.settings.ScreenSide
 
 /**
@@ -53,6 +55,10 @@ class ActionCluster(skin: OrbitalUiSkin) {
 
     private var side: ScreenSide = ScreenSide.RIGHT
     private var dirty = true
+
+    // UC36: the action currently emphasised by the tutorial (null = none). Visual only — a tint on the
+    // button, never an availability/input change.
+    private var highlighted: Action? = null
 
     init {
         actor.setSize(LAYOUT_WIDTH, LAYOUT_HEIGHT)
@@ -112,6 +118,20 @@ class ActionCluster(skin: OrbitalUiSkin) {
             this.side = side
             dirty = true
         }
+    }
+
+    /**
+     * Emphasise (tint) the [action]'s button for the tutorial's current step, or clear the emphasis when
+     * [action] is null (UC36 AC#2). **Visual only** — it changes the draw colour and never touches
+     * availability, layout, or the press/tap wiring, so gameplay input is byte-identical whether a button
+     * is highlighted or not (AC#4). A highlighted-but-currently-hidden button (e.g. DOCK out of range)
+     * simply shows the tint the moment it surfaces. Idempotent and allocation-free on the no-change path.
+     */
+    fun setHighlightedAction(action: Action?) {
+        if (highlighted == action) return
+        highlighted?.let { buttons.getValue(it).color = Color.WHITE }
+        highlighted = action
+        action?.let { buttons.getValue(it).color = Palette.ACCENT }
     }
 
     /** Reflect the debug point-and-go armed state on its button label (mirrors the old ON/OFF text). */
