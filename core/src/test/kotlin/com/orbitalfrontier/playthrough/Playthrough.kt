@@ -412,12 +412,19 @@ data class ReputationParamsDto(
     val courierFailDelta: Int,
     val min: Int,
     val max: Int,
+    // UC43: the per-faction-kill standing change. The only NEW serialized field; `@EncodeDefault(NEVER)`
+    // with a domain-derived default (mirroring CombatParamsDto.salvagePickupRadius) so a run under the
+    // default tuning OMITS the key — every committed fixture stays byte-identical (no regen) and older
+    // artifacts (recorded before UC43) decode via the default.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val combatKillDelta: Int = ReputationParams().combatKillDelta,
 ) {
     /** Reconstruct the domain [ReputationParams] (its `init` re-validates the values). */
     fun toReputationParams(): ReputationParams =
         ReputationParams(
             missionCompleteDelta = missionCompleteDelta,
             courierFailDelta = courierFailDelta,
+            combatKillDelta = combatKillDelta,
             min = min,
             max = max,
         )
@@ -428,6 +435,7 @@ data class ReputationParamsDto(
             ReputationParamsDto(
                 missionCompleteDelta = params.missionCompleteDelta,
                 courierFailDelta = params.courierFailDelta,
+                combatKillDelta = params.combatKillDelta,
                 min = params.min,
                 max = params.max,
             )

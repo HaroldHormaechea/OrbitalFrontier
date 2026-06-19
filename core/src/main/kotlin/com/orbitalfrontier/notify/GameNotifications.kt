@@ -77,6 +77,22 @@ object GameNotifications {
     }
 
     /**
+     * The player's standing with the faction named [factionName] changed by [delta] (UC43) — e.g.
+     * "INDEPENDENTS -5" after destroying one of its ships. Takes a plain display **String** (not a
+     * `FactionId`/`Faction`) so the `notify` package stays decoupled from `faction` (the purity guard
+     * keeps `notify` engine-free and dependency-light); the call site resolves the faction's display
+     * name. The sign is always shown (a loss as "-N", a gain as "+N"). ASCII only (the bundled font's
+     * glyph set, UC28; the renderer ellipsizes if needed).
+     */
+    fun reputationChanged(
+        factionName: String,
+        delta: Int,
+    ): GameNotification {
+        val signed = if (delta >= 0) "+$delta" else "$delta"
+        return GameNotification(NotificationKind.REPUTATION_CHANGED, "$factionName $signed")
+    }
+
+    /**
      * The notification a combat [event] should surface, or `null` for events that must NOT toast (UC35
      * AC#1; flood-defense layer 1).
      *

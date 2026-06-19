@@ -1,6 +1,6 @@
 # Design Note — Combat & Encounters
 
-- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen + UC41 combat-bounty missions + UC42 loot/salvage implemented; shields still deferred)
+- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen + UC41 combat-bounty missions + UC42 loot/salvage + UC43 combat-driven reputation implemented; shields still deferred)
 - **Last updated:** 2026-06-19
 - **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding combat decisions); [ADR 0022](../adr/0022-ship-destruction-screen.md) (the destruction/game-over screen); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
 
@@ -110,6 +110,18 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
   credits to the wallet. Salvage credits **stack with bounty rewards** as a distinct source (no double-count).
   Salvage is transient world state excluded from the save (reconstructs empty on reload, like combat —
   ADR 0012); see [ADR 0030](../adr/0030-loot-and-salvage-economy.md). This is the combat→Earn link of the loop.
+- **Combat-driven reputation (UC43)** — destroying a **faction-affiliated** hostile moves the player's
+  standing with that faction through the existing `Reputation.with` seam (UC14), the combat call site
+  [ADR 0013](../adr/0013-factions-and-reputation.md) predicted. A hostile's faction is **intrinsic to the
+  ship type** (`HostileArchetype.factionId`, `null` ⇒ unaligned ⇒ no effect — the neutral-hostile rule);
+  the pure, deterministic `combat/CombatReputation.applyKills` applies `ReputationParams.combatKillDelta`
+  (a clamped per-kill loss) and is wired lockstep in `PlayScreen` + the test-set `Simulation` (standing
+  only; the device additionally raises one coalescable `REPUTATION_CHANGED` toast per faction that moved).
+  Single-faction MVP — no allied/rival relationship graph yet. RAIDER/SCAVENGER stay unaligned; one new
+  Independents archetype (`INDEPENDENT_MARAUDER`) spawns in a new natural encounter zone in **Gamma** (the
+  Independents' home; no committed fixture roams Gamma, so the per-sector spawn check leaves every replay
+  byte-identical). No schema bump (reputation already persisted, v19 unchanged);
+  see [ADR 0031](../adr/0031-combat-driven-reputation.md).
 
 ## Open questions
 

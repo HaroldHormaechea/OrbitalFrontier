@@ -21,6 +21,7 @@ import com.orbitalfrontier.combat.Combat
 import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.CombatReputation
 import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.combat.DestroyedHostile
 import com.orbitalfrontier.combat.DestructionSummary
@@ -52,6 +53,7 @@ import com.orbitalfrontier.economy.StationRefuelAction
 import com.orbitalfrontier.economy.StationRefuelStatus
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
+import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.faction.ReputationGate
 import com.orbitalfrontier.faction.ReputationParams
@@ -1619,6 +1621,22 @@ class PlayScreen(
             val spawned = Salvage.spawn(salvage, nextSalvageId, preStepZoneId, destroyed)
             salvage = spawned.drops
             nextSalvageId = spawned.nextSalvageId
+
+            // UC43: fold this tick's faction-affiliated kills into the player's standing via the existing
+            // Reputation.with seam (the combat call site ADR 0013/0031 predicted) — independent of the
+            // bounty fold above (a faction kill may pay a bounty AND a salvage wreck AND move reputation;
+            // distinct effects, no interference). Unaligned kills (RAIDER/SCAVENGER, null faction) are a
+            // no-op returning the same instance, so non-faction encounters are byte-identical to pre-UC43.
+            // Surface one coalescable WARNING toast per faction that actually moved (device only — the
+            // headless Simulation mirror applies the standing but enqueues no notification).
+            val combatRep = CombatReputation.applyKills(destroyed, reputation, reputationParams)
+            if (combatRep.changed) {
+                reputation = combatRep.reputation
+                combatRep.deltas.forEach { (factionId, delta) ->
+                    val factionName = Factions.byId(factionId)?.displayName ?: factionId.value
+                    notifications.enqueue(GameNotifications.reputationChanged(factionName, delta))
+                }
+            }
         }
 
         if (result.destroyed) {
