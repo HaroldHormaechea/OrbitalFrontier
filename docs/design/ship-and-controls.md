@@ -1,8 +1,8 @@
 # Design Note — Ship & Controls
 
 - **Status:** in-progress (core model decided; action set, crew & some params open)
-- **Last updated:** 2026-06-07
-- **Related:** PROJECT_BRIEF.md → in_scope #1, core_gameplay_loop (Roam); ADR 0001 (libGDX); [combat.md](combat.md) (turrets/weapons, auto-aim), [upgrades-and-progression.md](upgrades-and-progression.md) (per-ship stats, crew), [save-and-persistence.md](save-and-persistence.md) (loadout/damage/settings state)
+- **Last updated:** 2026-06-19
+- **Related:** PROJECT_BRIEF.md → in_scope #1, core_gameplay_loop (Roam); ADR 0001 (libGDX); ADR 0015 (UI scale); ADR 0025 (settings screen, joystick tuning, player-adjustable UI scale); [combat.md](combat.md) (turrets/weapons, auto-aim), [upgrades-and-progression.md](upgrades-and-progression.md) (per-ship stats, crew), [save-and-persistence.md](save-and-persistence.md) (loadout/damage/settings state)
 
 ## Summary
 
@@ -47,6 +47,30 @@ simplifying control while preserving a sense of mass.
   layout above it never overlap it. No art pipeline yet — the glyphs are generated shapes.
 - **Handedness setting.** A configuration option mirrors the layout (movement stick on
   the right, action arc pivoting on the bottom-**left** corner) for left-handed players.
+  It lives in the **settings surface** below (CONTROLS group), reachable from the main
+  menu and the in-flight pause overlay, and applies live (the controls re-lay-out the
+  instant it is toggled).
+
+**Settings surface (ADR 0025).** Settings are a single **grouped panel** built once
+(`SettingsPanel`) and hosted by two surfaces — a standalone **main-menu settings screen**
+and the **in-flight pause Settings sub-view** — so the two can never drift. Groups:
+**AUDIO** (mute / SFX / music, UC31), **CONTROLS** (handedness + joystick tuning),
+**DISPLAY** (UI scale), **GAMEPLAY** (replay first-run tutorial). Each control applies
+live where feasible and persists per-field to the single-row `settings` table. Two groups
+the long-term design calls for are **deliberately omitted, not stubbed**, until their use
+cases land: **Accessibility** (text size / colourblind palette, UC39) and **Save
+Management** (save slots, UC38).
+
+**Joystick tuning (ADR 0025) — determinism-safe.** Two CONTROLS settings shape how the
+left stick *feels*: **sensitivity** (a multiplier on the stick magnitude, `0.25..3.0`) and
+**deadzone** (the deflection below which the stick reports no input, `0.15..0.9`). These
+are applied at **exactly one place — the joystick input boundary** (`MovementJoystick`,
+which gates below the deadzone then scales by sensitivity, capped at 1, no rescale). The
+pure movement model, `ShipMovementParams`, and the record/replay harness (ADR 0006) never
+see the tuning — they consume the resulting `MovementInput` only — so determinism and every
+recorded playthrough are unaffected. The deadzone's lower bound equals the model's own
+`inputDeadzone` floor (0.15), so tuning can only *widen* the dead band, never shrink it
+below what the simulation already ignores.
 
 **Weapons & turrets:**
 - **Fixed/forward weapons** fire along hull facing, triggered by an action control.
@@ -94,7 +118,17 @@ docked**; each ship has its own movement params, loadout, cargo, and fuel. See
 - **Persisted (via ship loadout):** ship config — movement params, turret hardpoints,
   and crew assignment — owned by [upgrades-and-progression.md](upgrades-and-progression.md),
   serialized through [save-and-persistence.md](save-and-persistence.md).
-- **Settings:** handedness/control-layout preference is persisted.
+- **Settings:** handedness/control-layout preference is persisted, as are the joystick
+  tuning (sensitivity + deadzone) and the UI scale (ADR 0025). All live in the single-row
+  `settings` table (additive v15→v16 migration), each written through its own targeted
+  per-field `UPDATE` so toggling one never clobbers another.
+- **UI scale (ADR 0015 / ADR 0025):** a single global UI/HUD magnification knob
+  (`1.0..3.0`, default ×2), now a player control in the DISPLAY settings group. It is
+  **rendering-only** — never read into movement, combat, or any simulation math, so it is
+  determinism-neutral. A live change re-applies to the active screen's Scene2D viewport
+  immediately; screen-space HUD/minimap renderers that captured the factor at construction
+  reflect it on the **next screen rebuild** (no app restart). The world camera is never
+  scaled — the playfield stays 1:1.
 - **Per-section damage state:** ties to the combat damage model; _TODO: persist between
   sessions or reset on dock/repair?_
 
