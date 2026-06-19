@@ -1,7 +1,7 @@
 # Design Note — Combat & Encounters
 
-- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen implemented; combat missions, shields, loot still deferred)
-- **Last updated:** 2026-06-18
+- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen + UC41 combat-bounty missions + UC42 loot/salvage implemented; shields still deferred)
+- **Last updated:** 2026-06-19
 - **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding combat decisions); [ADR 0022](../adr/0022-ship-destruction-screen.md) (the destruction/game-over screen); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
 
 ## Summary
@@ -102,15 +102,23 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
 - The pure model is engine-free (added to `NoBox2DGuardTest`); `PlayScreen` paces `Combat.step` off
   accumulated `dt` (fixed sub-tick), while the replay harness steps it at a fixed `dt`.
 - Movement: `CombatLimitedMovement` composes on top of `FuelLimitedMovement` without touching the model.
+- **Loot / salvage economy (UC42)** — a destroyed hostile drops **transient salvage** (`combat/SalvageDrop`):
+  credits + resources rolled by the seed-deterministic `combat/LootTable` (keyed `salvage:$zoneId:$hostileId`,
+  drawing the shared `DeterministicRng` — **no** combat-RNG draws, so combat fixtures stay byte-identical).
+  The player collects it by **proximity** (`Salvage.collect`, radius `CombatParams.salvagePickupRadius`):
+  resources flow to cargo (capacity-respecting partial fill; overflow left behind + a CARGO-FULL toast),
+  credits to the wallet. Salvage credits **stack with bounty rewards** as a distinct source (no double-count).
+  Salvage is transient world state excluded from the save (reconstructs empty on reload, like combat —
+  ADR 0012); see [ADR 0030](../adr/0030-loot-and-salvage-economy.md). This is the combat→Earn link of the loop.
 
 ## Open questions
 
 _Deferred (each a future UC/ADR — do not resolve silently in code):_
 
-- **Combat-mission type** — only the thin `missionSpawn` hook exists; the full mission flow (objectives,
-  bounty payout) is unbuilt.
+- **Combat-mission type** — bounty contracts are built (UC41: `missionSpawn` + auto-pay on the contracted
+  kill, [ADR 0029](../adr/0029-combat-bounty-missions.md)); richer combat-mission flows (escort, objectives
+  beyond a kill quota) remain deferred.
 - **Shields / armour** — intentionally omitted; the MVP is HULL + sections only.
-- **Loot / salvage / bounty economy** — destroyed hostiles drop nothing yet; combat does not feed economy.
 - **Richer AI** (formations, retreat-and-regroup, targeting the player's weakest section) and **difficulty
   scaling** by a spawn director.
 - **Balancing** — every weapon/HP/AI number is a `[TUNE]` placeholder.

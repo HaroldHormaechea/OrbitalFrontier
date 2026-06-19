@@ -118,6 +118,16 @@ object PlaythroughFixtures {
     const val UC41_COMBAT_BOUNTY: String = "uc41-combat-bounty"
 
     /**
+     * UC42 loot-&-salvage playthrough name (AC#5): fly into the natural `alpha-raider-picket` zone (NOT a
+     * bounty zone, so any credit gain is attributable to salvage alone), destroy the ambushing RAIDER with
+     * the auto-aim turret, then loiter so its dropped wreck is collected — credits to the wallet and ore into
+     * cargo. [Uc42LootSalvageReplayTest] asserts a wreck spawned and was collected and that the final credits
+     * and cargo equal the values [LootTable.roll] yields for that kill (no magic literals), plus bit-for-bit
+     * determinism. Loadable via `playtest -Dplaythrough.name=uc42-loot-salvage`.
+     */
+    const val UC42_LOOT_SALVAGE: String = "uc42-loot-salvage"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -182,6 +192,7 @@ object PlaythroughFixtures {
             UC14_FACTION to ::uc14Faction,
             UC15_STATION to ::uc15Station,
             UC41_COMBAT_BOUNTY to ::uc41CombatBounty,
+            UC42_LOOT_SALVAGE to ::uc42LootSalvage,
         )
 
     /**
@@ -911,6 +922,85 @@ object PlaythroughFixtures {
         // Loiter (released stick ⇒ drift to near-rest inside the zone) and keep firing: the turret auto-aims and
         // destroys the closing raider over the remaining ticks, completing the bounty and paying the reward.
         for (tick in UC41_THRUST_IN_TICKS until UC41_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
+
+    /**
+     * Combat tuning **pinned for the UC42 loot-&-salvage fixture only**. It reuses the UC13 HULL-funnelled,
+     * wide-hit-radius recipe (so the RAIDER's 30-HP hull falls in a fixed number of turret hits — a compact,
+     * deterministic kill), and additionally pins a **generous [CombatParams.salvagePickupRadius]** so that
+     * wherever inside the picket the raider is destroyed, the loitering player is within pickup range and the
+     * wreck is reliably collected within the recorded run. Pinning per artifact (the UC02 config-pin
+     * rationale) means a later default-radius retune can't silently invalidate this replay. The loot *table*
+     * values are deliberately NOT pinned (archetype-stat precedent): a loot retune regenerates this fixture,
+     * exactly as an archetype-HP retune already would.
+     */
+    private val UC42_COMBAT_TUNING: CombatParams =
+        CombatParams(sectionHitWeights = mapOf(ShipSection.HULL to 1), hitRadius = 60f, salvagePickupRadius = 600f)
+
+    /** Thrust-in ticks for [uc42LootSalvage] — enough to cross the picket's r260 edge from just outside it. */
+    private const val UC42_THRUST_IN_TICKS: Int = 12
+
+    /** Total ticks for [uc42LootSalvage] — the thrust-in plus a long loiter while the turret kills, then collect. */
+    private const val UC42_TOTAL_TICKS: Int = 440
+
+    /**
+     * UC42 loot-&-salvage scenario (AC#5): the player flies into the natural `alpha-raider-picket` zone,
+     * destroys the ambushing RAIDER, and the wreck it drops (UC42 AC#1) is collected (AC#2) — credits to the
+     * wallet and ore into cargo.
+     *
+     * Mirrors [uc13Combat]'s geometry exactly (the production [MvpSectorMap.ENCOUNTER_ZONES] natural zone,
+     * centre [UC13_PICKET_CENTER], radius 260) — a **natural** zone, NOT a bounty zone, so the only credit
+     * source in the run is salvage and the AC#5 assertion can attribute the gain to the loot table alone (the
+     * UC41 bounty pitfall). The player starts just west of the picket cruising east with **one crew aboard**
+     * (so the auto-aim turret is operable), thrusts in for [UC42_THRUST_IN_TICKS] ticks to trip the ambush,
+     * then loiters and holds [FireAction.FIRE] for the rest of the run while the turret grinds the raider's
+     * 30-HP hull to destruction; the wreck spawns at the kill position and the (generously-pinned) pickup
+     * radius collects it on the next tick.
+     *
+     * [Uc42LootSalvageReplayTest] asserts the AC#5 contract: a wreck existed at some tick and the world is
+     * clear of salvage at the end, the final credits and cargo equal the values [com.orbitalfrontier.combat
+     * .LootTable.roll] yields for the kill (derived, no magic literals), and the replay is bit-for-bit
+     * deterministic. The combat tuning is the pinned [UC42_COMBAT_TUNING]; all geometry is read from the
+     * production [MvpSectorMap]. Loadable via `playtest -Dplaythrough.name=uc42-loot-salvage`.
+     */
+    fun uc42LootSalvage(): Playthrough {
+        // Start just OUTSIDE the r260 picket on the -x side (dist 270), already cruising east at 120 wu/s so a
+        // few ticks of eastward thrust carry the ship across the r260 edge and trip the ambush (identical to UC13).
+        val start = UC13_PICKET_CENTER - Vec2(270f, 0f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(120f, 0f), headingRadians = 0f),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC42_LOOT_SALVAGE,
+                seed = 42L,
+                dtSeconds = DT_SECONDS,
+                combatConfig = UC42_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        fleet = fleet,
+                        // Start broke so the salvage payout is measured from a known-zero baseline.
+                        credits = 0L,
+                        // The respawn point on destruction (persisted); the raider never reaches the player's hull
+                        // first under the pinned tuning, but the field mirrors UC13's start for parity.
+                        lastDockedStation = PoiId("alpha-station"),
+                    ),
+            )
+
+        val east = MovementInput(targetDirection = Vec2(1f, 0f), magnitude = 1f, released = false)
+        // Thrust east to cross the picket edge and spawn the raider; FIRE the whole time.
+        for (tick in 0 until UC42_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, east)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        // Loiter (released stick ⇒ drift to near-rest inside the picket) and keep firing: the turret auto-aims
+        // and destroys the closing raider; its wreck is then collected by the pinned pickup radius.
+        for (tick in UC42_THRUST_IN_TICKS until UC42_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
         }
         return recorder.build()
