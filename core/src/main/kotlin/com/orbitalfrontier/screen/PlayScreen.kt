@@ -84,6 +84,7 @@ import com.orbitalfrontier.render.PauseState
 import com.orbitalfrontier.render.ShipRenderer
 import com.orbitalfrontier.render.ShipSchematicRenderer
 import com.orbitalfrontier.render.StarfieldRenderer
+import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.render.WorldObjectRenderer
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.save.AutosaveController
@@ -96,6 +97,7 @@ import com.orbitalfrontier.screen.controls.PauseOverlay
 import com.orbitalfrontier.screen.controls.TutorialOverlay
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
+import com.orbitalfrontier.settings.JoystickTuning
 import com.orbitalfrontier.settings.ScreenSide
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FleetOrder
@@ -168,6 +170,10 @@ class PlayScreen(
     // and the control skin draw from it but never dispose it (the game owns its lifecycle, AC#1).
     private val gameAssets: GameAssets,
     initialHandedness: Handedness,
+    // UC37: the persisted joystick tuning (sensitivity + deadzone), read fresh by the app at flight start.
+    // Applied to the [joystick] boundary below and seeded into the settings panel; the settings control
+    // updates it live via [onJoystickTuningChanged]. Defaults to neutral so headless/JVM tests need not wire it.
+    initialJoystickTuning: JoystickTuning = JoystickTuning.DEFAULT,
     initialWorldState: WorldState,
     private val onDocked: (Station) -> Unit,
     // UC32: quit-to-main-menu hand-off. The pause overlay's Quit button flushes a durable autosave and
@@ -418,6 +424,10 @@ class PlayScreen(
     private var handedness = initialHandedness
 
     init {
+        // UC37: apply the persisted joystick tuning to the live input boundary (the ONLY place it takes
+        // effect); the settings control updates it live via onJoystickTuningChanged below.
+        joystick.tuning = initialJoystickTuning.coerced()
+
         settingsOverlay =
             SettingsOverlay(
                 skin = skin,
@@ -427,11 +437,23 @@ class PlayScreen(
                 // UC31: seed the audio controls from persisted settings (already applied to [audio] by the
                 // app at startup); the overlay then keeps them in sync as the player adjusts them.
                 initialAudio = settingsRepository.loadAudioSettings(),
+                // UC37: seed the joystick + UI-scale controls from the live values — the tuning just applied
+                // to the joystick, and the global UI scale already restored by the app at startup.
+                initialJoystickTuning = initialJoystickTuning,
+                initialUiScale = UiScale.factor,
                 audio = audio,
                 onHandednessChanged = { newHandedness ->
                     handedness = newHandedness
                     layoutControls()
                 },
+                // UC37: a sensitivity/deadzone change applies live at the joystick boundary — the model +
+                // replay never see it, so determinism is preserved (ADR 0006).
+                onJoystickTuningChanged = { newTuning -> joystick.tuning = newTuning },
+                // UC37: a UI-scale change is already in the global UiScale knob; re-apply it to THIS stage's
+                // viewport and re-flow the controls so the on-screen chrome rescales without leaving flight.
+                // The screen-space HUD/minimap renderers captured the factor at construction, so they reflect
+                // the new scale on the next screen rebuild (no app restart) — documented in ADR 0025.
+                onUiScaleChanged = { applyUiScaleLive() },
                 // UC36 AC#3: REPLAY TUTORIAL restarts the onboarding from the first step (the persisted
                 // first-run flag is left set, so this is a one-session replay, not a re-arm of first-run).
                 onReplayTutorial = { replayTutorial() },
@@ -1116,6 +1138,19 @@ class PlayScreen(
         worldCamera.viewportWidth = width.toFloat()
         worldCamera.viewportHeight = height.toFloat()
         worldCamera.update()
+        layoutControls()
+    }
+
+    /**
+     * UC37: re-apply the (already-updated global) [com.orbitalfrontier.render.UiScale] to this stage's
+     * Scene2D viewport and re-flow the controls, so a UI-scale change made in the in-flight settings panel
+     * rescales the on-screen chrome live without leaving flight. The world camera is untouched (the
+     * playfield stays 1:1, ADR 0015), and the screen-space HUD/minimap renderers — which captured the
+     * factor at construction — reflect the new scale on the next screen rebuild (ADR 0025).
+     */
+    private fun applyUiScaleLive() {
+        (stage.viewport as? ScreenViewport)?.applyUiScale()
+        stage.viewport.update(Gdx.graphics.width, Gdx.graphics.height, true)
         layoutControls()
     }
 
@@ -1998,11 +2033,14 @@ class PlayScreen(
         const val PAUSE_BUTTON_WIDTH = 140f
         const val PAUSE_BUTTON_HEIGHT = 56f
 
-        const val SETTINGS_WIDTH = 200f
+        // UC37: the in-flight settings panel is now the shared grouped [SettingsPanel] wrapped in a
+        // ScrollPane. Slightly wider than the pre-UC37 single-column overlay (200) to seat the grouped
+        // 210-wide rows + the vertical scrollbar without horizontal clipping; still left-banded.
+        const val SETTINGS_WIDTH = 240f
 
-        // UC31/UC36: the settings panel stacks five controls (handedness + mute + SFX + music volume +
-        // UC36 REPLAY TUTORIAL), each a 44-high row with a 6 gap, so the panel is 5 × (44 + 6) = 250 tall.
-        // Still centred in the top-left band and hidden in combat / when the map overlay is open.
+        // UC37: the grouped content is far taller than this fixed footprint, so the ScrollPane scrolls it
+        // vertically — the panel stays a fixed-size box centred in the top-left band, hidden in combat /
+        // when the map overlay is open (and surfaced as the UC32 pause Settings sub-view).
         const val SETTINGS_HEIGHT = 250f
 
         // UC22/UC34: world-space height of the top-left HUD readout block, measured down from the top.

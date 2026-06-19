@@ -40,6 +40,9 @@ class MainMenuScreen(
     private val continueEnabled: Boolean,
     private val onContinue: () -> Unit,
     private val onStartNewGame: () -> Unit,
+    // UC37 AC#4: SETTINGS opens the standalone main-menu settings screen. Defaults to a no-op so any
+    // headless/JVM context (or a test) that builds the menu without a settings host need not wire it.
+    private val onOpenSettings: () -> Unit = {},
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -92,6 +95,10 @@ class MainMenuScreen(
             continueButton.isDisabled = true
         }
         root.add(continueButton).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
+
+        // UC37 AC#4: SETTINGS is always available (it configures preferences, not save state), so unlike
+        // CONTINUE it is never disabled. The owner opens the standalone settings screen.
+        root.add(menuButton("SETTINGS") { onOpenSettings() }).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
     }
 
     /** A confirmation step: the [warning] line + CONFIRM (advance/commit) and CANCEL (back to menu). */

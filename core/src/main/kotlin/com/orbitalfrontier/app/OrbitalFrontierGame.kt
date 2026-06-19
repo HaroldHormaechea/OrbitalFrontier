@@ -17,6 +17,7 @@ import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.LibGdxAudioService
+import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
@@ -28,12 +29,14 @@ import com.orbitalfrontier.screen.MainMenuScreen
 import com.orbitalfrontier.screen.MissionBoardScreen
 import com.orbitalfrontier.screen.OutfitScreen
 import com.orbitalfrontier.screen.PlayScreen
+import com.orbitalfrontier.screen.SettingsScreen
 import com.orbitalfrontier.screen.ShipyardScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.StationWalkaroundScreen
 import com.orbitalfrontier.screen.TradeScreen
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.Handedness
+import com.orbitalfrontier.settings.JoystickTuning
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationModuleCatalog
@@ -87,6 +90,10 @@ class OrbitalFrontierGame(
     private var audio: AudioService = NoOpAudioService
 
     private var mainMenuScreen: MainMenuScreen? = null
+
+    // UC37: the standalone main-menu settings screen, built on demand from the menu's SETTINGS button and
+    // owned here so it can be disposed (libGDX only hide()s the previous screen).
+    private var settingsScreen: SettingsScreen? = null
     private var playScreen: PlayScreen? = null
     private var stationHubScreen: StationHubScreen? = null
     private var tradeScreen: TradeScreen? = null
@@ -124,6 +131,11 @@ class OrbitalFrontierGame(
         settings.ensureInitialized()
         settingsRepository = settings
         handedness = settings.loadHandedness()
+
+        // UC37: restore the persisted UI scale into the global knob BEFORE any screen builds, so the very
+        // first screen (the main menu) lays out at the player's chosen scale. Every screen's ScreenViewport
+        // reads UiScale.factor at construction (ADR 0015 / ADR 0025).
+        UiScale.set(settings.loadUiScale())
 
         // UC31: build the real audio service on the GL/audio thread (alive by create()) and apply the
         // persisted preferences before any cue/music plays, so audio honours the saved mute + volumes
@@ -185,7 +197,44 @@ class OrbitalFrontierGame(
                 // (UC09 — WorldState defaults to Fleet.starter()).
                 enterGame(WorldState(currentSector = MvpSectorMap.START_SECTOR, credits = STARTING_CREDITS))
             },
+            // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu.
+            onOpenSettings = { openSettings() },
         )
+
+    /**
+     * Open the main-menu settings screen (UC37 AC#4), owning it so it can be disposed (libGDX only hide()s
+     * the menu). It hosts the SAME shared [com.orbitalfrontier.screen.SettingsPanel] the in-flight overlay
+     * does, seeded from the persisted settings; BACK returns to the (kept-alive) menu. UI scale changes
+     * apply live to the settings screen's own viewport; handedness + joystick tuning are persisted here and
+     * re-read fresh by [enterGame] when a game is next entered.
+     */
+    private fun openSettings() {
+        val screen =
+            SettingsScreen(
+                logger = logger,
+                repository = settingsRepository,
+                saveExecutor = saveExecutor,
+                audio = audio,
+                initialHandedness = settingsRepository.loadHandedness(),
+                initialAudio = settingsRepository.loadAudioSettings(),
+                initialJoystickTuning = settingsRepository.loadJoystickTuning(),
+                initialUiScale = settingsRepository.loadUiScale(),
+                onBack = { returnToMenuFromSettings() },
+            )
+        settingsScreen = screen
+        setScreen(screen)
+    }
+
+    /**
+     * Return from the settings screen to the (kept-alive) main menu (UC37): re-show the menu and dispose the
+     * now-hidden settings screen to free its GL. The menu instance is unchanged — settings never touch save
+     * state, so Continue/Start availability is identical.
+     */
+    private fun returnToMenuFromSettings() {
+        mainMenuScreen?.let { setScreen(it) }
+        settingsScreen?.dispose()
+        settingsScreen = null
+    }
 
     /**
      * Enter gameplay with [worldState] — the shared tail of both Start (a fresh seed) and Continue (the
@@ -219,6 +268,13 @@ class OrbitalFrontierGame(
             )
         autosave = controller
 
+        // UC37: re-read handedness + joystick tuning FRESH here — the create()-cached [handedness] can be
+        // stale if the player changed it on the main-menu settings screen since launch, and joystick tuning
+        // is only ever read at flight start. UI scale is already live in the global [UiScale] knob.
+        val currentHandedness = settingsRepository.loadHandedness()
+        handedness = currentHandedness
+        val joystickTuning: JoystickTuning = settingsRepository.loadJoystickTuning()
+
         val screen =
             PlayScreen(
                 logger = logger,
@@ -227,7 +283,8 @@ class OrbitalFrontierGame(
                 autosave = controller,
                 sectorWorld = sectorWorld,
                 gameAssets = requireNotNull(gameAssets) { "GameAssets must be loaded in create() before enterGame()" },
-                initialHandedness = handedness,
+                initialHandedness = currentHandedness,
+                initialJoystickTuning = joystickTuning,
                 initialWorldState = initialWorldState,
                 onDocked = { station -> openStationHub(station) },
                 // UC32: the pause overlay's Quit button flushes a durable autosave (in PlayScreen) and then
@@ -558,6 +615,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose main menu screen on shutdown", e)
         }
         mainMenuScreen = null
+        try {
+            settingsScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose settings screen on shutdown", e)
+        }
+        settingsScreen = null
         try {
             playScreen?.dispose()
         } catch (e: Exception) {
