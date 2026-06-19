@@ -4,10 +4,12 @@ import com.orbitalfrontier.combat.Combat
 import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.DestroyedHostile
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.PlayerCombatInput
 import com.orbitalfrontier.combat.Respawn
+import com.orbitalfrontier.combat.Salvage
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
@@ -463,12 +465,31 @@ class Simulation(
                 reputationParams,
             )
 
+        // UC42 collect: proximity salvage pickup — the lockstep mirror of PlayScreen.collectSalvage,
+        // which runs AFTER movement/mining/missions and BEFORE the combat branch (so a tick that ends an
+        // encounter can't skip it). In flight only (a freshly-docked tick hands off to the hub on device,
+        // like mining/scanning). Operates on the post-mission cargo + wallet; credits + cargo thread into
+        // the combat fold and the returns below. A NONE/empty salvage list is a same-instance no-op, so
+        // pre-UC42 fixtures step byte-identically.
+        var salvage = state.salvage
+        var nextSalvageId = state.nextSalvageId
+        var collectedCargo = missionAdvance.cargo
+        var collectedCredits = missionAdvance.credits
+        if (nextDocked == null) {
+            val collect =
+                Salvage.collect(salvage, nextShip.position, collectedCargo, collectedCredits, combatParams.salvagePickupRadius)
+            if (collect.collectedAny) {
+                salvage = collect.drops
+                collectedCargo = collect.cargo
+                collectedCredits = collect.credits
+            }
+        }
+
         // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
         // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
-        // UC12: the cargo is the post-mission cargo (a radio Accept never touches cargo, so this is the
-        // same mining.cargo instance unless a mission consumed/added units — same-instance keeps it
-        // byte-identical on a no-op tick).
-        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = missionAdvance.cargo, fuel = burnedFuel)
+        // UC12/UC42: the cargo is the post-mission, post-salvage-collect cargo (same instance unless a
+        // mission or a salvage pickup moved units — same-instance keeps it byte-identical on a no-op tick).
+        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = collectedCargo, fuel = burnedFuel)
 
         // --- UC13 combat. Runs in flight only (a freshly-docked tick skips it, like mining/scanning) —
         // the authored encounter zones sit in open space, away from stations. Edge-triggered natural spawn
@@ -485,7 +506,10 @@ class Simulation(
         // a bounty completion (auto-pay) persists exactly as on device. Same instances when no bounty kill
         // landed this tick — so pre-UC41 fixtures stay byte-identical.
         var bountyLog = missionAdvance.log
-        var bountyCredits = missionAdvance.credits
+        // UC42: seed the wallet from the post-salvage-collect credits (so a bounty payout this tick stacks
+        // on top of any salvage credits just collected — distinct sources, no double-count). Same value as
+        // missionAdvance.credits when nothing was collected this tick.
+        var bountyCredits = collectedCredits
         var bountyReputation = missionAdvance.reputation
 
         if (nextDocked == null) {
@@ -548,6 +572,10 @@ class Simulation(
                 // bounty — the lockstep mirror of PlayScreen.stepCombatOnce. Applied BEFORE the destruction
                 // return so a kill on the death tick still counts; same instances when no kill landed.
                 val preStepZoneId = combat.zoneId
+                // UC42: snapshot the hostiles BEFORE the step — a HostileDestroyed event carries only the
+                // id, and the cull removes the hostile, so the kill position + archetype (the salvage spawn
+                // inputs) must be read from this pre-step list. Mirrors PlayScreen.stepCombatOnce.
+                val preStepHostiles = combat.hostiles
                 val result = Combat.step(combat, playerInput, fireAction, combatParams, dt)
                 combat = result.combat
 
@@ -568,6 +596,21 @@ class Simulation(
                         bountyCredits = bounty.credits
                         bountyReputation = bounty.reputation
                     }
+
+                    // UC42 (a): spawn one salvage wreck per kill at the hostile's pre-step position, loot
+                    // rolled deterministically from the zone + hostile id (independent of the combat RNG).
+                    // Threaded into the salvage vars, which feed BOTH the destroyed-path and normal-path
+                    // returns below. The lockstep mirror of PlayScreen.stepCombatOnce.
+                    val byId = preStepHostiles.associateBy { it.id }
+                    val destroyed =
+                        result.events.asSequence()
+                            .filterIsInstance<CombatEvent.HostileDestroyed>()
+                            .mapNotNull { event -> byId[event.id] }
+                            .map { hostile -> DestroyedHostile(hostile.id, hostile.archetypeId, hostile.kinematics.position) }
+                            .toList()
+                    val spawned = Salvage.spawn(salvage, nextSalvageId, preStepZoneId, destroyed)
+                    salvage = spawned.drops
+                    nextSalvageId = spawned.nextSalvageId
                 }
 
                 if (result.destroyed) {
@@ -594,6 +637,10 @@ class Simulation(
                         // UC14/UC41: standing after this tick's mission resolve/advance + bounty fold.
                         reputation = bountyReputation,
                         combat = respawn.combat,
+                        // UC42: the wrecks after this tick's collect + spawn (a kill on the death tick still
+                        // drops its salvage; the player just respawned elsewhere can't reach it). Transient.
+                        salvage = salvage,
+                        nextSalvageId = nextSalvageId,
                         lastDockedStation = lastDockedStation,
                     )
                 }
@@ -625,6 +672,9 @@ class Simulation(
             reputation = bountyReputation,
             // UC13: the live encounter (NONE same-instance on a no-op tick) and the persisted respawn point.
             combat = combat,
+            // UC42: the wrecks after this tick's collect + spawn (SAME instances on a no-op tick). Transient.
+            salvage = salvage,
+            nextSalvageId = nextSalvageId,
             lastDockedStation = lastDockedStation,
         )
     }

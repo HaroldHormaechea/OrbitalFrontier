@@ -1,6 +1,7 @@
 package com.orbitalfrontier.sim
 
 import com.orbitalfrontier.combat.CombatState
+import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -67,6 +68,20 @@ data class SimulationState(
      * SAME instance, so pre-UC13 fixtures step byte-identically.
      */
     val combat: CombatState = CombatState.NONE,
+    /**
+     * The salvage wrecks currently floating in the world (UC42 AC#1/#2), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.salvage]. **Transient** like [combat] — spawned from combat
+     * kills, collected by proximity, never row-persisted (the snapshot DTO omits it; on decode it
+     * reconstructs empty). Defaults to empty and stays the SAME instance on a no-op tick, so every
+     * pre-UC42 fixture constructs and **steps byte-identically**.
+     */
+    val salvage: List<SalvageDrop> = emptyList(),
+    /**
+     * The monotonic [com.orbitalfrontier.combat.SalvageId] allocator (UC42), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.nextSalvageId]. **Transient** (rides with [salvage]). Defaults
+     * to 0 so every pre-UC42 fixture constructs unchanged.
+     */
+    val nextSalvageId: Long = 0L,
     /**
      * The [PoiId] of the station the player most recently docked at (UC13 AC#5) — the respawn point on
      * destruction, mirroring the production [com.orbitalfrontier.world.WorldState.lastDockedStation].

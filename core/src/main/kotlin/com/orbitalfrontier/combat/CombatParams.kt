@@ -40,10 +40,16 @@ data class CombatParams(
     val muzzleOffset: Float = 24f,
     /** Distance (world-units) from the player at which natural-encounter hostiles spawn in (UC13). [TUNE] */
     val spawnDistance: Float = 360f,
+    /**
+     * Radius (world-units) within which the player auto-collects a [SalvageDrop] by flying near it
+     * (UC42 AC#2) — proximity pickup, no explicit action. [TUNE]
+     */
+    val salvagePickupRadius: Float = 64f,
 ) {
     init {
         require(hitRadius > 0f) { "hitRadius must be positive: $hitRadius" }
         require(spawnDistance > 0f) { "spawnDistance must be positive: $spawnDistance" }
+        require(salvagePickupRadius > 0f) { "salvagePickupRadius must be positive: $salvagePickupRadius" }
         require(minEngineSpeedFactor in 0f..1f) { "minEngineSpeedFactor must be in 0..1: $minEngineSpeedFactor" }
         require(respawnCargoLossFraction in 0f..1f) {
             "respawnCargoLossFraction must be in 0..1: $respawnCargoLossFraction"
