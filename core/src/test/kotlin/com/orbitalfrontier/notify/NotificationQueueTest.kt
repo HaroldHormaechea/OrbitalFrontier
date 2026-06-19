@@ -177,4 +177,85 @@ class NotificationQueueTest {
         assertEquals(3, q.visible().size)
         assertEquals(12, q.size())
     }
+
+    // --- UC40 AC#2: visibleWithProgress() exposes a pure life fraction for the animated renderer ---------
+
+    @Test
+    fun `a freshly enqueued entry reports a zero life fraction`() {
+        val q = NotificationQueue(NotificationPolicy(displaySeconds = 2f))
+        q.enqueue(gain(100))
+        val progress = q.visibleWithProgress()
+        assertEquals(1, progress.size)
+        assertEquals("a just-shown toast is at the start of its life (0 = full fade-in pending)", 0f, progress.single().lifeFraction, 1e-6f)
+    }
+
+    @Test
+    fun `the life fraction is the visible age as a fraction of displaySeconds`() {
+        // Half a 4s display window elapsed → lifeFraction 0.5; the renderer maps this pure value to alpha/drift.
+        val q = NotificationQueue(NotificationPolicy(displaySeconds = 4f))
+        q.enqueue(gain(100))
+        q.update(1f)
+        assertEquals(0.25f, q.visibleWithProgress().single().lifeFraction, 1e-6f)
+        q.update(1f)
+        assertEquals(0.5f, q.visibleWithProgress().single().lifeFraction, 1e-6f)
+    }
+
+    @Test
+    fun `the life fraction increases monotonically and stays within zero to one`() {
+        // Step a long-lived toast across its window and assert the fraction never decreases and never leaves
+        // the clamped 0..1 range the renderer relies on for a well-formed fade curve.
+        val q = NotificationQueue(NotificationPolicy(displaySeconds = 5f))
+        q.enqueue(gain(100))
+        var previous = q.visibleWithProgress().single().lifeFraction
+        repeat(9) {
+            q.update(0.5f)
+            val current = q.visibleWithProgress().firstOrNull()?.lifeFraction ?: return@repeat
+            assertTrue("life fraction must not exceed 1 (clamped)", current <= 1f)
+            assertTrue("life fraction must not drop below 0 (clamped)", current >= 0f)
+            assertTrue("life fraction must be monotonic non-decreasing as the toast ages", current >= previous)
+            previous = current
+        }
+    }
+
+    @Test
+    fun `a promoted waiter starts a fresh life fraction at zero`() {
+        // maxVisible = 1: A is up and ages; B waits un-aged. When A dismisses and B is promoted, B must begin
+        // its own life at 0 — so the animated fade-in plays for the waiter too, not a mid-life pop-in.
+        val q = NotificationQueue(NotificationPolicy(displaySeconds = 2f, maxVisible = 1, maxQueued = 10))
+        q.enqueue(gain(10))
+        q.enqueue(jump("B"))
+        q.update(1.9f) // A ages to 1.9; B waits.
+        q.update(0.2f) // A reaches 2.1 → dismissed; B promoted at age 0.2.
+        val promoted = q.visibleWithProgress().single()
+        assertEquals("JUMPED TO B", promoted.notification.message)
+        assertEquals("the promoted waiter begins its own life, not pre-aged by the wait", 0.1f, promoted.lifeFraction, 1e-6f)
+    }
+
+    @Test
+    fun `visibleWithProgress carries the notification content and severity unchanged`() {
+        val q = NotificationQueue(NotificationPolicy(maxVisible = 5))
+        q.enqueue(GameNotification(NotificationKind.INSUFFICIENT_CREDITS, "INSUFFICIENT CREDITS"))
+        q.enqueue(jump("A"))
+        val bySeverity = q.visibleWithProgress().associate { it.notification.message to it.notification.severity }
+        assertEquals(
+            "the styled ERROR survives the round-trip for the DANGER tint",
+            NotificationSeverity.ERROR,
+            bySeverity["INSUFFICIENT CREDITS"],
+        )
+        assertEquals(NotificationSeverity.INFO, bySeverity["JUMPED TO A"])
+    }
+
+    @Test
+    fun `visibleWithProgress respects maxVisible and top-of-stack ordering`() {
+        // The animated snapshot must mirror visible(): only the first maxVisible entries, in order.
+        val q = NotificationQueue(NotificationPolicy(maxVisible = 3, maxQueued = 12))
+        repeat(12) { q.enqueue(jump("S$it")) }
+        val progress = q.visibleWithProgress()
+        assertEquals(3, progress.size)
+        assertEquals(
+            listOf("JUMPED TO S0", "JUMPED TO S1", "JUMPED TO S2"),
+            progress.map { it.notification.message },
+        )
+        assertEquals("the animated snapshot agrees with visible()", q.visible(), progress.map { it.notification })
+    }
 }

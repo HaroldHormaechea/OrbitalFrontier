@@ -12,10 +12,16 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
+import com.orbitalfrontier.economy.PurchaseGate
+import com.orbitalfrontier.economy.SpendDecision
+import com.orbitalfrontier.notify.GameNotifications
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
+import com.orbitalfrontier.screen.controls.PurchaseConfirmDialog
 
 /**
  * The station crew-hire desk shown from the station hub while docked at a crew-hiring station (UC11
@@ -46,9 +52,16 @@ class HireScreen(
     private val turretOperableSupplier: () -> Boolean,
     private val onHire: (HireOrder) -> Unit,
     private val onBack: () -> Unit,
+    // UC40: the shared transient notification queue (constructed once by the game), so a credit delta or a
+    // styled error raised by a hire here surfaces on this desk. Defaults to a fresh queue for JVM/tests.
+    private val notifications: NotificationQueue = NotificationQueue(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
+
+    // UC40: the device-side toast renderer (mirrors PlayScreen) + the reusable confirm-purchase modal.
+    private val notificationRenderer = NotificationRenderer()
+    private val dialog = PurchaseConfirmDialog(skin)
 
     // Readouts refreshed in place after each hire.
     private val crewLabel = Label("", skin.labelStyle)
@@ -84,8 +97,10 @@ class HireScreen(
                     x: Float,
                     y: Float,
                 ) {
-                    onHire(HireOrder.Hire(UNITS_PER_TAP))
-                    refresh()
+                    // UC40: a HIRE is a spend — route it through the confirm-gate (cost = per-crew × units).
+                    attemptPurchase("CREW x$UNITS_PER_TAP", Hiring.HIRE_COST_PER_CREW * UNITS_PER_TAP) {
+                        onHire(HireOrder.Hire(UNITS_PER_TAP))
+                    }
                 }
             },
         )
@@ -115,6 +130,36 @@ class HireScreen(
         turretLabel.setText(turretText())
     }
 
+    /**
+     * UC40 AC#1/#3: route one HIRE tap through the pure [PurchaseGate]. Below the threshold the [fire] intent
+     * runs immediately; at/above it the reusable [dialog] confirms first (CONFIRM fires, CANCEL dismisses);
+     * unaffordable raises a styled INSUFFICIENT-CREDITS toast and fires nothing.
+     */
+    private fun attemptPurchase(
+        item: String,
+        cost: Long,
+        fire: () -> Unit,
+    ) {
+        val balance = creditsSupplier()
+        when (PurchaseGate.evaluate(cost, balance)) {
+            SpendDecision.PROCEED -> {
+                fire()
+                refresh()
+            }
+            SpendDecision.CONFIRM ->
+                dialog.show(
+                    stage,
+                    PurchaseGate.details(item, cost, balance),
+                    onConfirm = {
+                        fire()
+                        refresh()
+                    },
+                    onCancel = {},
+                )
+            SpendDecision.INSUFFICIENT -> notifications.enqueue(GameNotifications.insufficientCredits())
+        }
+    }
+
     private fun crewText(): String = "CREW: ${crewSupplier()} / ${crewCapacitySupplier()}"
 
     private fun balanceText(): String = "CREDITS: ${creditsSupplier()}"
@@ -129,8 +174,16 @@ class HireScreen(
     override fun render(delta: Float) {
         Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+        // UC40: advance + draw the shared toast queue above the desk (after the stage) so the +N/-N CR delta
+        // and any styled error surface here, animated by the renderer (AC#2).
+        notifications.update(delta)
         stage.act(delta)
         stage.draw()
+        notificationRenderer.render(
+            notifications.visibleWithProgress(),
+            Gdx.graphics.width.toFloat(),
+            Gdx.graphics.height.toFloat(),
+        )
     }
 
     override fun resize(
@@ -148,6 +201,7 @@ class HireScreen(
 
     override fun dispose() {
         stage.dispose()
+        notificationRenderer.dispose()
         skin.dispose()
     }
 

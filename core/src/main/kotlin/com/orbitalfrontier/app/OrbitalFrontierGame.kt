@@ -11,6 +11,7 @@ import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.menu.SaveSlotModel
 import com.orbitalfrontier.mission.MissionOrder
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Clock
 import com.orbitalfrontier.platform.FixedClock
@@ -142,6 +143,13 @@ class OrbitalFrontierGame(
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
     private val sectorWorld: SectorWorld = MvpSectorMap.build()
+
+    // UC40: the SINGLE shared transient notification queue (pure, libGDX-free). Constructed once here and
+    // injected into the play screen AND every economy screen + the hub, so a credit delta or styled error
+    // raised on one surface (a buy at a desk routes through PlayScreen, which enqueues here) appears on the
+    // surface the player is actually looking at. Only one screen renders at a time, so the queue stays
+    // single-render-thread-owned exactly as when it lived inside PlayScreen.
+    private val sharedNotifications: NotificationQueue = NotificationQueue()
 
     override fun create() {
         // UC27: load the shared art atlas once, here on the GL thread (a live GL context exists by
@@ -439,6 +447,8 @@ class OrbitalFrontierGame(
                 onOpenSaveSlots = { openSaveSlots(SaveSlotModel.Mode.SAVE, returnToMenuOnBack = false) },
                 audio = audio,
                 debug = debug,
+                // UC40: the shared notification queue (credit deltas + styled errors travel with the player).
+                notifications = sharedNotifications,
             )
         playScreen = screen
 
@@ -500,6 +510,8 @@ class OrbitalFrontierGame(
                 // UC19: EXIT SHIP opens the on-foot walk-around for this station. Purely additive — the
                 // hub and the docked WorldState are untouched; re-boarding re-shows this same hub (AC#1/#7).
                 onDisembark = { openWalkaround(station) },
+                // UC40: render the shared queue so buy-fuel deltas/errors surface on the hub.
+                notifications = sharedNotifications,
             )
         stationHubScreen = hub
         setScreen(hub)
@@ -552,6 +564,8 @@ class OrbitalFrontierGame(
                 cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
                 onTrade = { order: TradeOrder -> playScreen?.trade(order) },
                 onBack = { returnToWalkaround() },
+                // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
+                notifications = sharedNotifications,
             )
         tradeScreen = desk
         setScreen(desk)
@@ -583,6 +597,8 @@ class OrbitalFrontierGame(
                 fleetSupplier = { playScreen?.fleetSnapshot() ?: Fleet.starter() },
                 onOutfit = { order -> playScreen?.outfit(order) },
                 onBack = { returnToHub() },
+                // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
+                notifications = sharedNotifications,
             )
         outfitScreen = desk
         setScreen(desk)
@@ -603,6 +619,8 @@ class OrbitalFrontierGame(
                 fleetSupplier = { playScreen?.fleetSnapshot() ?: Fleet.starter() },
                 onFleet = { order -> playScreen?.fleetCommand(order) },
                 onBack = { returnToHub() },
+                // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
+                notifications = sharedNotifications,
             )
         shipyardScreen = desk
         setScreen(desk)
@@ -625,6 +643,8 @@ class OrbitalFrontierGame(
                 turretOperableSupplier = { playScreen?.turretsOperable() ?: false },
                 onHire = { order: HireOrder -> playScreen?.hire(order) },
                 onBack = { returnToHub() },
+                // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
+                notifications = sharedNotifications,
             )
         hireScreen = desk
         setScreen(desk)
@@ -670,6 +690,8 @@ class OrbitalFrontierGame(
                 cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
                 onTrade = { order: TradeOrder -> playScreen?.trade(order) },
                 onBack = { returnToHub() },
+                // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
+                notifications = sharedNotifications,
             )
         tradeScreen = desk
         setScreen(desk)

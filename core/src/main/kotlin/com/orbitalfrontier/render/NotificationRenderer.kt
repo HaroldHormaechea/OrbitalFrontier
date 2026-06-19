@@ -4,8 +4,8 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
-import com.orbitalfrontier.notify.GameNotification
 import com.orbitalfrontier.notify.NotificationSeverity
+import com.orbitalfrontier.notify.VisibleNotification
 
 /**
  * Draws the transient notification toasts (UC35 AC#2/#4) — the visual half of the notification system, the
@@ -35,17 +35,23 @@ class NotificationRenderer(
     private val projection = Matrix4()
 
     /**
-     * Draw [notifications] (the queue's visible snapshot, top-of-stack first) as a downward-stacking column
-     * of severity-tinted toasts in the top-centre band. [viewportWidth]/[viewportHeight] are the **pixel**
-     * viewport. A no-op when the list is empty, so a quiet moment costs only the empty-check (no batch
-     * begin/end).
+     * Draw [notifications] (the queue's visible snapshot with life fractions, top-of-stack first) as a
+     * downward-stacking column of severity-tinted toasts in the top-centre band (UC35 AC#2/#4; UC40 AC#2).
+     * [viewportWidth]/[viewportHeight] are the **pixel** viewport. A no-op when the list is empty, so a quiet
+     * moment costs only the empty-check (no batch begin/end).
+     *
+     * **Animated feedback (UC40 AC#2).** Each toast's [VisibleNotification.lifeFraction] (pure, from
+     * [com.orbitalfrontier.notify.NotificationQueue.visibleWithProgress]) drives a fade-in over its first
+     * sliver of life, a fade-out over its last, full opacity between — plus a slight upward drift across its
+     * lifetime — so a `+N`/`-N CR` delta reads as a flash that rises and fades rather than a static line. The
+     * curve is computed here from the pure fraction; the timing itself stays engine-free in the queue.
      *
      * Unit handling mirrors [MinimapRenderer] (ADR 0015): the pure [NotificationLayout] is authored in world
      * units (so its constants line up with [HudLayout]/[MinimapLayout]), so the pixel viewport is divided by
      * [uiScale] to lay out, then each returned rect is multiplied back up to pixels for the actual draw.
      */
     fun render(
-        notifications: List<GameNotification>,
+        notifications: List<VisibleNotification>,
         viewportWidth: Float,
         viewportHeight: Float,
     ) {
@@ -58,25 +64,46 @@ class NotificationRenderer(
         val worldWidth = viewportWidth / uiScale
         val worldHeight = viewportHeight / uiScale
         val padding = TEXT_PADDING * uiScale
-        notifications.forEachIndexed { index, notification ->
+        notifications.forEachIndexed { index, visible ->
+            val notification = visible.notification
             val rect = NotificationLayout.toastRect(worldWidth, worldHeight, index)
+            val alpha = alphaFor(visible.lifeFraction)
+            // Slight upward drift across the toast's life (world units -> pixels), so the flash rises.
+            val drift = visible.lifeFraction * DRIFT_WORLD * uiScale
             // World units -> pixels for the draw (the projection is in pixel space).
             val pixelX = rect.x * uiScale
-            val pixelTop = (rect.y + rect.height) * uiScale
+            val pixelTop = (rect.y + rect.height) * uiScale + drift
             line.setLength(0)
             line.append(notification.message)
             HudLayout.ellipsize(line)
-            font.color =
+            val tint =
                 when (notification.severity) {
                     NotificationSeverity.INFO -> Palette.STEEL_050
                     NotificationSeverity.WARNING -> Palette.WARNING
+                    // A refusal is the distinct DANGER colour — never the amber a routine spend uses (UC40).
+                    NotificationSeverity.ERROR -> Palette.DANGER
                 }
+            // Apply the life-fraction alpha without mutating the shared Palette colour reference.
+            font.setColor(tint.r, tint.g, tint.b, alpha)
             // Baseline a touch below the rect's top edge so the glyph cap sits inside the row band.
             font.draw(batch, line, pixelX + padding, pixelTop - padding)
         }
         font.color = Palette.STEEL_050
 
         batch.end()
+    }
+
+    /**
+     * Map a toast's life fraction `0..1` to a draw alpha (UC40 AC#2): ramp up over the first [FADE_IN_FRAC],
+     * hold at full opacity, then ramp down over the final [FADE_OUT_FRAC] before auto-dismiss. Pure of GL.
+     */
+    private fun alphaFor(lifeFraction: Float): Float {
+        val f = lifeFraction.coerceIn(0f, 1f)
+        return when {
+            f < FADE_IN_FRAC -> f / FADE_IN_FRAC
+            f > 1f - FADE_OUT_FRAC -> (1f - f) / FADE_OUT_FRAC
+            else -> 1f
+        }.coerceIn(0f, 1f)
     }
 
     override fun dispose() {
@@ -87,5 +114,14 @@ class NotificationRenderer(
     private companion object {
         /** World-space inset of the text from the toast rectangle's left/top edge (× uiScale at use). */
         const val TEXT_PADDING = 6f
+
+        /** Fraction of a toast's life spent fading IN from transparent (UC40 AC#2). */
+        const val FADE_IN_FRAC = 0.12f
+
+        /** Fraction of a toast's life spent fading OUT to transparent before auto-dismiss (UC40 AC#2). */
+        const val FADE_OUT_FRAC = 0.25f
+
+        /** World-space upward drift applied across a toast's full life (× uiScale at use) — the rise. */
+        const val DRIFT_WORLD = 10f
     }
 }

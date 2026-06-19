@@ -39,9 +39,11 @@ import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.PurchaseGate
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.SpendDecision
 import com.orbitalfrontier.economy.StationRefuel
 import com.orbitalfrontier.economy.StationRefuelAction
 import com.orbitalfrontier.economy.StationRefuelStatus
@@ -62,6 +64,7 @@ import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
+import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.NoOpAudioService
@@ -109,6 +112,7 @@ import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
+import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationBuilder
 import com.orbitalfrontier.station.StationRegistry
@@ -197,6 +201,11 @@ class PlayScreen(
     // world-tap teleport) is wired below; when false (release, tests) none of it is constructed, so
     // release controls, tap handling, and gameplay are byte-for-byte unchanged.
     private val debug: Boolean = false,
+    // UC40: the SHARED transient notification queue, constructed once by the game and injected into this
+    // screen AND the five economy screens + the hub, so a credit delta / styled error enqueued while a desk
+    // is open surfaces on that desk (the queue is pure and only one screen renders at a time, preserving
+    // single-render-thread ownership). Defaults to a fresh queue so headless/JVM tests need not wire it.
+    private val notifications: NotificationQueue = NotificationQueue(),
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = ShipMovementModel()
@@ -220,7 +229,6 @@ class PlayScreen(
     // draw side (mirrors HudRenderer). The screen enqueues from the SAME gameplay seams that drive SFX
     // (jump, dock/undock, the mission life-cycle, the combat boundary, low fuel, credit changes), advances
     // the queue only while the sim advances, and draws visible() unless a full-screen overlay is up (AC#3/#4).
-    private val notifications = NotificationQueue()
     private val notificationRenderer = NotificationRenderer()
     private val gateRenderer = GateRenderer()
     private val asteroidFieldRenderer = AsteroidFieldRenderer()
@@ -1145,7 +1153,7 @@ class PlayScreen(
         // — the zoomed map overlay, the pause backdrop, or the destruction screen ([controlsHidden]) — so a
         // toast never bleeds over a modal (AC#4). The queue keeps holding them; they reappear once cleared.
         if (!controlsHidden) {
-            notificationRenderer.render(notifications.visible(), viewportWidth, viewportHeight)
+            notificationRenderer.render(notifications.visibleWithProgress(), viewportWidth, viewportHeight)
         }
 
         // UC23: the zoomed map overlay is drawn LAST, on top of the gameplay and the (now-hidden) HUD
@@ -1331,6 +1339,22 @@ class PlayScreen(
     private fun applyCreditChange(newCredits: Long) {
         GameNotifications.creditDelta(credits, newCredits)?.let(notifications::enqueue)
         credits = newCredits
+    }
+
+    /**
+     * Enqueue a styled error toast for an economy action that did NOT happen (UC40 AC#3), classifying it
+     * via the pure [PurchaseGate]: when a [cost] is known and exceeds the live balance the cue is the
+     * dedicated INSUFFICIENT-CREDITS error; otherwise (an affordable-but-invalid action — full hold, no free
+     * slot, item not offered, already active — or an unknown cost) it is the generic ACTION-REJECTED error.
+     * Replaces the old silent/bare-string no-op so a refused tap always surfaces a clear, styled message.
+     * The economy screens already pre-gate the *unaffordable* case at the tap, so this mostly fires for the
+     * affordable-but-invalid branch; the classification keeps it correct either way.
+     */
+    private fun enqueueEconomyError(cost: Long?) {
+        val insufficient = cost != null && PurchaseGate.evaluate(cost, credits) == SpendDecision.INSUFFICIENT
+        notifications.enqueue(
+            if (insufficient) GameNotifications.insufficientCredits() else GameNotifications.actionRejected(),
+        )
     }
 
     /**
@@ -1655,6 +1679,9 @@ class PlayScreen(
         val result = Trading.resolve(credits, cargo, market, order)
         if (result.tradedUnits <= 0) {
             logger.info(ECONOMY_TAG, "Trade requested but nothing changed hands (unaffordable, hold full, nothing to sell, or not offered)")
+            // UC40 AC#3: a refused BUY surfaces a styled error (cost = unit buy price × units; null for a SELL).
+            val cost = (order as? TradeOrder.Buy)?.let { buy -> market?.offerFor(buy.resource)?.buyPrice?.times(buy.units) }
+            enqueueEconomyError(cost)
             return
         }
         applyCreditChange(result.credits)
@@ -1710,6 +1737,9 @@ class PlayScreen(
             )
         if (!result.changed) {
             logger.info(ECONOMY_TAG, "Hire requested but nothing changed (station doesn't hire, at capacity, or unaffordable)")
+            // UC40 AC#3: a refused HIRE surfaces a styled error (cost = per-crew price × requested units).
+            val cost = (order as? HireOrder.Hire)?.let { Hiring.HIRE_COST_PER_CREW * it.units }
+            enqueueEconomyError(cost)
             return
         }
         applyCreditChange(result.credits)
@@ -1750,6 +1780,9 @@ class PlayScreen(
             )
         if (!result.changed) {
             logger.info(ECONOMY_TAG, "Outfit requested but nothing changed (not offered, unaffordable, no free slot, or empty slot)")
+            // UC40 AC#3: a refused INSTALL surfaces a styled error (cost = the upgrade's price; null for a REMOVE).
+            val cost = (order as? OutfitOrder.BuyInstall)?.let { UpgradeCatalog.MVP.upgrade(it.upgradeId)?.price }
+            enqueueEconomyError(cost)
             return
         }
         applyCreditChange(result.credits)
@@ -1788,6 +1821,9 @@ class PlayScreen(
                 ECONOMY_TAG,
                 "Fleet command requested but nothing changed (not offered, unaffordable, not owned, or already active)",
             )
+            // UC40 AC#3: a refused BUY surfaces a styled error (cost = the ship's price; null for a SWITCH).
+            val cost = (order as? FleetOrder.BuyShip)?.let { ShipRoster.byId(it.typeId)?.price }
+            enqueueEconomyError(cost)
             return
         }
         val previousActive = fleet.activeShipId
@@ -1878,9 +1914,22 @@ class PlayScreen(
                 recordTutorialEvent(TutorialEvent.REFUELLED) // UC36: a credits fuel buy also completes REFUEL
                 "Refueled ${result.unitsBought} units"
             }
-            StationRefuelStatus.FULL -> "Tank full"
-            StationRefuelStatus.BROKE -> "Insufficient credits"
-            StationRefuelStatus.UNAVAILABLE -> "No fuel sold here"
+            // UC40 AC#3: the old bare-string statuses now also raise a styled toast on the shared queue so a
+            // refused buy-fuel reads the same as the other economy refusals. BROKE is the dedicated
+            // insufficient-credits error; FULL / UNAVAILABLE are generic action-rejected with a named reason.
+            // The hub still shows the returned line in its own label (additive — toast + label).
+            StationRefuelStatus.FULL -> {
+                notifications.enqueue(GameNotifications.actionRejected("TANK FULL"))
+                "Tank full"
+            }
+            StationRefuelStatus.BROKE -> {
+                notifications.enqueue(GameNotifications.insufficientCredits())
+                "Insufficient credits"
+            }
+            StationRefuelStatus.UNAVAILABLE -> {
+                notifications.enqueue(GameNotifications.actionRejected("NO FUEL SOLD HERE"))
+                "No fuel sold here"
+            }
             StationRefuelStatus.NONE -> ""
         }
     }
