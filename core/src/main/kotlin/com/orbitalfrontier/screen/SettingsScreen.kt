@@ -18,6 +18,7 @@ import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 
@@ -52,6 +53,9 @@ class SettingsScreen(
     initialAudio: AudioSettings,
     initialJoystickTuning: JoystickTuning,
     initialUiScale: Float,
+    initialColorVisionMode: ColorVisionMode,
+    initialTextScale: Float,
+    initialReducedMotion: Boolean,
     private val onBack: () -> Unit,
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
@@ -67,6 +71,9 @@ class SettingsScreen(
             initialAudio = initialAudio,
             initialJoystickTuning = initialJoystickTuning,
             initialUiScale = initialUiScale,
+            initialColorVisionMode = initialColorVisionMode,
+            initialTextScale = initialTextScale,
+            initialReducedMotion = initialReducedMotion,
             audio = audio,
             // No on-screen joystick / controls to relayout on the menu — the panel persists these, and the
             // game re-reads them when a flight starts.
@@ -74,6 +81,14 @@ class SettingsScreen(
             onJoystickTuningChanged = {},
             // Re-apply the new scale to this screen's own viewport so the change is visible immediately.
             onUiScaleChanged = { applyUiScaleLive() },
+            // UC39: colourblind mode is already applied to the global Palette by the panel — this menu's
+            // surfaces use neutral colours, so nothing extra to refresh; the next redraw reflects it.
+            onColorVisionModeChanged = {},
+            // UC39: re-apply the new text scale to this screen's own skin font and re-flow the layout so the
+            // larger/smaller text is visible immediately without leaving the screen.
+            onTextScaleChanged = { applyTextScaleLive() },
+            // UC39: reduced motion is a global the (starfield-less) menu doesn't render — already applied.
+            onReducedMotionChanged = {},
             // No running game to replay into here: re-arm first-run so the next new game shows the tutorial.
             onReplayTutorial = { saveExecutor.execute { repository.saveTutorialCompleted(false) } },
         )
@@ -113,6 +128,16 @@ class SettingsScreen(
     private fun applyUiScaleLive() {
         viewport.applyUiScale()
         viewport.update(Gdx.graphics.width, Gdx.graphics.height, true)
+    }
+
+    /**
+     * UC39: re-apply the (already-updated global) [com.orbitalfrontier.render.TextScale] to this screen's
+     * skin font and invalidate the layout so the resized text re-flows immediately (the buttons/labels
+     * share the one skin font, so a single re-apply covers them all).
+     */
+    private fun applyTextScaleLive() {
+        skin.applyTextScale()
+        root.invalidateHierarchy()
     }
 
     override fun show() {

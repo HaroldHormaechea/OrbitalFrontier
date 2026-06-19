@@ -1,8 +1,11 @@
 package com.orbitalfrontier.save
 
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.MotionPreference
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 
@@ -191,6 +194,89 @@ class SqlDelightSettingsRepository(
         }
     }
 
+    override fun loadColorVisionMode(): ColorVisionMode {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            if (stored == null) {
+                logger.info(TAG, "No settings row; using default colour-vision mode=${ColorVisionMode.DEFAULT}")
+                ColorVisionMode.DEFAULT
+            } else {
+                // Safe parse: an unknown/corrupt stored value degrades to the standard palette (+WARN).
+                parseColorVisionMode(stored.colorblind_mode)
+            }
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load colour-vision mode; using default=${ColorVisionMode.DEFAULT}", e)
+            ColorVisionMode.DEFAULT
+        }
+    }
+
+    override fun saveColorVisionMode(mode: ColorVisionMode) {
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the colorblind_mode column (everything else untouched).
+                seedDefaultSettingsRow()
+                queries.updateColorblindMode(mode.name)
+            }
+            logger.info(TAG, "Persisted colour-vision mode=$mode")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist colour-vision mode=$mode; last good value kept", e)
+        }
+    }
+
+    override fun loadTextScale(): Float {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            if (stored == null) {
+                logger.info(TAG, "No settings row; using default text scale=${TextScale.DEFAULT_FACTOR}")
+                TextScale.DEFAULT_FACTOR
+            } else {
+                // Coerce on read so a corrupt/out-of-range stored value degrades to a safe in-range factor.
+                TextScale.coerce(stored.text_scale.toFloat())
+            }
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load text scale; using default=${TextScale.DEFAULT_FACTOR}", e)
+            TextScale.DEFAULT_FACTOR
+        }
+    }
+
+    override fun saveTextScale(factor: Float) {
+        val coerced = TextScale.coerce(factor)
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the text_scale column (everything else untouched).
+                seedDefaultSettingsRow()
+                queries.updateTextScale(coerced.toDouble())
+            }
+            logger.info(TAG, "Persisted text scale=$coerced")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist text scale=$coerced; last good value kept", e)
+        }
+    }
+
+    override fun loadReducedMotion(): Boolean {
+        return try {
+            val stored = queries.selectSettings().executeAsOneOrNull()
+            // No row yet (fresh save) reads as "motion on" (the default full-parallax behaviour).
+            stored != null && stored.reduced_motion != 0L
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to load reduced-motion flag; assuming motion on", e)
+            MotionPreference.DEFAULT_REDUCED
+        }
+    }
+
+    override fun saveReducedMotion(reduced: Boolean) {
+        try {
+            queries.transaction {
+                // Ensure the row exists, then write ONLY the reduced_motion column (everything else untouched).
+                seedDefaultSettingsRow()
+                queries.updateReducedMotion(if (reduced) 1L else 0L)
+            }
+            logger.info(TAG, "Persisted reduced_motion=$reduced")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to persist reduced_motion=$reduced; last good value kept", e)
+        }
+    }
+
     /**
      * Seed the single settings row with defaults if it is absent (INSERT OR IGNORE). Idempotent and
      * side-effect-free on an existing row, so it is safe to call inside every write transaction; it
@@ -212,6 +298,14 @@ class SqlDelightSettingsRepository(
                 logger.warn(TAG, "Unrecognized handedness '$value'; using default=${Handedness.DEFAULT}")
                 Handedness.DEFAULT
             }
+
+    private fun parseColorVisionMode(value: String): ColorVisionMode {
+        val parsed = ColorVisionMode.parse(value)
+        if (parsed.name != value) {
+            logger.warn(TAG, "Unrecognized colour-vision mode '$value'; using default=${ColorVisionMode.DEFAULT}")
+        }
+        return parsed
+    }
 
     private companion object {
         const val TAG = "Save"

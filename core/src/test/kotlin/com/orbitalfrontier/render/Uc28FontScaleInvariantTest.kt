@@ -13,9 +13,14 @@ import org.junit.Test
  * pushed the largest on-screen font size above the baked master size, the glyphs would be magnified and
  * blur would return — this test fails the build first.
  *
- * The largest scale any consumer applies is the HUD's `GameFont.NORM × UiScale.factor` (the minimap and
- * overlay multiply by an extra <1 LABEL_FONT_SCALE, so they are strictly smaller; the controls skin uses
- * `GameFont.NORM` alone). That HUD regime is pinned as [MAX_REGIME_SCALE] below.
+ * The largest scale any consumer applies is now the **skin font**, which UC39 multiplies by the global
+ * [TextScale.factor] (up to [TextScale.MAX_FACTOR]) on top of `GameFont.NORM × UiScale.factor`. The HUD /
+ * world-space text deliberately follows [UiScale] only (no text-scale — a documented UC39 exclusion) and
+ * the minimap / overlay labels multiply by an extra <1 LABEL_FONT_SCALE, so they are strictly smaller; the
+ * text-scaled skin font therefore bounds the worst case. That regime — `TextScale.MAX_FACTOR` on top of
+ * `NORM × UiScale.factor` — is pinned as [MAX_REGIME_SCALE] below. (The *absolute* worst corner, at
+ * `UiScale.MAX × TextScale.MAX`, is allowed a mild graceful upscale and is guarded separately in
+ * [TextScaleTest]; this invariant holds at the runtime-default [UiScale.factor].)
  */
 class Uc28FontScaleInvariantTest {
     @Test
@@ -52,10 +57,12 @@ class Uc28FontScaleInvariantTest {
     private companion object {
         /**
          * The largest per-consumer regime multiplier applied on top of `GameFont.NORM × UiScale.factor`.
-         * The HUD (and the action-arc/label styles via the skin) use no extra factor → 1.0; the minimap
-         * (0.6) and overlay (0.8) label fonts multiply by a value <1, so they are strictly smaller and the
-         * HUD bounds the worst case. Pinned here as the upper bound the invariant must hold against.
+         * UC39 made the skin font text-scalable, so the worst case is now [TextScale.MAX_FACTOR] (the HUD
+         * and minimap/overlay label fonts are all <= this — the HUD uses ×1 and the labels multiply by a
+         * value <1). Folding it in keeps the minify-don't-magnify invariant honest now that text size is a
+         * player knob: at the runtime-default UiScale (×2) the largest skin font is `NORM × 2 × 1.4 = 0.875`,
+         * still a downscale of the baked master. Pinned here as the upper bound the invariant holds against.
          */
-        private const val MAX_REGIME_SCALE = 1.0f
+        private const val MAX_REGIME_SCALE = TextScale.MAX_FACTOR
     }
 }

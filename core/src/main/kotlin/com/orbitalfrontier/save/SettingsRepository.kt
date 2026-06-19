@@ -1,11 +1,13 @@
 package com.orbitalfrontier.save
 
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 
 /**
- * Persistence boundary for player settings (handedness, AC#8; audio preferences, UC31 AC#3).
+ * Persistence boundary for player settings (handedness, AC#8; audio preferences, UC31 AC#3; the UC39
+ * accessibility preferences — colourblind mode, text scale, reduced motion).
  *
  * Small, focused interface (ISP). `core` and the UI depend on this abstraction; the SQLDelight
  * implementation is injected. Reads degrade to a sensible default rather than throwing on a
@@ -82,4 +84,42 @@ interface SettingsRepository {
      * throw (autosave-style graceful degradation).
      */
     fun saveUiScale(factor: Float)
+
+    /**
+     * Current colour-vision palette mode (UC39 AC#1), or [ColorVisionMode.DEFAULT] if none is stored yet
+     * or the row is unreadable / holds an unknown value (parsed via [ColorVisionMode.parse], so a corrupt
+     * value degrades to the standard palette rather than throwing).
+     */
+    fun loadColorVisionMode(): ColorVisionMode
+
+    /**
+     * Persist the colour-vision [mode] atomically without touching any other settings column (UC39). On
+     * failure the last good value is left intact and the error is logged; this call does not throw.
+     */
+    fun saveColorVisionMode(mode: ColorVisionMode)
+
+    /**
+     * Current UI text-scale factor (UC39 AC#2), or [com.orbitalfrontier.render.TextScale.DEFAULT_FACTOR] if
+     * none is stored yet or the row is unreadable. The returned value is always coerced into the valid range
+     * ([com.orbitalfrontier.render.TextScale.MIN_FACTOR]..[com.orbitalfrontier.render.TextScale.MAX_FACTOR]).
+     */
+    fun loadTextScale(): Float
+
+    /**
+     * Persist the text-scale [factor] atomically (coerced first) without touching any other settings column
+     * (UC39). On failure the last good value is left intact and the error is logged; this call does not throw.
+     */
+    fun saveTextScale(factor: Float)
+
+    /**
+     * Current reduced-motion preference (UC39 AC#3), or [com.orbitalfrontier.render.MotionPreference.DEFAULT_REDUCED]
+     * (motion on) if none is stored yet or the row is unreadable.
+     */
+    fun loadReducedMotion(): Boolean
+
+    /**
+     * Persist the reduced-motion [reduced] flag atomically without touching any other settings column (UC39).
+     * On failure the last good value is left intact and the error is logged; this call does not throw.
+     */
+    fun saveReducedMotion(reduced: Boolean)
 }

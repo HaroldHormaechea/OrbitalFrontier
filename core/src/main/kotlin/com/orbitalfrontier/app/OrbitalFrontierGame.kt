@@ -20,6 +20,9 @@ import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.platform.SqlDriverFactory
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.LibGdxAudioService
+import com.orbitalfrontier.render.MotionPreference
+import com.orbitalfrontier.render.Palette
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
@@ -159,6 +162,14 @@ class OrbitalFrontierGame(
         // first screen (the main menu) lays out at the player's chosen scale. Every screen's ScreenViewport
         // reads UiScale.factor at construction (ADR 0015 / ADR 0025).
         UiScale.set(settings.loadUiScale())
+
+        // UC39: restore the accessibility globals BEFORE any screen builds too, so the first screen already
+        // reflects them — the colourblind palette (Palette mode-aware accessors read it per frame), the UI
+        // text scale (the skin font reads TextScale.factor at construction), and reduced motion (the
+        // starfield reads MotionPreference each frame). Like UI scale, these are rendering-only globals.
+        Palette.setMode(settings.loadColorVisionMode())
+        TextScale.set(settings.loadTextScale())
+        MotionPreference.set(settings.loadReducedMotion())
 
         // UC31: build the real audio service on the GL/audio thread (alive by create()) and apply the
         // persisted preferences before any cue/music plays, so audio honours the saved mute + volumes
@@ -337,6 +348,12 @@ class OrbitalFrontierGame(
                 initialAudio = settingsRepository.loadAudioSettings(),
                 initialJoystickTuning = settingsRepository.loadJoystickTuning(),
                 initialUiScale = settingsRepository.loadUiScale(),
+                // UC39: seed the accessibility controls from the persisted prefs (the globals are already
+                // restored from these same values in create(); reading the repository keeps the menu screen
+                // self-contained, matching the other initial* args).
+                initialColorVisionMode = settingsRepository.loadColorVisionMode(),
+                initialTextScale = settingsRepository.loadTextScale(),
+                initialReducedMotion = settingsRepository.loadReducedMotion(),
                 onBack = { returnToMenuFromSettings() },
             )
         settingsScreen = screen

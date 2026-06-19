@@ -102,12 +102,14 @@ class MapOverlayRenderer(
                     shapeRenderer.circle(x, y, GATE_MARKER_RADIUS * uiScale)
                 }
                 ContactKind.STATION -> {
-                    shapeRenderer.color = STATION_COLOR
+                    // UC39: friendly-station marker via the mode-aware Palette accessor (colourblind-safe).
+                    shapeRenderer.color = Palette.STATION_FRIENDLY
                     val r = STATION_MARKER_RADIUS * uiScale
                     shapeRenderer.rect(x - r, y - r, r * 2f, r * 2f)
                 }
                 ContactKind.SHIP -> {
-                    shapeRenderer.color = CONTACT_COLOR
+                    // UC39: hostile-contact marker via the mode-aware Palette accessor (colourblind-safe).
+                    shapeRenderer.color = Palette.CONTACT_HOSTILE
                     val r = CONTACT_MARKER_RADIUS * uiScale
                     shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
                 }
@@ -171,10 +173,10 @@ class MapOverlayRenderer(
         val BORDER_COLOR = Color(0.4f, 0.5f, 0.65f, 0.9f)
 
         // Marker palette mirrors the minimap (gate dot / station square / revealed-contact triangle /
-        // ship dot), all at full alpha so they stay legible over the backdrop.
+        // ship dot), all at full alpha so they stay legible over the backdrop. The station (friendly) and
+        // contact (hostile) markers are drawn via the mode-aware Palette.STATION_FRIENDLY /
+        // Palette.CONTACT_HOSTILE accessors (UC39 — colourblind-safe), so no class-load literal for them.
         val GATE_COLOR = Color(0.4f, 0.85f, 1f, 1f)
-        val STATION_COLOR = Color(0.5f, 1f, 0.6f, 1f)
-        val CONTACT_COLOR = Color(1f, 0.4f, 0.4f, 1f)
         val SHIP_COLOR = Color(1f, 0.85f, 0.4f, 1f)
 
         // Label text: a soft near-white, legible at full alpha over the opaque overlay panel (AC#4).

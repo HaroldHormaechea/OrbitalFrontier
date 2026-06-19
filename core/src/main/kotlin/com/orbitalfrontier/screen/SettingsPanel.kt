@@ -8,10 +8,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.SaveExecutor
+import com.orbitalfrontier.render.MotionPreference
+import com.orbitalfrontier.render.Palette
+import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.AudioSettings
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 import kotlin.math.abs
@@ -25,17 +29,14 @@ import kotlin.math.roundToInt
  *  - **AUDIO** (UC31) — master mute, stepped SFX + music volume.
  *  - **CONTROLS** — handedness (AC#3), joystick sensitivity + deadzone (new in UC37).
  *  - **DISPLAY** — UI scale (AC#3; the ADR 0015 knob, now player-adjustable).
+ *  - **ACCESSIBILITY** (UC39) — colourblind-safe palette, UI text size, reduced motion.
  *  - **GAMEPLAY** — replay the first-run tutorial (UC36).
- *
- * Two groups the use case lists are **deliberately omitted, not faked** (UC37 "Dependency" pitfall): an
- * **Accessibility** group (text size / colourblind palette) depends on the accessibility use case (UC39),
- * and a **Save Management** group depends on the save-slot use case (UC38). A short note row states this so
- * the gap is honest rather than stubbed; the groups slot in additively when those use cases land.
  *
  * Every control follows the same two-step discipline UC31 established:
  *  1. apply the change **in memory + live on the render thread** (control layout flip, mute, volume,
- *     joystick tuning, UI scale) so the effect is instant with no I/O wait, notifying the host via the
- *     `on…Changed` callbacks so it can re-apply to its own live actors; and
+ *     joystick tuning, UI scale, colourblind palette, text size, reduced motion) so the effect is instant
+ *     with no I/O wait, notifying the host via the `on…Changed` callbacks so it can re-apply to its own
+ *     live actors; and
  *  2. persist the new value through the injected [SaveExecutor] — the **same single writer** that handles
  *     autosave — so the settings write never blocks the render thread and the per-field, transactional
  *     repository writes never clobber another column.
@@ -52,16 +53,25 @@ class SettingsPanel(
     initialAudio: AudioSettings,
     initialJoystickTuning: JoystickTuning,
     initialUiScale: Float,
+    initialColorVisionMode: ColorVisionMode,
+    initialTextScale: Float,
+    initialReducedMotion: Boolean,
     private val audio: AudioService,
     private val onHandednessChanged: (Handedness) -> Unit,
     private val onJoystickTuningChanged: (JoystickTuning) -> Unit,
     private val onUiScaleChanged: (Float) -> Unit,
+    private val onColorVisionModeChanged: (ColorVisionMode) -> Unit,
+    private val onTextScaleChanged: (Float) -> Unit,
+    private val onReducedMotionChanged: (Boolean) -> Unit,
     private val onReplayTutorial: () -> Unit,
 ) {
     private var handedness: Handedness = initialHandedness
     private var audioSettings: AudioSettings = initialAudio.coerced()
     private var joystickTuning: JoystickTuning = initialJoystickTuning.coerced()
     private var uiScale: Float = UiScale.coerce(initialUiScale)
+    private var colorVisionMode: ColorVisionMode = initialColorVisionMode
+    private var textScale: Float = TextScale.coerce(initialTextScale)
+    private var reducedMotion: Boolean = initialReducedMotion
 
     private val muteButton = TextButton(muteLabel(audioSettings), skin.settingsButtonStyle)
     private val sfxButton = TextButton(sfxLabel(audioSettings), skin.settingsButtonStyle)
@@ -72,6 +82,10 @@ class SettingsPanel(
     private val deadzoneButton = TextButton(deadzoneLabel(joystickTuning), skin.settingsButtonStyle)
 
     private val uiScaleButton = TextButton(uiScaleLabel(uiScale), skin.settingsButtonStyle)
+
+    private val colorVisionButton = TextButton(colorVisionLabel(colorVisionMode), skin.settingsButtonStyle)
+    private val textScaleButton = TextButton(textScaleLabel(textScale), skin.settingsButtonStyle)
+    private val reducedMotionButton = TextButton(reducedMotionLabel(reducedMotion), skin.settingsButtonStyle)
 
     private val replayTutorialButton = TextButton(REPLAY_TUTORIAL_LABEL, skin.settingsButtonStyle)
 
@@ -86,6 +100,9 @@ class SettingsPanel(
         sensitivityButton.addListener(onTap { cycleSensitivity() })
         deadzoneButton.addListener(onTap { cycleDeadzone() })
         uiScaleButton.addListener(onTap { cycleUiScale() })
+        colorVisionButton.addListener(onTap { toggleColorVisionMode() })
+        textScaleButton.addListener(onTap { cycleTextScale() })
+        reducedMotionButton.addListener(onTap { toggleReducedMotion() })
         replayTutorialButton.addListener(onTap { onReplayTutorial() })
 
         content.top()
@@ -99,11 +116,13 @@ class SettingsPanel(
         row(deadzoneButton)
         section("DISPLAY")
         row(uiScaleButton)
+        // UC39: the accessibility group, now built (the prior honest "coming later" note is retired).
+        section("ACCESSIBILITY")
+        row(colorVisionButton)
+        row(textScaleButton)
+        row(reducedMotionButton)
         section("GAMEPLAY")
         row(replayTutorialButton)
-        // UC37 Dependency pitfall: Accessibility (UC39) + Save Management (UC38) groups are not yet
-        // available — stated honestly, never stubbed with dead controls.
-        note(OMITTED_GROUPS_NOTE)
     }
 
     /**
@@ -187,6 +206,38 @@ class SettingsPanel(
         saveExecutor.execute { repository.saveUiScale(snapshot) }
     }
 
+    // --- ACCESSIBILITY (UC39) ------------------------------------------------------------------------
+
+    private fun toggleColorVisionMode() {
+        // Apply to the global render-layer Palette first (instant, render-thread), then notify the host so
+        // it can refresh any already-built actors; persist off the render thread.
+        colorVisionMode = colorVisionMode.toggled()
+        Palette.setMode(colorVisionMode)
+        colorVisionButton.setText(colorVisionLabel(colorVisionMode))
+        onColorVisionModeChanged(colorVisionMode)
+        val snapshot = colorVisionMode
+        saveExecutor.execute { repository.saveColorVisionMode(snapshot) }
+    }
+
+    private fun cycleTextScale() {
+        // Apply to the global knob first (coerced), then surface the stored value so the label + the host's
+        // live skin re-apply use exactly what took effect; persist off the render thread.
+        textScale = TextScale.set(nextLevel(TEXT_SCALE_LEVELS, textScale))
+        textScaleButton.setText(textScaleLabel(textScale))
+        onTextScaleChanged(textScale) // host re-applies TextScale.factor to its own live skin font + re-flows
+        val snapshot = textScale
+        saveExecutor.execute { repository.saveTextScale(snapshot) }
+    }
+
+    private fun toggleReducedMotion() {
+        reducedMotion = !reducedMotion
+        MotionPreference.set(reducedMotion) // instant; renderers read the global each frame
+        reducedMotionButton.setText(reducedMotionLabel(reducedMotion))
+        onReducedMotionChanged(reducedMotion)
+        val snapshot = reducedMotion
+        saveExecutor.execute { repository.saveReducedMotion(snapshot) }
+    }
+
     // --- Layout helpers ------------------------------------------------------------------------------
 
     private fun section(title: String) {
@@ -196,13 +247,6 @@ class SettingsPanel(
 
     private fun row(button: TextButton) {
         content.add(button).width(ROW_WIDTH).height(ROW_HEIGHT).padBottom(ROW_GAP)
-        content.row()
-    }
-
-    private fun note(text: String) {
-        val label = Label(text, skin.labelStyle)
-        label.wrap = true
-        content.add(label).width(ROW_WIDTH).padTop(SECTION_GAP)
         content.row()
     }
 
@@ -231,6 +275,13 @@ class SettingsPanel(
     private fun deadzoneLabel(value: JoystickTuning): String = "DEADZONE: ${percent(value.deadzone)}%"
 
     private fun uiScaleLabel(value: Float): String = "UI SCALE: ${oneDecimal(value)}x"
+
+    private fun colorVisionLabel(value: ColorVisionMode): String =
+        "COLORBLIND: " + if (value == ColorVisionMode.COLORBLIND_SAFE) "ON" else "OFF"
+
+    private fun textScaleLabel(value: Float): String = "TEXT SIZE: ${oneDecimal(value)}x"
+
+    private fun reducedMotionLabel(value: Boolean): String = "REDUCED MOTION: " + if (value) "ON" else "OFF"
 
     private fun percent(fraction: Float): Int = (fraction * 100f).roundToInt()
 
@@ -262,6 +313,9 @@ class SettingsPanel(
         /** UI-scale steps within UiScale's clamp range (1.0x .. 3.0x). */
         val UI_SCALE_LEVELS = listOf(1.0f, 1.5f, 2.0f, 2.5f, 3.0f)
 
+        /** Text-size steps within TextScale's clamp range (0.85x .. 1.4x), incl. the 1.0x default (UC39). */
+        val TEXT_SCALE_LEVELS = listOf(0.85f, 1.0f, 1.15f, 1.3f, 1.4f)
+
         // Fixed row width chosen to fit the SMALLER host (the in-flight overlay's fixed footprint) so the
         // content never clips horizontally; the wider main-menu screen simply centres the column. Matches
         // the pre-UC37 in-flight button width so the in-flight feel is unchanged.
@@ -271,8 +325,5 @@ class SettingsPanel(
         const val SECTION_GAP = 14f
 
         const val REPLAY_TUTORIAL_LABEL = "REPLAY TUTORIAL"
-
-        /** Honest note for the use-case-dependent groups not yet built (UC38 / UC39). */
-        const val OMITTED_GROUPS_NOTE = "ACCESSIBILITY AND SAVE MANAGEMENT COMING IN A LATER UPDATE"
     }
 }

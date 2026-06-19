@@ -51,11 +51,16 @@ class StarfieldRenderer(
     ) {
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
         shapeRenderer.projectionMatrix = projection
+        // UC39 AC#3: reduced-motion = a full parallax STOP (a static starfield), not an attenuation. When
+        // the player has enabled reduced motion the per-layer camera offset is zeroed, so the field is
+        // pinned in screen space and stops scrolling with the camera. Read once per frame (cheap boolean);
+        // the simulation never sees it (rendering-only — determinism preserved, ADR 0006).
+        val motionReduced = MotionPreference.reduced
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         for (layer in layers) {
             shapeRenderer.color = layer.color
-            val offsetX = wrap(-cameraX * layer.parallax, tileSize)
-            val offsetY = wrap(-cameraY * layer.parallax, tileSize)
+            val offsetX = if (motionReduced) 0f else wrap(-cameraX * layer.parallax, tileSize)
+            val offsetY = if (motionReduced) 0f else wrap(-cameraY * layer.parallax, tileSize)
             var tileX = -tileSize
             while (tileX < viewportWidth) {
                 var tileY = -tileSize

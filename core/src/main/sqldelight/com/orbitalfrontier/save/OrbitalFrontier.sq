@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 17 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026).
+-- Orbital Frontier save schema, version 18 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026).
 --
--- This .sq file is ALWAYS the latest schema (currently v17). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v18). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
--- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17). Never edit this baseline destructively
--- to make a schema change — bump the version and add a migration instead.
+-- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18). Never edit this
+-- baseline destructively to make a schema change — bump the version and add a migration instead.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
 -- (UC04..UC08) the single-slot autosave header (`game_state`) + ship kinematics + dock + cargo +
@@ -22,8 +22,13 @@
 -- the v16 -> v17 migration rebuilds each game-state table to add `slot_id` to its primary key and
 -- backfills the pre-UC38 save into slot 0 (UC38 AC#3), so an upgraded single-autosave save reads back
 -- intact as slot 0 named "Autosave". The `game_state` header also gains the slot's display metadata —
--- `name`, `last_saved_epoch_millis`, `play_time_seconds` (UC38 AC#1). `settings` is UNCHANGED (control
+-- `name`, `last_saved_epoch_millis`, `play_time_seconds` (UC38 AC#1). `settings` is UNCHANGED by v17 (control
 -- preferences are global, not per-slot).
+--
+-- v18 (UC39) adds the **accessibility preferences** to the global `settings` row — `colorblind_mode`
+-- (palette mode), `text_scale` (UI text-size multiplier on top of the UI scale) and `reduced_motion`
+-- (the parallax/animation toggle). Like every other settings column they are global (not per-slot) and
+-- each has its own targeted UPDATE. See the `settings` table comment below.
 --
 -- Slot isolation (UC38 AC#4): every read/write/delete is scoped by `slot_id`, so loading, saving or
 -- deleting one slot never reads or mutates another. `meta`/`settings` rows are single-row (CHECK (id = 0)).
@@ -37,7 +42,8 @@ CREATE TABLE meta (
 );
 
 -- v14 (UC31, ADR 0020) adds the audio preferences; v15 (UC36, ADR 0024) the first-run tutorial flag;
--- v16 (UC37, ADR 0025) the joystick tuning + the UI scale. Each is its own column with its own targeted
+-- v16 (UC37, ADR 0025) the joystick tuning + the UI scale; v18 (UC39) the accessibility preferences
+-- (colourblind palette mode, UI text scale, reduced motion). Each is its own column with its own targeted
 -- UPDATE so persisting one preference never clobbers another. UNCHANGED by v17 — settings are global
 -- (shared across all save slots), not per-slot.
 CREATE TABLE settings (
@@ -49,7 +55,13 @@ CREATE TABLE settings (
     tutorial_completed INTEGER NOT NULL DEFAULT 0,
     joystick_sensitivity REAL NOT NULL DEFAULT 1.0,
     joystick_deadzone REAL NOT NULL DEFAULT 0.15,
-    ui_scale REAL NOT NULL DEFAULT 2.0
+    ui_scale REAL NOT NULL DEFAULT 2.0,
+    -- v18 (UC39) accessibility: colourblind palette mode (ColorVisionMode NAME; unknown -> STANDARD on
+    -- load), UI text-size multiplier applied on top of ui_scale (DEFAULT 1.0 = no extra magnification),
+    -- and the reduced-motion toggle (0 = motion on, the prior full-parallax behaviour).
+    colorblind_mode TEXT NOT NULL DEFAULT 'STANDARD',
+    text_scale REAL NOT NULL DEFAULT 1.0,
+    reduced_motion INTEGER NOT NULL DEFAULT 0
 );
 
 -- Per-slot save "header" (v17, UC38): one row per OCCUPIED slot (an empty slot simply has no row). The
@@ -223,7 +235,8 @@ UPDATE meta SET active_slot_id = ? WHERE id = 0;
 
 selectSettings:
 SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed,
-       joystick_sensitivity, joystick_deadzone, ui_scale
+       joystick_sensitivity, joystick_deadzone, ui_scale,
+       colorblind_mode, text_scale, reduced_motion
 FROM settings WHERE id = 0;
 
 seedSettings:
@@ -243,6 +256,15 @@ UPDATE settings SET joystick_sensitivity = ?, joystick_deadzone = ? WHERE id = 0
 
 updateUiScale:
 UPDATE settings SET ui_scale = ? WHERE id = 0;
+
+updateColorblindMode:
+UPDATE settings SET colorblind_mode = ? WHERE id = 0;
+
+updateTextScale:
+UPDATE settings SET text_scale = ? WHERE id = 0;
+
+updateReducedMotion:
+UPDATE settings SET reduced_motion = ? WHERE id = 0;
 
 -- ============================================================================================
 -- game_state header — per slot (UC38)
