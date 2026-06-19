@@ -156,6 +156,15 @@ object PlaythroughFixtures {
     const val UC45_ENEMY_AI: String = "uc45-enemy-ai"
 
     /**
+     * UC46 dynamic-station-pricing playthrough name (AC#1/#4): start **docked at Alpha Station** with a
+     * hold of Titanium and sell it in equal lots across consecutive ticks, so the accumulating
+     * supply/demand pressure drives the per-unit price **down** between trades (the living economy).
+     * [Uc46DynamicPricingReplayTest] asserts the second lot's unit price is strictly below the first's,
+     * the moves stay within the `[minMul, maxMul]` band, and the replay is bit-for-bit deterministic.
+     */
+    const val UC46_DYNAMIC_PRICING: String = "uc46-dynamic-pricing"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -186,6 +195,15 @@ object PlaythroughFixtures {
 
     /** Units of Titanium the UC08 fixture starts with and sells in one go. */
     const val UC08_TITANIUM_UNITS: Int = 6
+
+    /** Starting credit balance the UC46 dynamic-pricing fixture seeds (a known non-zero baseline). */
+    const val UC46_STARTING_CREDITS: Long = 500L
+
+    /** Units of Titanium sold in EACH of the UC46 fixture's consecutive lots (so the lots are comparable). */
+    const val UC46_LOT_UNITS: Int = 6
+
+    /** How many consecutive single-tick sell lots the UC46 fixture executes (pressure accrues across them). */
+    const val UC46_LOTS: Int = 3
 
     /**
      * Power tuning **pinned for the UC07 low-fuel fixture only** — a deliberately thirsty draw
@@ -223,6 +241,7 @@ object PlaythroughFixtures {
             UC42_LOOT_SALVAGE to ::uc42LootSalvage,
             UC43_COMBAT_REPUTATION to ::uc43CombatReputation,
             UC45_ENEMY_AI to ::uc45EnemyAi,
+            UC46_DYNAMIC_PRICING to ::uc46DynamicPricing,
         )
 
     /**
@@ -456,6 +475,55 @@ object PlaythroughFixtures {
         // trailing held ticks (1..3) carry no trade event, proving credits + cargo stay put while docked.
         recorder.recordTrade(0, TradeKind.SELL, ResourceType.TITANIUM, UC08_TITANIUM_UNITS)
         recorder.extendToTick(3)
+        return recorder.build()
+    }
+
+    /**
+     * UC46 dynamic-pricing scenario (AC#1/#4): the ship starts **docked at Alpha Station** in
+     * [MvpSectorMap.START_SECTOR] (Alpha, owned by the neutral League) holding `UC46_LOTS * UC46_LOT_UNITS`
+     * units of Titanium and a [UC46_STARTING_CREDITS] wallet. It sells one equal lot of
+     * [UC46_LOT_UNITS] Titanium on each of the first [UC46_LOTS] ticks.
+     *
+     * The point is **price movement**: the first lot resolves at the authored base (pressure 0, tick/epoch
+     * 0, neutral standing ⇒ every multiplier exactly 1.0 ⇒ 50/unit). Each sale then folds positive
+     * (oversupply) supply/demand pressure in via [com.orbitalfrontier.economy.StationMarketState.withTrade],
+     * so the next lot reprices **below** the previous one through [com.orbitalfrontier.economy.MarketPricing]
+     * (at the default elasticity 0.02 / pressureScale 1.0: 50 → 44 → 38, each a distinct rounded integer).
+     * All lots land within the first drift epoch (epoch 0 ⇒ drift exactly 1.0) and before the first decay
+     * tick after 0, so the only mover is the player-driven pressure — the living economy, deterministically.
+     *
+     * Starting docked (rather than flying in) keeps the artifact tiny while exercising the full dynamic-price
+     * trade path against the real [MvpSectorMap]. [Uc46DynamicPricingReplayTest] asserts the second lot's
+     * unit price is strictly below the first's, the moves stay within `[minMul, maxMul]`, and the replay is
+     * bit-for-bit deterministic; the leftover non-zero pressure is what [com.orbitalfrontier.save] round-trips.
+     */
+    fun uc46DynamicPricing(): Playthrough {
+        val startingTitanium = UC46_LOTS * UC46_LOT_UNITS
+        val recorder =
+            PlaythroughRecorder(
+                name = UC46_DYNAMIC_PRICING,
+                seed = 46L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at League-owned Alpha Station (player neutral ⇒ faction multiplier 1.0) with
+                        // enough Titanium for every lot; at rest, in the start sector (defaults to alpha).
+                        fleet =
+                            singleShipFleet(
+                                cargo = Cargo(mapOf(ResourceType.TITANIUM to startingTitanium), Cargo.DEFAULT_CAPACITY),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC46_STARTING_CREDITS,
+                    ),
+            )
+        // One equal lot per tick on ticks 0..UC46_LOTS-1: pressure accrues so each lot reprices below the
+        // last. All ticks are < driftPeriodTicks (epoch 0) and the only decay tick (0) sees an empty map,
+        // so player-driven supply/demand is the sole price mover.
+        for (lot in 0 until UC46_LOTS) {
+            recorder.recordTrade(lot, TradeKind.SELL, ResourceType.TITANIUM, UC46_LOT_UNITS)
+        }
+        // One trailing held tick proves credits + market pressure stay put with no further trade.
+        recorder.extendToTick(UC46_LOTS)
         return recorder.build()
     }
 

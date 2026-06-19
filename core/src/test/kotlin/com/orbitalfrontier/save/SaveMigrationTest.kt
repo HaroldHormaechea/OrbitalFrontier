@@ -2331,13 +2331,12 @@ class SaveMigrationTest {
         assertEquals("the pre-UC41 quota units survive", 8L, readMissionLong("quota_units"))
         assertEquals("the pre-UC41 faction survives", "league", readMissionText("faction_id"))
 
-        // The stored save-format version is bumped to 19 (the current schema).
+        // The stored save-format version is bumped to exactly 19 by this single v18 -> v19 STEP. This
+        // test validates that one migration step, not the latest schema: since UC46 the generated
+        // OrbitalFrontier.Schema.version is 20, so the v18 -> v19 step deliberately lands BELOW it (the
+        // full chain continues v19 -> v20 in its own step test). Asserting 19L literally keeps this a
+        // step test rather than a moving "== Schema.version" target that breaks on every future bump.
         assertEquals(19L, queries.selectSaveVersion().executeAsOne())
-        assertEquals(
-            "the bumped version equals the generated schema version",
-            OrbitalFrontier.Schema.version,
-            queries.selectSaveVersion().executeAsOne(),
-        )
 
         // The new columns are writable, not just present: a bounty row inserts + reads back through SQL.
         driver.execute(
@@ -2358,5 +2357,102 @@ class SaveMigrationTest {
                 binders = null,
             ).value
         assertEquals("a bounty row round-trips its target zone on the migrated DB", "bounty-alpha-raider", zone)
+    }
+
+    // --- UC46 AC#3: v19 -> v20 adds the station_market table additively (no breaking change) ---
+
+    /**
+     * Build a minimal but **data-bearing** v19-shaped DB for the v19 -> v20 step: the `meta` row at
+     * save_version 19 (which 19.sqm bumps), plus a `reputation` table (added back at v12) carrying a real
+     * standing row that stands in for "prior data that must survive". The v19 -> v20 migration (19.sqm) is
+     * a purely additive `CREATE TABLE station_market` + a `meta` version bump — it references no other table —
+     * so this minimal shape exercises the step honestly while staying independent of the unrelated
+     * settings-column chain (UC39/UC41) the other step tests build.
+     */
+    private fun buildRealV19MetaWithReputation() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE reputation (slot_id INTEGER NOT NULL, faction_id TEXT NOT NULL, value INTEGER NOT NULL, " +
+                "PRIMARY KEY (slot_id, faction_id))",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 19)", 0)
+        driver.execute(null, "INSERT INTO reputation(slot_id, faction_id, value) VALUES (0, 'league', 25)", 0)
+    }
+
+    @Test
+    fun `migrating a real v19 database to v20 adds the station_market table, preserves prior data, and bumps the version`() {
+        buildRealV19MetaWithReputation()
+
+        // Apply the sequential v19 -> v20 migration (runs migrations/19.sqm — purely additive CREATE TABLE).
+        OrbitalFrontier.Schema.migrate(driver, 19L, 20L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new (empty) station_market table exists — a migrated save holds no pressure, so every station
+        // reads back at its authored base price, byte-identical to a pre-UC46 game (AC#3; purely additive).
+        assertTrue("station_market table must exist after migration", tableExists("station_market"))
+        assertEquals(
+            "a migrated v19 save has no station_market rows",
+            0L,
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM station_market",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0) ?: 0L)
+                },
+                parameters = 0,
+                binders = null,
+            ).value,
+        )
+
+        // Data survival: the pre-UC46 reputation row is untouched by the additive migration.
+        val standing =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT value FROM reputation WHERE slot_id = 0 AND faction_id = 'league'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("the pre-UC46 reputation standing survives the migration", 25L, standing)
+
+        // The stored save-format version is bumped to exactly 20 by this single v19 -> v20 step, and 20 is
+        // the current generated schema version (UC46 is the latest migration in the chain).
+        assertEquals(20L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the v19 -> v20 step lands on the current generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new table is writable, not just present: a pressure row inserts + reads back through SQL.
+        driver.execute(
+            null,
+            "INSERT INTO station_market(slot_id, station_id, resource, pressure) VALUES (0, 'alpha-station', 'TITANIUM', 6)",
+            0,
+        )
+        val pressure =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT pressure FROM station_market WHERE slot_id = 0 AND station_id = 'alpha-station' AND resource = 'TITANIUM'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a station_market pressure row round-trips on the migrated DB", 6L, pressure)
     }
 }
