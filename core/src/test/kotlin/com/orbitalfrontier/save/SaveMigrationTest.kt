@@ -2427,14 +2427,12 @@ class SaveMigrationTest {
             ).value
         assertEquals("the pre-UC46 reputation standing survives the migration", 25L, standing)
 
-        // The stored save-format version is bumped to exactly 20 by this single v19 -> v20 step, and 20 is
-        // the current generated schema version (UC46 is the latest migration in the chain).
+        // The stored save-format version is bumped to exactly 20 by this single v19 -> v20 STEP. This
+        // test validates that one migration step, not the latest schema: since UC47 the generated
+        // OrbitalFrontier.Schema.version is 21, so the v19 -> v20 step deliberately lands BELOW it (the
+        // full chain continues v20 -> v21 in its own step test). Asserting 20L literally keeps this a
+        // step test rather than a moving "== Schema.version" target that breaks on every future bump.
         assertEquals(20L, queries.selectSaveVersion().executeAsOne())
-        assertEquals(
-            "the v19 -> v20 step lands on the current generated schema version",
-            OrbitalFrontier.Schema.version,
-            queries.selectSaveVersion().executeAsOne(),
-        )
 
         // The new table is writable, not just present: a pressure row inserts + reads back through SQL.
         driver.execute(
@@ -2454,5 +2452,109 @@ class SaveMigrationTest {
                 binders = null,
             ).value
         assertEquals("a station_market pressure row round-trips on the migrated DB", 6L, pressure)
+    }
+
+    // --- UC47 AC#3: v20 -> v21 adds the junkyard_stock table additively (no breaking change) ---
+
+    /**
+     * Build a minimal but **data-bearing** v20-shaped DB for the v20 -> v21 step: the `meta` row at
+     * save_version 20 (which 20.sqm bumps), plus a `station_market` table (added at v20) carrying a real
+     * pressure row that stands in for "prior data that must survive". The v20 -> v21 migration (20.sqm) is
+     * a purely additive `CREATE TABLE junkyard_stock` + a `meta` version bump — it references no other table —
+     * so this minimal shape exercises the step honestly while staying independent of the unrelated
+     * mission/settings-column chains the other step tests build.
+     */
+    private fun buildRealV20MetaWithStationMarket() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE station_market (slot_id INTEGER NOT NULL, station_id TEXT NOT NULL, resource TEXT NOT NULL, " +
+                "pressure INTEGER NOT NULL, PRIMARY KEY (slot_id, station_id, resource))",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 20)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO station_market(slot_id, station_id, resource, pressure) VALUES (0, 'alpha-station', 'TITANIUM', 6)",
+            0,
+        )
+    }
+
+    @Test
+    fun `migrating a real v20 database to v21 adds the junkyard_stock table, preserves prior data, and bumps the version`() {
+        buildRealV20MetaWithStationMarket()
+
+        // Apply the sequential v20 -> v21 migration (runs migrations/20.sqm — purely additive CREATE TABLE).
+        OrbitalFrontier.Schema.migrate(driver, 20L, 21L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new (empty) junkyard_stock table exists — a migrated save holds no depletion, so every used
+        // part reads back at its full deterministic baseline, byte-identical to a pre-UC47 game (AC#3; additive).
+        assertTrue("junkyard_stock table must exist after migration", tableExists("junkyard_stock"))
+        assertEquals(
+            "a migrated v20 save has no junkyard_stock rows",
+            0L,
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM junkyard_stock",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0) ?: 0L)
+                },
+                parameters = 0,
+                binders = null,
+            ).value,
+        )
+
+        // Data survival: the pre-UC47 station_market pressure row is untouched by the additive migration.
+        val pressure =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT pressure FROM station_market WHERE slot_id = 0 AND station_id = 'alpha-station' AND resource = 'TITANIUM'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("the pre-UC47 station_market pressure survives the migration", 6L, pressure)
+
+        // The stored save-format version is bumped to exactly 21 by this single v20 -> v21 step, and 21 is
+        // the current generated schema version (UC47 is the latest migration in the chain — this step sits
+        // at the TOP of the chain, so it may own the moving "== Schema.version" cross-check alongside 21L).
+        assertEquals(21L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the v20 -> v21 step lands on the current generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new table is writable, not just present: a purchased row inserts + reads back through SQL.
+        driver.execute(
+            null,
+            "INSERT INTO junkyard_stock(slot_id, station_id, upgrade_id, purchased) VALUES (0, 'gamma-junkyard', 'engine-tune-i', 2)",
+            0,
+        )
+        val purchased =
+            driver.executeQuery(
+                identifier = null,
+                sql =
+                    "SELECT purchased FROM junkyard_stock " +
+                        "WHERE slot_id = 0 AND station_id = 'gamma-junkyard' AND upgrade_id = 'engine-tune-i'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a junkyard_stock purchased row round-trips on the migrated DB", 2L, purchased)
     }
 }
