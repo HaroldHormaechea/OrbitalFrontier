@@ -47,7 +47,7 @@ Statuses:
 | 35 | [use-cases/35-notification-event-feed.md](use-cases/35-notification-event-feed.md) | In-game notification / event feed | done | 2026-06-18 |
 | 36 | [use-cases/36-tutorial-onboarding.md](use-cases/36-tutorial-onboarding.md) | First-run tutorial & onboarding | done | 2026-06-19 |
 | 37 | [use-cases/37-settings-screen.md](use-cases/37-settings-screen.md) | Full settings screen | done | 2026-06-19 |
-| 38 | [use-cases/38-save-slot-management.md](use-cases/38-save-slot-management.md) | Save-slot management UI | pending | 2026-06-18 |
+| 38 | [use-cases/38-save-slot-management.md](use-cases/38-save-slot-management.md) | Save-slot management UI | done | 2026-06-19 |
 | 39 | [use-cases/39-accessibility-options.md](use-cases/39-accessibility-options.md) | Accessibility options | pending | 2026-06-18 |
 | 40 | [use-cases/40-purchase-confirmation-feedback.md](use-cases/40-purchase-confirmation-feedback.md) | Purchase/sale confirmation & economy feedback | pending | 2026-06-18 |
 | 41 | [use-cases/41-combat-bounty-missions.md](use-cases/41-combat-bounty-missions.md) | Combat / bounty mission type | pending | 2026-06-18 |
