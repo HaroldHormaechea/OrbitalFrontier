@@ -29,6 +29,7 @@ import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.SectorId
 import kotlin.math.atan2
 
 /**
@@ -128,6 +129,19 @@ object PlaythroughFixtures {
     const val UC42_LOOT_SALVAGE: String = "uc42-loot-salvage"
 
     /**
+     * UC43 combat-reputation playthrough name (AC#5): start **in flight in Gamma Verge** just west of the
+     * authored `gamma-independent-marauder` zone (the Independents' home turf), fly in to spawn the
+     * faction-affiliated [com.orbitalfrontier.combat.HostileArchetypes.INDEPENDENT_MARAUDER], then hold FIRE
+     * until the auto-aim turret destroys it — souring the player's Independents standing through the
+     * combat→reputation seam. [Uc43CombatReputationReplayTest] asserts a faction ship was destroyed, the
+     * Independents standing dropped by exactly `combatKillDelta`, the drop **persists** across a snapshot
+     * round-trip (AC#5), and the replay is bit-for-bit deterministic. Authored in **Gamma** because no other
+     * committed fixture roams Gamma, so the new natural zone can never perturb an existing replay. Loadable
+     * via `playtest -Dplaythrough.name=uc43-combat-reputation`.
+     */
+    const val UC43_COMBAT_REPUTATION: String = "uc43-combat-reputation"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -193,6 +207,7 @@ object PlaythroughFixtures {
             UC15_STATION to ::uc15Station,
             UC41_COMBAT_BOUNTY to ::uc41CombatBounty,
             UC42_LOOT_SALVAGE to ::uc42LootSalvage,
+            UC43_COMBAT_REPUTATION to ::uc43CombatReputation,
         )
 
     /**
@@ -1001,6 +1016,98 @@ object PlaythroughFixtures {
         // Loiter (released stick ⇒ drift to near-rest inside the picket) and keep firing: the turret auto-aims
         // and destroys the closing raider; its wreck is then collected by the pinned pickup radius.
         for (tick in UC42_THRUST_IN_TICKS until UC42_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
+
+    /** The Gamma Verge sector the UC43 fixture roams (the Independents' home turf). */
+    private val UC43_SECTOR: SectorId = SectorId("gamma")
+
+    /** The authored `gamma-independent-marauder` zone (read from the production map) — the AC#5 kill site. */
+    private val UC43_MARAUDER_ZONE = MvpSectorMap.encounterZones(UC43_SECTOR).single()
+
+    /**
+     * Combat tuning **pinned for the UC43 combat-reputation fixture only** — the same HULL-funnelled,
+     * wide-hit-radius recipe [UC13_COMBAT_TUNING] uses so the faction marauder's 30-HP hull falls in a
+     * fixed number of turret hits (a compact, deterministic kill) instead of a stochastic spread across
+     * four sections. Pinning per artifact (the UC02 config-pin rationale) means a later combat retune can't
+     * silently invalidate this replay.
+     */
+    private val UC43_COMBAT_TUNING: CombatParams =
+        CombatParams(sectionHitWeights = mapOf(ShipSection.HULL to 1), hitRadius = 60f)
+
+    /** Thrust-in ticks for [uc43CombatReputation] — enough to cross the marauder zone's r260 edge from just outside. */
+    private const val UC43_THRUST_IN_TICKS: Int = 12
+
+    /** Total ticks for [uc43CombatReputation] — the thrust-in plus a long loiter while the turret grinds the marauder down. */
+    private const val UC43_TOTAL_TICKS: Int = 440
+
+    /**
+     * UC43 combat-reputation scenario (AC#5): destroying a faction-affiliated hostile sours the player's
+     * standing with that faction through the combat→reputation seam (the `Reputation.with` site ADR 0013
+     * predicted, ADR 0031).
+     *
+     * The player starts **in flight in [UC43_SECTOR] (Gamma Verge)** just **west of** the authored
+     * `gamma-independent-marauder` zone (centre [UC43_MARAUDER_ZONE].center `(700, 700)`, radius 260),
+     * facing east, **starting neutral** with the Independents, with **one crew aboard** (so the built-in
+     * auto-aim turret is operable) and the last-docked station recorded at the Gamma junkyard (the respawn
+     * point). Geometrically identical to [uc13Combat], but in **Gamma** — a sector no other committed fixture
+     * roams, so the new natural zone can never perturb an existing replay (the UC43 fixture-stability top
+     * risk). The script:
+     *  - **thrust-in**: thrust east for [UC43_THRUST_IN_TICKS] ticks, crossing the zone's r260 edge — the
+     *    edge-triggered [com.orbitalfrontier.combat.EncounterSpawner] ambushes the player with a single
+     *    [com.orbitalfrontier.combat.HostileArchetypes.INDEPENDENT_MARAUDER] (seeded by the crossing tick);
+     *  - **loiter + fire**: release the stick and hold [FireAction.FIRE] for the rest of the run. The
+     *    AGGRESSIVE marauder closes; the crew-gated turret auto-aims and (with the pinned HULL-funnelled
+     *    tuning) grinds its 30-HP hull to destruction. The kill folds [com.orbitalfrontier.faction
+     *    .ReputationParams.combatKillDelta] into the player's Independents standing via the lockstep
+     *    [com.orbitalfrontier.combat.CombatReputation.applyKills] mirror in the [com.orbitalfrontier.sim.Simulation].
+     *
+     * [Uc43CombatReputationReplayTest] asserts a faction ship was destroyed, the Independents standing
+     * dropped by exactly `combatKillDelta` (derived, no magic literal), the drop persists across a snapshot
+     * round-trip (AC#5), and the replay is bit-for-bit deterministic. The combat tuning is the pinned
+     * [UC43_COMBAT_TUNING]; all geometry is read from the production [MvpSectorMap]. Loadable via
+     * `playtest -Dplaythrough.name=uc43-combat-reputation`.
+     */
+    fun uc43CombatReputation(): Playthrough {
+        // Start just OUTSIDE the r260 marauder zone on the -x side (dist 270), already cruising east at
+        // 120 wu/s so a few ticks of eastward thrust carry the ship across the r260 edge and trip the ambush
+        // (identical geometry to UC13, but in Gamma).
+        val start = UC43_MARAUDER_ZONE.center - Vec2(270f, 0f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(120f, 0f), headingRadians = 0f),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC43_COMBAT_REPUTATION,
+                seed = 43L,
+                dtSeconds = DT_SECONDS,
+                combatConfig = UC43_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        // The whole run takes place in Gamma — where the faction marauder zone lives.
+                        currentSector = UC43_SECTOR,
+                        fleet = fleet,
+                        // Start neutral so the post-kill standing is measured from a known-zero baseline.
+                        reputation = Reputation.EMPTY,
+                        // The respawn point on destruction (persisted); the marauder never reaches the
+                        // player's hull first under the pinned tuning, but the field mirrors the start sector.
+                        lastDockedStation = PoiId("gamma-junkyard"),
+                    ),
+            )
+
+        val east = MovementInput(targetDirection = Vec2(1f, 0f), magnitude = 1f, released = false)
+        // Thrust east to cross the zone edge and spawn the marauder; FIRE the whole time.
+        for (tick in 0 until UC43_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, east)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        // Loiter (released stick ⇒ drift to near-rest inside the zone) and keep firing: the turret auto-aims
+        // and destroys the closing marauder over the remaining ticks, souring the Independents standing.
+        for (tick in UC43_THRUST_IN_TICKS until UC43_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
         }
         return recorder.build()

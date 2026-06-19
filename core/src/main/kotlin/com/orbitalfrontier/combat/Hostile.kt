@@ -1,5 +1,7 @@
 package com.orbitalfrontier.combat
 
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.ship.ShipKinematics
 
 /**
@@ -73,6 +75,16 @@ data class HostileArchetype(
     val leashRange: Float,
     /** Hull fraction (0..1) below which a [AiBehavior.FLEE_WHEN_DAMAGED] hostile runs. */
     val fleeHullFraction: Float,
+    /**
+     * The faction this ship type belongs to (UC43), or `null` when it is **unaligned** — a freelance
+     * raider/scavenger no power claims. A hostile's faction is **intrinsic to the ship type** (not to
+     * where it spawned), so it lives on the archetype, not the [EncounterZone]. Destroying a
+     * faction-affiliated hostile sours the player's standing with [factionId] (combat→reputation seam,
+     * ADR 0031); an unaligned kill has no faction effect (the neutral-hostile rule). Combat depends on
+     * `faction` here (acyclic: `faction` never imports `combat`, and `faction` is engine-free, so the
+     * combat purity guards are unaffected).
+     */
+    val factionId: FactionId? = null,
 ) {
     init {
         require(displayName.isNotBlank()) { "HostileArchetype ${id.value} displayName must not be blank" }
@@ -184,8 +196,45 @@ object HostileArchetypes {
             fleeHullFraction = 0.34f,
         )
 
+    /**
+     * A faction-affiliated raider flying the colours of the unaligned [Factions.INDEPENDENTS] fringe
+     * (UC43) — the first archetype with a non-null [HostileArchetype.factionId], so destroying it moves
+     * the player's Independents standing through the combat→reputation seam (ADR 0031). Stats mirror
+     * [RAIDER] (AGGRESSIVE, 30-HP hull) so the same HULL-funnelled combat tuning lands a compact,
+     * deterministic kill in the UC43 replay. [RAIDER]/[SCAVENGER] stay deliberately **unaligned** (null
+     * faction) — preserving the neutral-hostile rule and keeping every committed combat fixture
+     * byte-identical (no authored zone spawns this archetype except the new disjoint UC43 zone). [TUNE]
+     */
+    val INDEPENDENT_MARAUDER: HostileArchetype =
+        HostileArchetype(
+            id = HostileArchetypeId("independent-marauder"),
+            displayName = "Independent Marauder",
+            behavior = AiBehavior.AGGRESSIVE,
+            difficulty = DifficultyTier.NORMAL,
+            maxSpeed = 90f,
+            acceleration = 80f,
+            sectionHp =
+                mapOf(
+                    ShipSection.HULL to 30,
+                    ShipSection.ENGINE to 15,
+                    ShipSection.TURRET to 10,
+                    ShipSection.WEAPON to 10,
+                ),
+            weapon =
+                FixedWeapon(
+                    damage = 4,
+                    cooldownSeconds = 1.2f,
+                    projectileSpeed = 320f,
+                    range = 520f,
+                ),
+            engageRange = 480f,
+            leashRange = 1400f,
+            fleeHullFraction = 0f,
+            factionId = Factions.INDEPENDENTS.id,
+        )
+
     /** Every authored archetype, in authored order. */
-    val all: List<HostileArchetype> = listOf(RAIDER, SCAVENGER)
+    val all: List<HostileArchetype> = listOf(RAIDER, SCAVENGER, INDEPENDENT_MARAUDER)
 
     private val byId: Map<HostileArchetypeId, HostileArchetype> = all.associateBy { it.id }
 

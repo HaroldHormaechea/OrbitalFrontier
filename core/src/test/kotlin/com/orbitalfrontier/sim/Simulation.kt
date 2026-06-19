@@ -4,6 +4,7 @@ import com.orbitalfrontier.combat.Combat
 import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
+import com.orbitalfrontier.combat.CombatReputation
 import com.orbitalfrontier.combat.DestroyedHostile
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
@@ -611,6 +612,18 @@ class Simulation(
                     val spawned = Salvage.spawn(salvage, nextSalvageId, preStepZoneId, destroyed)
                     salvage = spawned.drops
                     nextSalvageId = spawned.nextSalvageId
+
+                    // UC43: fold this tick's faction-affiliated kills into the player's standing via the
+                    // SAME pure CombatReputation.applyKills the device runs in PlayScreen.stepCombatOnce
+                    // (project rule #1 lockstep) — applied to bountyReputation (already threaded into BOTH
+                    // the destroyed-path and normal-path returns below) after the bounty fold. No
+                    // notifications here (headless replay asserts the standing delta, not the toast).
+                    // Unaligned kills are a no-op returning the same instance, so pre-UC43 fixtures stay
+                    // byte-identical.
+                    val combatRep = CombatReputation.applyKills(destroyed, bountyReputation, reputationParams)
+                    if (combatRep.changed) {
+                        bountyReputation = combatRep.reputation
+                    }
                 }
 
                 if (result.destroyed) {

@@ -48,11 +48,19 @@ object MvpSectorMap {
     const val CONTENT_EXTENT_WORLD_UNITS: Float = 1800f
 
     /**
-     * The one authored **natural encounter** zone of the MVP map (UC13) — a patch of hostile space in
-     * the START_SECTOR (Alpha), east of the centre, so the player flying out from the start cluster
-     * crosses into it and is ambushed (edge-triggered, [EncounterSpawner]). A single [HostileArchetypes
-     * .RAIDER] spawns, which the AC#8 recorded playthrough flies into, fires on and destroys. Tagged with
-     * the sector's String id so `combat` needs no `world` dependency. [TUNE]
+     * The authored **natural encounter** zones of the MVP map — patches of hostile space the player can
+     * cross into and be ambushed (edge-triggered, [EncounterSpawner]):
+     *  - `alpha-raider-picket` (UC13) — an unaligned [HostileArchetypes.RAIDER] east of Alpha's centre,
+     *    which the AC#8 recorded playthrough flies into, fires on and destroys. Alpha's **only** natural
+     *    zone (the UC42 replay relies on `encounterZones(alpha).single()`).
+     *  - `gamma-independent-marauder` (UC43) — a faction-affiliated [HostileArchetypes.INDEPENDENT_MARAUDER]
+     *    in **Gamma Verge**, the Independents' home turf (the Gamma Junkyard is theirs), so destroying it
+     *    sours the player's Independents standing. Authored in **Gamma** deliberately: **no committed
+     *    fixture roams Gamma** (only the UC03 jump leaves Alpha, and it goes to Beta), and the natural-spawn
+     *    check filters by the player's current sector — so this zone can never perturb any existing replay
+     *    (the UC43 fixture-stability top risk), while the UC43 replay starts in Gamma to fly into it.
+     *
+     * Each zone is tagged with the sector's String id so `combat` needs no `world` dependency. [TUNE]
      */
     val ENCOUNTER_ZONES: List<EncounterZone> =
         listOf(
@@ -62,6 +70,18 @@ object MvpSectorMap {
                 center = Vec2(900f, 0f),
                 radius = 260f,
                 archetypeId = HostileArchetypes.RAIDER.id,
+                hostileCount = 1,
+            ),
+            // UC43: a faction-affiliated marauder zone in Gamma (NE of the centre), disjoint from the Gamma
+            // Junkyard (-500,200) and both Gamma gates (south, y≈-1126). In Gamma because no committed
+            // fixture is ever in Gamma, so the per-sector natural-spawn check never sees this zone during
+            // an existing replay. Within the 1800-wu content radius (|center| ≈ 990) so it stays in-bounds.
+            EncounterZone(
+                id = "gamma-independent-marauder",
+                sectorId = "gamma",
+                center = Vec2(700f, 700f),
+                radius = 260f,
+                archetypeId = HostileArchetypes.INDEPENDENT_MARAUDER.id,
                 hostileCount = 1,
             ),
         )

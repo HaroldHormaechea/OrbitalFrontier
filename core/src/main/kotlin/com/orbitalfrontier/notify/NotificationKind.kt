@@ -64,4 +64,12 @@ enum class NotificationKind(
      * [NotificationSeverity.ERROR] cue, coalesced so a burst of invalid taps collapses into one toast.
      */
     ACTION_REJECTED(NotificationSeverity.ERROR, coalescable = true),
+
+    /**
+     * The player's standing with a faction changed (UC43) — e.g. destroying a faction-affiliated hostile
+     * sours its reputation. A [NotificationSeverity.WARNING] cue (the renderer colours by *severity*, so
+     * no renderer change is needed), coalesced so several faction kills in quick succession collapse into
+     * one toast rather than flooding the feed.
+     */
+    REPUTATION_CHANGED(NotificationSeverity.WARNING, coalescable = true),
 }
