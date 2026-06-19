@@ -52,10 +52,10 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC31 bumped the schema to v14 (the settings audio columns master_muted/sfx_volume/music_volume);
-        // ensureInitialized seeds SaveVersion.CURRENT (14L), which is pinned to OrbitalFrontier.Schema.version.
+        // UC36 bumped the schema to v15 (the settings tutorial_completed column on top of the UC31 audio
+        // columns); ensureInitialized seeds SaveVersion.CURRENT (15L), pinned to OrbitalFrontier.Schema.version.
         assertEquals(OrbitalFrontier.Schema.version, version)
-        assertEquals(14L, version)
+        assertEquals(15L, version)
     }
 
     @Test
@@ -65,7 +65,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-14 row", 14L, version)
+        assertEquals("repeated init keeps a single version-15 row", 15L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---
@@ -229,6 +229,85 @@ class SqlDelightSettingsRepositoryTest {
         assertEquals("audio landed", audio, freshRepo.loadAudioSettings())
         // Sanity: the two never collapse into one another.
         assertFalse("mute really persisted", AudioSettings.DEFAULT.masterMuted == freshRepo.loadAudioSettings().masterMuted)
+    }
+
+    // --- UC36 AC#3: first-run tutorial flag persists + reloads ---
+
+    @Test
+    fun `first run with no settings row reports the tutorial as not completed`() {
+        // No row written yet → the onboarding must run, so the flag reads back false (not an exception).
+        assertFalse(newRepository().loadTutorialCompleted())
+    }
+
+    @Test
+    fun `a freshly-seeded settings row still reports the tutorial as not completed`() {
+        // ensureInitialized seeds the row but omits tutorial_completed, so it takes its DEFAULT 0 — the
+        // onboarding runs on a brand-new save even after the row exists (AC#1).
+        val repo = newRepository()
+        repo.ensureInitialized()
+        assertFalse("a seeded-but-unflagged row reads back as not completed", repo.loadTutorialCompleted())
+    }
+
+    @Test
+    fun `a saved tutorial-completed flag survives a reload`() {
+        newRepository().saveTutorialCompleted(true)
+
+        // Fresh repository over the same DB == app restart: the flag must stop the tutorial re-triggering (AC#3).
+        assertTrue(newRepository().loadTutorialCompleted())
+    }
+
+    @Test
+    fun `the latest saved tutorial flag wins (replay clears it back to not-completed)`() {
+        val repo = newRepository()
+        repo.saveTutorialCompleted(true)
+        // Replaying the tutorial from settings persists "not completed" again.
+        repo.saveTutorialCompleted(false)
+
+        assertFalse("the latest flag write wins", newRepository().loadTutorialCompleted())
+    }
+
+    @Test
+    fun `saveTutorialCompleted does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        // Autosave-style graceful degradation: the failure is caught and logged, never propagated.
+        repo.saveTutorialCompleted(true)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC36 Risk (per-field writes, mirroring UC31 Risk 1): the tutorial flag never clobbers, and is
+    //     never clobbered by, the handedness / audio columns, since each is a column-scoped UPDATE ---
+
+    @Test
+    fun `saving the tutorial flag does not clobber previously-saved handedness or audio settings`() {
+        val repo = newRepository()
+        val audio = AudioSettings(masterMuted = true, sfxVolume = 0.3f, musicVolume = 0.6f)
+        repo.saveHandedness(Handedness.RIGHT_HANDED)
+        repo.saveAudioSettings(audio)
+
+        // A later tutorial-completion write must leave handedness + the audio columns untouched.
+        repo.saveTutorialCompleted(true)
+
+        val freshRepo = newRepository()
+        assertTrue("tutorial flag landed", freshRepo.loadTutorialCompleted())
+        assertEquals("handedness survives a tutorial-flag write", Handedness.RIGHT_HANDED, freshRepo.loadHandedness())
+        assertEquals("audio columns survive a tutorial-flag write", audio, freshRepo.loadAudioSettings())
+    }
+
+    @Test
+    fun `saving handedness or audio settings does not clobber a previously-saved tutorial flag`() {
+        val repo = newRepository()
+        repo.saveTutorialCompleted(true)
+
+        // Later handedness + audio changes must leave the tutorial_completed column untouched.
+        repo.saveHandedness(Handedness.LEFT_HANDED)
+        repo.saveAudioSettings(AudioSettings(masterMuted = false, sfxVolume = 0.9f, musicVolume = 0.4f))
+
+        val freshRepo = newRepository()
+        assertTrue("tutorial flag survives handedness + audio writes", freshRepo.loadTutorialCompleted())
+        assertEquals("handedness landed", Handedness.LEFT_HANDED, freshRepo.loadHandedness())
     }
 
     /** Logger that records WARN/ERROR messages so error-path tests can assert on them. */

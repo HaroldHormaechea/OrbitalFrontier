@@ -45,7 +45,7 @@ Statuses:
 | 33 | [use-cases/33-ship-destruction-screen.md](use-cases/33-ship-destruction-screen.md) | Ship-destruction / game-over feedback | done | 2026-06-18 |
 | 34 | [use-cases/34-expanded-flight-hud.md](use-cases/34-expanded-flight-hud.md) | Expanded flight HUD | done | 2026-06-18 |
 | 35 | [use-cases/35-notification-event-feed.md](use-cases/35-notification-event-feed.md) | In-game notification / event feed | done | 2026-06-18 |
-| 36 | [use-cases/36-tutorial-onboarding.md](use-cases/36-tutorial-onboarding.md) | First-run tutorial & onboarding | pending | 2026-06-18 |
+| 36 | [use-cases/36-tutorial-onboarding.md](use-cases/36-tutorial-onboarding.md) | First-run tutorial & onboarding | done | 2026-06-19 |
 | 37 | [use-cases/37-settings-screen.md](use-cases/37-settings-screen.md) | Full settings screen | pending | 2026-06-18 |
 | 38 | [use-cases/38-save-slot-management.md](use-cases/38-save-slot-management.md) | Save-slot management UI | pending | 2026-06-18 |
 | 39 | [use-cases/39-accessibility-options.md](use-cases/39-accessibility-options.md) | Accessibility options | pending | 2026-06-18 |

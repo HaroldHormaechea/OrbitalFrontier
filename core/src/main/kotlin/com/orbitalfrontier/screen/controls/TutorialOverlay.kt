@@ -96,7 +96,7 @@ class TutorialOverlay(skin: OrbitalUiSkin) {
 
     private companion object {
         const val BUTTON_WIDTH = 120f
-        const val BUTTON_HEIGHT = 40f
-        const val BUTTON_GAP = 12f
+        const val BUTTON_HEIGHT = 36f
+        const val BUTTON_GAP = 8f
     }
 }
