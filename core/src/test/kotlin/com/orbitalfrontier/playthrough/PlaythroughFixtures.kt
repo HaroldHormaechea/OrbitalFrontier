@@ -142,6 +142,20 @@ object PlaythroughFixtures {
     const val UC43_COMBAT_REPUTATION: String = "uc43-combat-reputation"
 
     /**
+     * UC45 richer-enemy-AI playthrough name (AC#5): start **in flight in Gamma Verge** just west of the
+     * authored multi-archetype `gamma-marauder-pack` zone, fly in to spawn the pack (an
+     * [com.orbitalfrontier.combat.HostileArchetypes.INDEPENDENT_MARAUDER] + a
+     * [com.orbitalfrontier.combat.HostileArchetypes.REGROUP_MARAUDER] + a
+     * [com.orbitalfrontier.combat.HostileArchetypes.PRECISION_RAIDER]), then hold FIRE while the crew-gated
+     * turret grinds the pack down. Uses **multi-section** hit weights (NOT the HULL-only pin the other combat
+     * fixtures use) so the retreat-and-regroup and weakest-section-targeting behaviours actually manifest in
+     * the recording. [Uc45EnemyAiReplayTest] asserts a multi-hostile fight occurred, it cleared, the new AI
+     * effects show up, and the replay is bit-for-bit deterministic. Loadable via
+     * `playtest -Dplaythrough.name=uc45-enemy-ai`.
+     */
+    const val UC45_ENEMY_AI: String = "uc45-enemy-ai"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -208,6 +222,7 @@ object PlaythroughFixtures {
             UC41_COMBAT_BOUNTY to ::uc41CombatBounty,
             UC42_LOOT_SALVAGE to ::uc42LootSalvage,
             UC43_COMBAT_REPUTATION to ::uc43CombatReputation,
+            UC45_ENEMY_AI to ::uc45EnemyAi,
         )
 
     /**
@@ -1025,7 +1040,8 @@ object PlaythroughFixtures {
     private val UC43_SECTOR: SectorId = SectorId("gamma")
 
     /** The authored `gamma-independent-marauder` zone (read from the production map) — the AC#5 kill site. */
-    private val UC43_MARAUDER_ZONE = MvpSectorMap.encounterZones(UC43_SECTOR).single()
+    private val UC43_MARAUDER_ZONE =
+        MvpSectorMap.encounterZones(UC43_SECTOR).first { it.id == "gamma-independent-marauder" }
 
     /**
      * Combat tuning **pinned for the UC43 combat-reputation fixture only** — the same HULL-funnelled,
@@ -1108,6 +1124,105 @@ object PlaythroughFixtures {
         // Loiter (released stick ⇒ drift to near-rest inside the zone) and keep firing: the turret auto-aims
         // and destroys the closing marauder over the remaining ticks, souring the Independents standing.
         for (tick in UC43_THRUST_IN_TICKS until UC43_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
+
+    /** The authored multi-archetype `gamma-marauder-pack` zone (read from the production map) — the UC45 fight site. */
+    private val UC45_PACK_ZONE =
+        MvpSectorMap.encounterZones(SectorId("gamma")).first { it.id == "gamma-marauder-pack" }
+
+    /**
+     * Combat tuning **pinned for the UC45 richer-AI fixture only**. Unlike the other combat fixtures it does
+     * NOT funnel all damage to the HULL (condition #3): the RNG-weighted hit pool spans HULL **and** ENGINE,
+     * so the player's recorded damage is genuinely multi-section and the new AI is distinguishable from plain
+     * HULL-funnelled fire. Two deliberate choices make the lone-turret-vs-three-pack fight clear deterministically:
+     *
+     *  - **TURRET and WEAPON carry zero RNG weight.** A stray RNG hit on the player's TURRET could make it the
+     *    weakest section, at which point the weakest-section-targeting
+     *    [com.orbitalfrontier.combat.HostileArchetypes.PRECISION_RAIDER] would funnel its **direct** hits into
+     *    the turret mount and disable the player's only auto-aim weapon, stalling the fight. With TURRET (and
+     *    WEAPON) out of the RNG pool the precision raider instead locks onto the ENGINE — the initial weakest
+     *    section by the ascending-name tie-break — which is harmless to a loitering player, so the weakest-section
+     *    behaviour still manifests visibly (recorded ENGINE damage) while the turret stays operable.
+     *  - **A wide [CombatParams.hitRadius].** Once a damaged
+     *    [com.orbitalfrontier.combat.HostileArchetypes.REGROUP_MARAUDER] crosses its flee threshold it backs off
+     *    to its `regroupRange` (700 wu) — beyond the turret's range — and an engine-slowed player cannot chase
+     *    it. The generous hit radius lets the auto-aim turret's un-led shots still connect against the standoff-
+     *    parking marauder so the encounter actually clears within a bounded run, rather than stalemating on an
+     *    uncatchable straggler.
+     *
+     * Pinning per artifact (the UC02 config-pin rationale) means a later combat retune can't silently invalidate
+     * this replay. The HULL is weighted heaviest so the turret grinds the pack down; all numbers are `[TUNE]`.
+     */
+    private val UC45_COMBAT_TUNING: CombatParams =
+        CombatParams(
+            sectionHitWeights = mapOf(ShipSection.HULL to 9, ShipSection.ENGINE to 1),
+            hitRadius = 200f,
+        )
+
+    /** Thrust-in ticks for [uc45EnemyAi] — enough to cross the pack zone's r260 edge from just outside. */
+    private const val UC45_THRUST_IN_TICKS: Int = 16
+
+    /** Total ticks for [uc45EnemyAi] — the thrust-in plus a long loiter while the turret grinds the pack down. */
+    private const val UC45_TOTAL_TICKS: Int = 700
+
+    /**
+     * UC45 richer-enemy-AI scenario (AC#5): the player flies into the authored multi-archetype
+     * `gamma-marauder-pack` zone (centre [UC45_PACK_ZONE].center `(-700, -300)`, radius 260) in **Gamma
+     * Verge**, spawning a three-archetype pack — an [com.orbitalfrontier.combat.HostileArchetypes
+     * .INDEPENDENT_MARAUDER], a [com.orbitalfrontier.combat.HostileArchetypes.REGROUP_MARAUDER] and a
+     * [com.orbitalfrontier.combat.HostileArchetypes.PRECISION_RAIDER] — and holds FIRE while the crew-gated
+     * auto-aim turret destroys them.
+     *
+     * The player starts in flight just **west of** the zone, cruising east at max speed with **one crew
+     * aboard** (turret operable) and the last-docked station recorded at the Gamma junkyard (the respawn
+     * point). It thrusts east for [UC45_THRUST_IN_TICKS] ticks to cross the r260 edge and trip the ambush,
+     * then loiters and holds [FireAction.FIRE] for the rest of the run. The empty loadout means the player's
+     * progression level is 0, so the zone's `ByProgression` scaling adds no reinforcements — the pack is
+     * exactly its three authored archetypes (a bounded, deterministic fight).
+     *
+     * Authored in **Gamma** and geometrically disjoint from the existing `gamma-independent-marauder` zone
+     * (and from the UC43 fixture's NE-only flight path), so it perturbs no existing replay (CONDITION #1).
+     * The combat tuning is the pinned [UC45_COMBAT_TUNING] (multi-section weights, so the retreat-and-regroup
+     * and weakest-section behaviours manifest); all geometry is read from the production [MvpSectorMap].
+     * Loadable via `playtest -Dplaythrough.name=uc45-enemy-ai`.
+     */
+    fun uc45EnemyAi(): Playthrough {
+        // Start just OUTSIDE the r260 pack zone on the -x side (dist 270), already cruising east at 120 wu/s so
+        // a few ticks of eastward thrust carry the ship across the r260 edge and trip the ambush.
+        val start = UC45_PACK_ZONE.center - Vec2(270f, 0f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(120f, 0f), headingRadians = 0f),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC45_ENEMY_AI,
+                seed = 45L,
+                dtSeconds = DT_SECONDS,
+                combatConfig = UC45_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        // The whole run takes place in Gamma — where the multi-archetype pack zone lives.
+                        currentSector = SectorId("gamma"),
+                        fleet = fleet,
+                        // The respawn point on destruction (persisted); mirrors the start sector.
+                        lastDockedStation = PoiId("gamma-junkyard"),
+                    ),
+            )
+
+        val east = MovementInput(targetDirection = Vec2(1f, 0f), magnitude = 1f, released = false)
+        // Thrust east to cross the pack zone edge and spawn the pack; FIRE the whole time.
+        for (tick in 0 until UC45_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, east)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        // Loiter (released stick ⇒ drift to near-rest inside the zone) and keep firing: the turret auto-aims
+        // and grinds the multi-hostile pack down over the remaining ticks.
+        for (tick in UC45_THRUST_IN_TICKS until UC45_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
         }
         return recorder.build()

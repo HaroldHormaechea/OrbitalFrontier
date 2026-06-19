@@ -37,6 +37,14 @@ enum class AiBehavior {
 
     /** Closes and fires while healthy, but turns and runs once its hull drops below a threshold. */
     FLEE_WHEN_DAMAGED,
+
+    /**
+     * Closes and fires while healthy; once its hull drops below `fleeHullFraction` it **retreats** while
+     * inside `regroupRange` (running directly away, holding fire) and then **re-engages** from that
+     * recovered standoff distance rather than fleeing outright (UC45 AC#2). Memoryless and distance-driven,
+     * so it stays pure and deterministic — see [EnemyAi].
+     */
+    RETREAT_AND_REGROUP,
 }
 
 /**
@@ -76,6 +84,20 @@ data class HostileArchetype(
     /** Hull fraction (0..1) below which a [AiBehavior.FLEE_WHEN_DAMAGED] hostile runs. */
     val fleeHullFraction: Float,
     /**
+     * For [AiBehavior.RETREAT_AND_REGROUP] (UC45 AC#2): the distance (world-units) the hostile retreats to
+     * while damaged before turning back to re-engage. Authored **`< leashRange`** so the hostile regroups
+     * and returns rather than running far enough to leash off. Ignored by every other behavior; defaults to
+     * `0f` (no retreat) so existing archetypes are unchanged. [TUNE]
+     */
+    val regroupRange: Float = 0f,
+    /**
+     * When `true`, this archetype's fire is stamped with the player's **weakest section** at fire time and
+     * applies its damage **directly** to that section (UC45 AC#2) — no RNG-weighted hit pick. **Opt-in**
+     * (defaults to `false`): every existing archetype keeps the [DamageModel] RNG path, so existing combat
+     * replays consume the RNG stream identically and stay byte-identical. See [WeakestSection] / ADR 0033.
+     */
+    val targetsWeakestSection: Boolean = false,
+    /**
      * The faction this ship type belongs to (UC43), or `null` when it is **unaligned** — a freelance
      * raider/scavenger no power claims. A hostile's faction is **intrinsic to the ship type** (not to
      * where it spawned), so it lives on the archetype, not the [EncounterZone]. Destroying a
@@ -96,6 +118,11 @@ data class HostileArchetype(
         require(engageRange > 0f) { "HostileArchetype ${id.value} engageRange must be positive" }
         require(leashRange > 0f) { "HostileArchetype ${id.value} leashRange must be positive" }
         require(fleeHullFraction in 0f..1f) { "HostileArchetype ${id.value} fleeHullFraction must be in 0..1" }
+        if (behavior == AiBehavior.RETREAT_AND_REGROUP) {
+            require(regroupRange > 0f && regroupRange < leashRange) {
+                "HostileArchetype ${id.value} RETREAT_AND_REGROUP regroupRange must be in (0, leashRange)"
+            }
+        }
     }
 
     /** Max HP of [section] for this archetype, or 0 if the archetype has no such section. */
@@ -233,8 +260,78 @@ object HostileArchetypes {
             factionId = Factions.INDEPENDENTS.id,
         )
 
+    /**
+     * A wary marauder that fights, then **retreats-and-regroups** (UC45 AC#2): it closes and fires while
+     * healthy but, once its hull drops below a third, runs out to [HostileArchetype.regroupRange] and then
+     * turns back to re-engage from that standoff distance instead of fleeing for good. Deliberately
+     * **unaligned** (`factionId = null`, CONDITION #2) so it carries no reputation effect. Slightly tankier
+     * than a [RAIDER] so the regroup cycle is observable in a replay. [TUNE]
+     */
+    val REGROUP_MARAUDER: HostileArchetype =
+        HostileArchetype(
+            id = HostileArchetypeId("regroup-marauder"),
+            displayName = "Regroup Marauder",
+            behavior = AiBehavior.RETREAT_AND_REGROUP,
+            difficulty = DifficultyTier.HARD,
+            maxSpeed = 100f,
+            acceleration = 90f,
+            sectionHp =
+                mapOf(
+                    ShipSection.HULL to 36,
+                    ShipSection.ENGINE to 16,
+                    ShipSection.TURRET to 12,
+                    ShipSection.WEAPON to 12,
+                ),
+            weapon =
+                FixedWeapon(
+                    damage = 4,
+                    cooldownSeconds = 1.2f,
+                    projectileSpeed = 320f,
+                    range = 520f,
+                ),
+            engageRange = 480f,
+            leashRange = 1400f,
+            fleeHullFraction = 0.34f,
+            regroupRange = 700f,
+        )
+
+    /**
+     * A precision raider whose fire **targets the player's weakest section** (UC45 AC#2): instead of the
+     * RNG-weighted hit spread, each shot is stamped at fire time with the player's lowest-HP-fraction
+     * section ([WeakestSection]) and applies its damage there directly. AGGRESSIVE otherwise. Deliberately
+     * **unaligned** (`factionId = null`, CONDITION #2). [TUNE]
+     */
+    val PRECISION_RAIDER: HostileArchetype =
+        HostileArchetype(
+            id = HostileArchetypeId("precision-raider"),
+            displayName = "Precision Raider",
+            behavior = AiBehavior.AGGRESSIVE,
+            difficulty = DifficultyTier.HARD,
+            maxSpeed = 90f,
+            acceleration = 80f,
+            sectionHp =
+                mapOf(
+                    ShipSection.HULL to 30,
+                    ShipSection.ENGINE to 15,
+                    ShipSection.TURRET to 10,
+                    ShipSection.WEAPON to 10,
+                ),
+            weapon =
+                FixedWeapon(
+                    damage = 4,
+                    cooldownSeconds = 1.2f,
+                    projectileSpeed = 320f,
+                    range = 520f,
+                ),
+            engageRange = 480f,
+            leashRange = 1400f,
+            fleeHullFraction = 0f,
+            targetsWeakestSection = true,
+        )
+
     /** Every authored archetype, in authored order. */
-    val all: List<HostileArchetype> = listOf(RAIDER, SCAVENGER, INDEPENDENT_MARAUDER)
+    val all: List<HostileArchetype> =
+        listOf(RAIDER, SCAVENGER, INDEPENDENT_MARAUDER, REGROUP_MARAUDER, PRECISION_RAIDER)
 
     private val byId: Map<HostileArchetypeId, HostileArchetype> = all.associateBy { it.id }
 

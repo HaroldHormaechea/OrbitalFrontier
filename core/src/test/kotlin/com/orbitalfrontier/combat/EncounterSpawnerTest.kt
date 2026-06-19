@@ -102,4 +102,80 @@ class EncounterSpawnerTest {
             EncounterSpawner.missionSpawn(spawned, "mission:test", HostileArchetypes.RAIDER.id, 2, Vec2(0f, 0f), 4, params),
         )
     }
+
+    // --- UC45 AC#1: multi-archetype composition spawning + single-entry RNG parity -----------------------
+
+    @Test
+    fun `a multi-entry composition spawns each entry's hostiles in authored order`() {
+        val zone =
+            EncounterZone(
+                id = "gamma-marauder-pack",
+                sectorId = "gamma",
+                center = Vec2(900f, 0f),
+                radius = 260f,
+                composition =
+                    listOf(
+                        HostileSpawn(HostileArchetypes.RAIDER.id, 2),
+                        HostileSpawn(HostileArchetypes.SCAVENGER.id, 1),
+                    ),
+            )
+        val spawned = EncounterSpawner.naturalSpawn(CombatState.NONE, zone, outside, inside, spawnTick = 0, params = params)
+
+        assertEquals("every composition hostile spawned", 3, spawned.hostiles.size)
+        assertEquals(
+            "spawned in authored order: 2 raiders then 1 scavenger",
+            listOf(HostileArchetypes.RAIDER.id, HostileArchetypes.RAIDER.id, HostileArchetypes.SCAVENGER.id),
+            spawned.hostiles.map { it.archetypeId },
+        )
+    }
+
+    @Test
+    fun `a single-entry count is byte-identical to the same count split across entries`() {
+        // The RNG draws one nextFloat per hostile in entry order, so [(A,2)] consumes the RNG stream in the
+        // EXACT same order as [(A,1),(A,1)] — the parity proof that wrapping a single-archetype zone in a
+        // composition list does not perturb its spawn (existing zones stay byte-identical).
+        val single =
+            EncounterZone("z", "alpha", Vec2(900f, 0f), 260f, listOf(HostileSpawn(HostileArchetypes.RAIDER.id, 2)))
+        val split =
+            EncounterZone(
+                "z",
+                "alpha",
+                Vec2(900f, 0f),
+                260f,
+                listOf(HostileSpawn(HostileArchetypes.RAIDER.id, 1), HostileSpawn(HostileArchetypes.RAIDER.id, 1)),
+            )
+        val a = EncounterSpawner.naturalSpawn(CombatState.NONE, single, outside, inside, spawnTick = 7, params = params)
+        val b = EncounterSpawner.naturalSpawn(CombatState.NONE, split, outside, inside, spawnTick = 7, params = params)
+        assertEquals("the same count draws the RNG identically however the composition is grouped", a, b)
+    }
+
+    @Test
+    fun `the spawn director scales a ByProgression zone by the player's progression`() {
+        val zone =
+            EncounterZone(
+                id = "scaled",
+                sectorId = "alpha",
+                center = Vec2(900f, 0f),
+                radius = 260f,
+                composition = listOf(HostileSpawn(HostileArchetypes.RAIDER.id, 1)),
+                scaling =
+                    SpawnScaling.ByProgression(
+                        reinforcementArchetypeId = HostileArchetypes.SCAVENGER.id,
+                        hostilesPerLevel = 1,
+                        maxBonusHostiles = 2,
+                    ),
+            )
+        // progression 0 ⇒ no reinforcement (base composition, AC#3 default-off contract).
+        val unscaled = EncounterSpawner.naturalSpawn(CombatState.NONE, zone, outside, inside, 0, params, progression = 0)
+        assertEquals("an unprogressed player meets the base pack", 1, unscaled.hostiles.size)
+
+        // progression 2 ⇒ +2 reinforcement scavengers (capped), so a 3-hostile pack.
+        val scaled = EncounterSpawner.naturalSpawn(CombatState.NONE, zone, outside, inside, 0, params, progression = 2)
+        assertEquals("a progressed player meets a larger pack", 3, scaled.hostiles.size)
+        assertEquals(
+            "the reinforcements are the configured archetype, appended after the base",
+            listOf(HostileArchetypes.RAIDER.id, HostileArchetypes.SCAVENGER.id, HostileArchetypes.SCAVENGER.id),
+            scaled.hostiles.map { it.archetypeId },
+        )
+    }
 }

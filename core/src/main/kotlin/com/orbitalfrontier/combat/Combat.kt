@@ -74,6 +74,7 @@ object Combat {
             direction: Vec2,
             weapon: Weapon,
             target: HostileId?,
+            targetSection: ShipSection? = null,
         ) {
             val dir = direction.normalizedOrZero()
             if (dir == Vec2.ZERO) return
@@ -86,6 +87,7 @@ object Combat {
                     damage = weapon.damage,
                     remainingRange = weapon.range,
                     targetHostileId = target,
+                    targetSection = targetSection,
                 ),
             )
         }
@@ -143,7 +145,19 @@ object Combat {
 
             var cooldown = (h.cooldownRemaining - dt).coerceAtLeast(0f)
             if (decision.wantsToFire && cooldown <= 0f) {
-                emit(ProjectileOwner.HOSTILE, position, playerPos - position, archetype.weapon, target = null)
+                // UC45 AC#2: a weakest-section-targeting archetype stamps the player's weakest section
+                // (at fire time) onto its shot for a direct, no-RNG hit; every other archetype passes null
+                // and keeps the RNG-weighted DamageModel path (byte-identical RNG consumption).
+                val targetSection =
+                    if (archetype.targetsWeakestSection) WeakestSection.of(playerDamage, player.maxSectionHp) else null
+                emit(
+                    ProjectileOwner.HOSTILE,
+                    position,
+                    playerPos - position,
+                    archetype.weapon,
+                    target = null,
+                    targetSection = targetSection,
+                )
                 cooldown = archetype.weapon.cooldownSeconds
                 events.add(CombatEvent.HostileFired(h.id))
             }
@@ -187,17 +201,26 @@ object Combat {
                 }
                 ProjectileOwner.HOSTILE -> {
                     if ((p.position - playerPos).length <= params.hitRadius) {
-                        val hit =
-                            DamageModel.applyHit(
-                                sectionDamage = playerDamage,
-                                maxSectionHp = player.maxSectionHp,
-                                hitDamage = p.damage,
-                                weights = params.sectionHitWeights,
-                                rng = rng,
-                            )
-                        rng = hit.rng
-                        playerDamage = hit.sectionDamage
-                        events.add(CombatEvent.PlayerHit(hit.section))
+                        val targetSection = p.targetSection
+                        if (targetSection != null && player.maxHp(targetSection) > 0) {
+                            // UC45 AC#2: a stamped weakest-section shot applies its damage DIRECTLY — no RNG
+                            // draw — so non-targeting (all existing) hostile fire keeps the RNG stream intact.
+                            playerDamage =
+                                SectionDamages.applyDamage(playerDamage, targetSection, p.damage, player.maxHp(targetSection))
+                            events.add(CombatEvent.PlayerHit(targetSection))
+                        } else {
+                            val hit =
+                                DamageModel.applyHit(
+                                    sectionDamage = playerDamage,
+                                    maxSectionHp = player.maxSectionHp,
+                                    hitDamage = p.damage,
+                                    weights = params.sectionHitWeights,
+                                    rng = rng,
+                                )
+                            rng = hit.rng
+                            playerDamage = hit.sectionDamage
+                            events.add(CombatEvent.PlayerHit(hit.section))
+                        }
                         // projectile consumed on hit
                     } else {
                         survivingProjectiles.add(p)

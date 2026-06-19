@@ -10,12 +10,14 @@ import kotlin.math.atan2
  * [AiBehavior] **data**, and the thresholds/ranges come from archetype data too, so difficulty is
  * data-driven rather than branch-driven.
  *
- * Two MVP behaviours:
+ * Behaviours:
  *  - [AiBehavior.AGGRESSIVE] — always turns toward the player, thrusts to close, and fires once within
  *    the archetype's `engageRange`.
  *  - [AiBehavior.FLEE_WHEN_DAMAGED] — behaves aggressively **while healthy**, but once its hull drops
  *    below `fleeHullFraction` it turns directly away and runs, holding fire (the AC#6 disengage path
  *    the player can exploit by out-damaging a skittish enemy).
+ *  - [AiBehavior.RETREAT_AND_REGROUP] (UC45) — engages while healthy; once damaged it runs (holding fire)
+ *    only while inside `regroupRange`, then turns back to re-engage from that recovered standoff distance.
  */
 object EnemyAi {
     /** One tick's AI output: the heading to face, whether to thrust along it, and whether to fire. */
@@ -34,6 +36,23 @@ object EnemyAi {
         val toPlayer = playerPosition - hostile.kinematics.position
         val distance = toPlayer.length
         val headingToPlayer = atan2(toPlayer.y, toPlayer.x)
+
+        // RETREAT_AND_REGROUP (UC45 AC#2): additive branch — the AGGRESSIVE/FLEE_WHEN_DAMAGED logic below
+        // is left byte-identical. While healthy it engages; once damaged it runs (holding fire) only while
+        // still inside regroupRange, then re-engages from that recovered standoff distance.
+        if (archetype.behavior == AiBehavior.RETREAT_AND_REGROUP) {
+            val retreating =
+                hostile.hullFraction(archetype) < archetype.fleeHullFraction && distance < archetype.regroupRange
+            return if (retreating) {
+                Decision(desiredHeading = atan2(-toPlayer.y, -toPlayer.x), thrust = true, wantsToFire = false)
+            } else {
+                Decision(
+                    desiredHeading = headingToPlayer,
+                    thrust = true,
+                    wantsToFire = distance > 0f && distance <= archetype.engageRange,
+                )
+            }
+        }
 
         val fleeing =
             archetype.behavior == AiBehavior.FLEE_WHEN_DAMAGED &&

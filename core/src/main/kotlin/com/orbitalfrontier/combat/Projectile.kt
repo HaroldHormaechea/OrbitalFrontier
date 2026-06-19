@@ -31,6 +31,13 @@ enum class ProjectileOwner {
  * [targetHostileId] records the hostile a player auto-aim/turret shot was launched at (null for fixed
  * forward fire and all hostile fire); it is advisory for hit resolution and lets the renderer tint a
  * tracking shot, but collision is still positional.
+ *
+ * [targetSection] records the player section a **weakest-section-targeting** hostile shot was stamped with
+ * at fire time (UC45 AC#2); when non-null and the player still has that section, the hit applies its damage
+ * **directly** to it with **no RNG draw** (see [Combat.step]). Null for every other projectile — all player
+ * fire and all non-targeting hostile fire — which keeps the RNG-weighted [DamageModel] path and the RNG
+ * stream byte-identical for existing encounters. It is the documented "weakest-at-fire-time" semantic
+ * (ADR 0033): the section is not re-chosen mid-flight.
  */
 data class Projectile(
     val id: ProjectileId,
@@ -40,6 +47,7 @@ data class Projectile(
     val damage: Int,
     val remainingRange: Float,
     val targetHostileId: HostileId? = null,
+    val targetSection: ShipSection? = null,
 ) {
     init {
         require(damage > 0) { "Projectile damage must be positive: $damage" }

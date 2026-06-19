@@ -54,7 +54,7 @@ Statuses:
 | 42 | [use-cases/42-loot-salvage-economy.md](use-cases/42-loot-salvage-economy.md) | Loot & salvage from destroyed hostiles | done | 2026-06-19 |
 | 43 | [use-cases/43-combat-driven-reputation.md](use-cases/43-combat-driven-reputation.md) | Combat-driven reputation | done | 2026-06-19 |
 | 44 | [use-cases/44-combat-hud-feedback.md](use-cases/44-combat-hud-feedback.md) | Combat HUD — targeting, health bars & hit feedback | done | 2026-06-19 |
-| 45 | [use-cases/45-enemy-ai-spawn-director.md](use-cases/45-enemy-ai-spawn-director.md) | Richer enemy AI & encounter variety | pending | 2026-06-18 |
+| 45 | [use-cases/45-enemy-ai-spawn-director.md](use-cases/45-enemy-ai-spawn-director.md) | Richer enemy AI & encounter variety | in-progress | 2026-06-19 |
 | 46 | [use-cases/46-dynamic-station-pricing.md](use-cases/46-dynamic-station-pricing.md) | Dynamic station pricing | pending | 2026-06-18 |
 | 47 | [use-cases/47-junkyard-buy-used-parts.md](use-cases/47-junkyard-buy-used-parts.md) | Buy used parts at junkyards | pending | 2026-06-18 |
 | 48 | [use-cases/48-reputation-gated-upgrades.md](use-cases/48-reputation-gated-upgrades.md) | Reputation-gated upgrade & ship availability | pending | 2026-06-18 |
