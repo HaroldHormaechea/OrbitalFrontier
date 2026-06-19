@@ -45,7 +45,7 @@ class ReputationPersistenceTest {
         runCatching { driver.close() }
     }
 
-    private fun repo() = SqlDelightGameStateRepository(database, NoOpLogger)
+    private fun repo() = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
 
     private fun reputationRowCount(): Long =
         driver.executeQuery(
@@ -127,8 +127,8 @@ class ReputationPersistenceTest {
         // OUT of the params' bounds (e.g. from an older save with wider bounds, or a corrupted row): the
         // repository clamps them into [min, max] on load.
         repo().saveGameState(WorldState())
-        database.orbitalFrontierQueries.insertReputation(faction_id = league.value, value_ = 999L)
-        database.orbitalFrontierQueries.insertReputation(faction_id = independents.value, value_ = -999L)
+        database.orbitalFrontierQueries.insertReputation(slot_id = 0L, faction_id = league.value, value_ = 999L)
+        database.orbitalFrontierQueries.insertReputation(slot_id = 0L, faction_id = independents.value, value_ = -999L)
 
         val reloaded = repo().loadGameState()
         assertNotNull(reloaded)
@@ -141,8 +141,8 @@ class ReputationPersistenceTest {
         // A standing for a faction the catalog no longer knows (an evolved/removed faction) alongside a
         // known one: the unknown row is dropped with a WARN; the known one still loads.
         repo().saveGameState(WorldState())
-        database.orbitalFrontierQueries.insertReputation(faction_id = "pirates", value_ = 50L)
-        database.orbitalFrontierQueries.insertReputation(faction_id = league.value, value_ = 30L)
+        database.orbitalFrontierQueries.insertReputation(slot_id = 0L, faction_id = "pirates", value_ = 50L)
+        database.orbitalFrontierQueries.insertReputation(slot_id = 0L, faction_id = league.value, value_ = 30L)
 
         val reloaded = repo().loadGameState()
         assertNotNull(reloaded)

@@ -98,11 +98,11 @@ class Uc33DestructionRespawnSaveTest {
         val (world, keptUnits) = postRespawnWorld()
         assertEquals("the lightened hold keeps 15 units (20 - 5)", 15, keptUnits)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(world)
 
         // Fresh repository over the same DB == app restart.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         assertNotNull("the post-respawn save must reload", reloaded)
         assertEquals("AC#4: the post-respawn world reloads exactly", world, reloaded)
@@ -118,15 +118,15 @@ class Uc33DestructionRespawnSaveTest {
     fun `reloading the post-respawn state is idempotent - the penalty is never re-applied`() {
         val (world, _) = postRespawnWorld()
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(world)
-        val firstReload = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val firstReload = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         // Persist the reloaded state again (simulating a crash/close-and-reload cycle on the screen) and
         // reload once more — the hold must NOT shrink further: the penalty was baked into the save, not
         // re-computed on load.
-        SqlDelightGameStateRepository(database, NoOpLogger).saveGameState(firstReload!!)
-        val secondReload = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).saveGameState(firstReload!!)
+        val secondReload = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         assertNotNull("the second reload must succeed", secondReload)
         assertEquals("AC#4: a re-save/reload cycle is idempotent (no duplicated penalty)", firstReload, secondReload)
@@ -148,19 +148,22 @@ class Uc33DestructionRespawnSaveTest {
         }
     }
 
-    /** Capturing fake repository: records each persisted snapshot so triggers are observable. */
+    /** Capturing fake repository: records each persisted snapshot (slot-aware, UC38) so triggers are observable. */
     private class CapturingRepository : GameStateRepository {
         val saved = mutableListOf<WorldState>()
 
-        override fun loadGameState(): WorldState? = saved.lastOrNull()
+        override fun loadGameState(slot: SlotId): WorldState? = saved.lastOrNull()
 
-        override fun saveGameState(state: WorldState) {
+        override fun saveGameState(
+            slot: SlotId,
+            state: WorldState,
+        ) {
             saved += state
         }
 
-        override fun hasSave(): Boolean = saved.isNotEmpty()
+        override fun hasSave(slot: SlotId): Boolean = saved.isNotEmpty()
 
-        override fun clearSave() {
+        override fun clearSave(slot: SlotId) {
             saved.clear()
         }
     }

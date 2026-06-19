@@ -81,16 +81,23 @@ class Uc21MainMenuGuardTest {
 
     @Test
     fun `the new-game path calls clearSave unconditionally`() {
+        // UC38: the Start callback delegates to newGameIntoSlot(activeSlot), which owns the per-slot wipe.
         val onStart = section(GAME_SOURCE, "onStartNewGame =")
         assertTrue(
-            "AC#3: starting a new game must wipe the existing save via clearSave()",
-            onStart.contains("clearSave()"),
+            "AC#3 (UC38): Start must route through newGameIntoSlot(...) to begin a fresh game in the active slot",
+            onStart.contains("newGameIntoSlot("),
+        )
+        // The wipe lives in newGameIntoSlot: clearSave(slot) is called unconditionally (now per-slot, UC38).
+        val newGame = section(GAME_SOURCE, "private fun newGameIntoSlot(")
+        assertTrue(
+            "AC#3: starting a new game must wipe the slot's existing save via clearSave(slot)",
+            newGame.contains("clearSave("),
         )
         // The wipe must NOT be guarded on a non-null loaded save — a corrupt-but-present save (loaded
         // == null yet rows on disk) must still be cleaned. So no `if (loaded != null)` around it.
         assertTrue(
-            "AC#3: clearSave() must be unconditional (not gated on loaded != null) so a corrupt save is still wiped",
-            !Regex("""if\s*\(\s*loaded\s*!=\s*null\s*\)""").containsMatchIn(onStart),
+            "AC#3: clearSave(slot) must be unconditional (not gated on loaded != null) so a corrupt save is still wiped",
+            !Regex("""if\s*\(\s*loaded\s*!=\s*null\s*\)""").containsMatchIn(newGame),
         )
     }
 

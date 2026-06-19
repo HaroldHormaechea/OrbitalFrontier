@@ -52,7 +52,7 @@ class MissionPersistenceTest {
         runCatching { driver.close() }
     }
 
-    private fun repo() = SqlDelightGameStateRepository(database, NoOpLogger)
+    private fun repo() = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
 
     private fun tableExists(name: String): Boolean =
         driver.executeQuery(
@@ -205,21 +205,21 @@ class MissionPersistenceTest {
 
             // Continue the chain to the current schema so the now-current repository (which reads the
             // ship_section_damage table + game_state.last_docked_station_id added by v11, the reputation
-            // table added by v12, the owned_station/station_module tables added by v13, and the settings
-            // audio columns added by v14) can load — the canonical per-step migration assertions live in
-            // SaveMigrationTest.
-            OrbitalFrontier.Schema.migrate(v9, 10L, 14L)
-            assertEquals("the chain reaches the current save version", 14L, queries.selectSaveVersion().executeAsOne())
+            // table added by v12, the owned_station/station_module tables added by v13, the settings audio
+            // columns added by v14, and the per-slot partitioning + slot_id columns added by v17/UC38) can
+            // load — the canonical per-step migration assertions live in SaveMigrationTest.
+            OrbitalFrontier.Schema.migrate(v9, 10L, 17L)
+            assertEquals("the chain reaches the current save version", 17L, queries.selectSaveVersion().executeAsOne())
 
             // The migrated save loads through the repository with an empty mission log, and a freshly
             // saved mission round-trips on top of it (the new table is writable, not just present).
-            val gameRepo = SqlDelightGameStateRepository(migrated, NoOpLogger)
+            val gameRepo = SqlDelightGameStateRepository(migrated, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
             val loaded = gameRepo.loadGameState()
             assertNotNull("a migrated v9 save still loads", loaded)
             assertTrue("a migrated save has an empty mission log", loaded!!.missions.accepted.isEmpty())
 
             gameRepo.saveGameState(loaded.copy(missions = MissionLog(accepted = listOf(activeMining("board:alpha-station:mining")))))
-            val reSaved = SqlDelightGameStateRepository(migrated, NoOpLogger).loadGameState()
+            val reSaved = SqlDelightGameStateRepository(migrated, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
             assertEquals(
                 "a mission saved into the migrated DB round-trips",
                 listOf(MissionId("board:alpha-station:mining")),

@@ -72,11 +72,11 @@ class Uc13CombatSaveReloadReplayTest {
 
         val replayedWorld = worldStateFrom(finalState)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(replayedWorld)
 
         // Fresh repository over the same DB == app restart; the reload goes back through SQL.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         assertNotNull("the combat-damaged save must reload", reloaded)
         // EXACT equality — section damage + lastDockedStation survive alongside the fleet + sector (AC#5).

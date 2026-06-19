@@ -65,7 +65,7 @@ class Uc21ClearSaveTest {
         runCatching { driver.close() }
     }
 
-    private fun newGameStateRepository() = SqlDelightGameStateRepository(database, logger)
+    private fun newGameStateRepository() = SqlDelightGameStateRepository(database, logger, com.orbitalfrontier.platform.FixedClock)
 
     private fun newSettingsRepository() = SqlDelightSettingsRepository(database, logger)
 

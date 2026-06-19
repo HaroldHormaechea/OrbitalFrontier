@@ -72,11 +72,11 @@ class Uc09OutfitSaveReloadReplayTest {
 
         val replayedWorld = worldStateFrom(finalState)
 
-        val repo = SqlDelightGameStateRepository(database, NoOpLogger)
+        val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         repo.saveGameState(replayedWorld)
 
         // Fresh repository over the same DB == app restart; the reload goes back through SQL.
-        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger).loadGameState()
+        val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         // EXACT equality — every ship (kinematics + type + cargo + fuel + loadout) + active id (AC#6).
         assertEquals(replayedWorld, reloaded)
