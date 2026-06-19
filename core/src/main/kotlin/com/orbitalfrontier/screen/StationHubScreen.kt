@@ -10,7 +10,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
@@ -63,9 +65,16 @@ class StationHubScreen(
     // supply it; the EXIT SHIP row only fires this intent and is purely additive — every existing
     // menu/row stays exactly as-is (AC#1).
     private val onDisembark: () -> Unit = {},
+    // UC40: the shared transient notification queue (constructed once by the game). The hub itself raises no
+    // toasts, but PlayScreen.buyFuel/refuel enqueue the +N/-N CR delta and styled buy-fuel errors here, so
+    // the hub renders the shared queue to surface them. Defaults to a fresh queue for JVM/tests.
+    private val notifications: NotificationQueue = NotificationQueue(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
+
+    // UC40: the device-side toast renderer (mirrors PlayScreen); draws the shared queue above the hub.
+    private val notificationRenderer = NotificationRenderer()
 
     // Fuel readout (UC07): seeded from the current tank and refreshed in place after each refuel tap.
     private val fuelLabel = Label("", skin.labelStyle)
@@ -275,8 +284,16 @@ class StationHubScreen(
     override fun render(delta: Float) {
         Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+        // UC40: advance + draw the shared toast queue above the hub (after the stage) so the +N/-N CR delta
+        // and the styled buy-fuel errors PlayScreen enqueues surface here, animated by the renderer (AC#2).
+        notifications.update(delta)
         stage.act(delta)
         stage.draw()
+        notificationRenderer.render(
+            notifications.visibleWithProgress(),
+            Gdx.graphics.width.toFloat(),
+            Gdx.graphics.height.toFloat(),
+        )
     }
 
     override fun resize(
@@ -301,6 +318,7 @@ class StationHubScreen(
 
     override fun dispose() {
         stage.dispose()
+        notificationRenderer.dispose()
         skin.dispose()
     }
 

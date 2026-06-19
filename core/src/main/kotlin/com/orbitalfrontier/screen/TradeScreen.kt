@@ -11,13 +11,19 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.PurchaseGate
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.SpendDecision
 import com.orbitalfrontier.economy.StationMarket
 import com.orbitalfrontier.economy.TradeOrder
+import com.orbitalfrontier.notify.GameNotifications
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
+import com.orbitalfrontier.screen.controls.PurchaseConfirmDialog
 
 /**
  * The station trade desk shown from the station hub while docked (UC08 AC#2/#3).
@@ -48,9 +54,16 @@ class TradeScreen(
     private val cargoSupplier: () -> Cargo,
     private val onTrade: (TradeOrder) -> Unit,
     private val onBack: () -> Unit,
+    // UC40: the shared transient notification queue (constructed once by the game), so a credit delta or a
+    // styled error raised by a buy here surfaces on this desk. Defaults to a fresh queue for JVM/tests.
+    private val notifications: NotificationQueue = NotificationQueue(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
+
+    // UC40: the device-side toast renderer (mirrors PlayScreen) + the reusable confirm-purchase modal.
+    private val notificationRenderer = NotificationRenderer()
+    private val dialog = PurchaseConfirmDialog(skin)
 
     // Credit balance readout, refreshed in place after each trade.
     private val balanceLabel = Label("", skin.labelStyle)
@@ -86,7 +99,11 @@ class TradeScreen(
                 heldLabels[resource] = heldLabel
 
                 val buyButton = TextButton("BUY", skin.settingsButtonStyle)
-                buyButton.addListener(tradeListener { TradeOrder.Buy(resource, UNITS_PER_TAP) })
+                buyButton.addListener(
+                    buyListener(resource.displayName, offer.buyPrice * UNITS_PER_TAP) {
+                        TradeOrder.Buy(resource, UNITS_PER_TAP)
+                    },
+                )
                 val sellButton = TextButton("SELL", skin.settingsButtonStyle)
                 sellButton.addListener(tradeListener { TradeOrder.Sell(resource, UNITS_PER_TAP) })
 
@@ -127,6 +144,52 @@ class TradeScreen(
             }
         }
 
+    /** A click listener that routes a buy of [item] costing [cost] credits through [attemptPurchase]. */
+    private fun buyListener(
+        item: String,
+        cost: Long,
+        order: () -> TradeOrder,
+    ): ClickListener =
+        object : ClickListener() {
+            override fun clicked(
+                event: InputEvent?,
+                x: Float,
+                y: Float,
+            ) {
+                attemptPurchase(item, cost) { onTrade(order()) }
+            }
+        }
+
+    /**
+     * UC40 AC#1/#3: route one BUY tap through the pure [PurchaseGate]. Below the threshold the [fire] intent
+     * runs immediately; at/above it the reusable [dialog] confirms first (CONFIRM fires, CANCEL dismisses);
+     * unaffordable raises a styled INSUFFICIENT-CREDITS toast and fires nothing. SELL taps bypass this gate.
+     */
+    private fun attemptPurchase(
+        item: String,
+        cost: Long,
+        fire: () -> Unit,
+    ) {
+        val balance = creditsSupplier()
+        when (PurchaseGate.evaluate(cost, balance)) {
+            SpendDecision.PROCEED -> {
+                fire()
+                refresh()
+            }
+            SpendDecision.CONFIRM ->
+                dialog.show(
+                    stage,
+                    PurchaseGate.details(item, cost, balance),
+                    onConfirm = {
+                        fire()
+                        refresh()
+                    },
+                    onCancel = {},
+                )
+            SpendDecision.INSUFFICIENT -> notifications.enqueue(GameNotifications.insufficientCredits())
+        }
+    }
+
     /** Re-read the balance + per-resource held counts after a trade and update the labels in place. */
     private fun refresh() {
         balanceLabel.setText(balanceText())
@@ -147,8 +210,16 @@ class TradeScreen(
     override fun render(delta: Float) {
         Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+        // UC40: advance + draw the shared toast queue above the desk (after the stage) so the +N/-N CR delta
+        // and any styled error surface here, animated by the renderer (AC#2).
+        notifications.update(delta)
         stage.act(delta)
         stage.draw()
+        notificationRenderer.render(
+            notifications.visibleWithProgress(),
+            Gdx.graphics.width.toFloat(),
+            Gdx.graphics.height.toFloat(),
+        )
     }
 
     override fun resize(
@@ -166,6 +237,7 @@ class TradeScreen(
 
     override fun dispose() {
         stage.dispose()
+        notificationRenderer.dispose()
         skin.dispose()
     }
 

@@ -1,21 +1,21 @@
 package com.orbitalfrontier.economy
 
-/**
+/*
  * The pure, engine-free decision core for the UC40 confirm-gate that fronts every economy spend
  * (Trade, Outfit, Shipyard, Hire, refuel).
  *
- * It answers exactly one question for a single user *intent* (one buy tap): given the credit [cost] of
- * what was tapped and the player's current [balance], should the spend go through immediately, pause for
+ * It answers exactly one question for a single user *intent* (one buy tap): given the credit cost of
+ * what was tapped and the player's current balance, should the spend go through immediately, pause for
  * an explicit confirmation, or be refused for want of funds? That is the whole of its responsibility —
- * it owns the **confirm-threshold + affordability** axis and nothing else (SRP). Whether the action then
- * actually happens, and *why not* when it doesn't (a full hold, no free slot, an item not offered), stays
- * the authority of the pure economy RESOLVERS ([Trading]/[Outfitting]/[com.orbitalfrontier.ship.FleetResolver]/
- * [com.orbitalfrontier.crew.Hiring]/[StationRefuel]). A confirmed buy the resolver still no-ops is not
- * this gate's concern — it falls through to the styled-error branch at the call site.
+ * it owns the confirm-threshold + affordability axis and nothing else (SRP). Whether the action then
+ * actually happens, and why not when it doesn't (a full hold, no free slot, an item not offered), stays
+ * the authority of the pure economy RESOLVERS (Trading/Outfitting/FleetResolver/Hiring/StationRefuel). A
+ * confirmed buy the resolver still no-ops is not this gate's concern — it falls through to the
+ * styled-error branch at the call site.
  *
  * Pure value logic with no libGDX types, so it is JVM-unit-testable headlessly (ADR 0001) — the single
- * source of truth the five economy screens and [com.orbitalfrontier.screen.PlayScreen] all consult, so
- * the threshold and the "can I afford this?" rule live in one place rather than being re-derived per screen.
+ * source of truth the five economy screens and PlayScreen all consult, so the threshold and the "can I
+ * afford this?" rule live in one place rather than being re-derived per screen.
  */
 
 /** What the gate decided for one tapped spend (UC40 AC#1/#3). */

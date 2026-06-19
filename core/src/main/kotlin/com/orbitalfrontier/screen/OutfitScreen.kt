@@ -10,13 +10,19 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.economy.PurchaseGate
+import com.orbitalfrontier.economy.SpendDecision
+import com.orbitalfrontier.notify.GameNotifications
+import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
+import com.orbitalfrontier.screen.controls.PurchaseConfirmDialog
 import com.orbitalfrontier.ship.Fleet
 
 /**
@@ -42,10 +48,17 @@ class OutfitScreen(
     private val onOutfit: (OutfitOrder) -> Unit,
     private val onBack: () -> Unit,
     private val catalog: UpgradeCatalog = UpgradeCatalog.MVP,
+    // UC40: the shared transient notification queue (constructed once by the game), so a credit delta or a
+    // styled error raised by an install here surfaces on this desk. Defaults to a fresh queue for JVM/tests.
+    private val notifications: NotificationQueue = NotificationQueue(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
     private val root = Table()
+
+    // UC40: the device-side toast renderer (mirrors PlayScreen) + the reusable confirm-purchase modal.
+    private val notificationRenderer = NotificationRenderer()
+    private val dialog = PurchaseConfirmDialog(skin)
 
     init {
         skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
@@ -55,6 +68,53 @@ class OutfitScreen(
         stage.addActor(root)
         rebuild()
     }
+
+    /**
+     * UC40 AC#1/#3: route one INSTALL tap through the pure [PurchaseGate]. Below the threshold the [fire]
+     * intent runs immediately; at/above it the reusable [dialog] confirms first (CONFIRM fires, CANCEL
+     * dismisses); unaffordable raises a styled INSUFFICIENT-CREDITS toast and fires nothing. REMOVE/SELL taps
+     * bypass this gate (a sell is not a spend) and fire directly.
+     */
+    private fun attemptPurchase(
+        item: String,
+        cost: Long,
+        fire: () -> Unit,
+    ) {
+        val balance = creditsSupplier()
+        when (PurchaseGate.evaluate(cost, balance)) {
+            SpendDecision.PROCEED -> {
+                fire()
+                rebuild()
+            }
+            SpendDecision.CONFIRM ->
+                dialog.show(
+                    stage,
+                    PurchaseGate.details(item, cost, balance),
+                    onConfirm = {
+                        fire()
+                        rebuild()
+                    },
+                    onCancel = {},
+                )
+            SpendDecision.INSUFFICIENT -> notifications.enqueue(GameNotifications.insufficientCredits())
+        }
+    }
+
+    /** A click listener that routes an install of [item] costing [cost] credits through [attemptPurchase]. */
+    private fun installListener(
+        item: String,
+        cost: Long,
+        order: () -> OutfitOrder,
+    ): ClickListener =
+        object : ClickListener() {
+            override fun clicked(
+                event: InputEvent?,
+                x: Float,
+                y: Float,
+            ) {
+                attemptPurchase(item, cost) { onOutfit(order()) }
+            }
+        }
 
     /** Clear and repopulate the whole table from the current fleet + credits (called after each tap). */
     private fun rebuild() {
@@ -82,7 +142,7 @@ class OutfitScreen(
                     )
                 val installButton = TextButton("INSTALL", skin.settingsButtonStyle)
                 installButton.addListener(
-                    tapListener { onOutfit(OutfitOrder.BuyInstall(upgrade.id)) },
+                    installListener(upgrade.displayName, upgrade.price) { OutfitOrder.BuyInstall(upgrade.id) },
                 )
                 root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
                 root.add(installButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
@@ -148,8 +208,16 @@ class OutfitScreen(
     override fun render(delta: Float) {
         Gdx.gl.glClearColor(Palette.SURFACE_BASE.r, Palette.SURFACE_BASE.g, Palette.SURFACE_BASE.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+        // UC40: advance + draw the shared toast queue above the desk (after the stage) so the +N/-N CR delta
+        // and any styled error surface here, animated by the renderer (AC#2).
+        notifications.update(delta)
         stage.act(delta)
         stage.draw()
+        notificationRenderer.render(
+            notifications.visibleWithProgress(),
+            Gdx.graphics.width.toFloat(),
+            Gdx.graphics.height.toFloat(),
+        )
     }
 
     override fun resize(
@@ -167,6 +235,7 @@ class OutfitScreen(
 
     override fun dispose() {
         stage.dispose()
+        notificationRenderer.dispose()
         skin.dispose()
     }
 
