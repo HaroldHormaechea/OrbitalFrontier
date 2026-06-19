@@ -1,8 +1,8 @@
 # Design Note — Combat & Encounters
 
-- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen + UC41 combat-bounty missions + UC42 loot/salvage + UC43 combat-driven reputation implemented; shields still deferred)
+- **Status:** in-progress (UC13 real-time combat MVP + UC33 destruction screen + UC41 combat-bounty missions + UC42 loot/salvage + UC43 combat-driven reputation + UC44 combat HUD feedback implemented; shields still deferred)
 - **Last updated:** 2026-06-19
-- **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding combat decisions); [ADR 0022](../adr/0022-ship-destruction-screen.md) (the destruction/game-over screen); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
+- **Related:** PROJECT_BRIEF.md → in_scope #4 (encounters), core_gameplay_loop (Earn); [ADR 0012](../adr/0012-real-time-combat.md) (the binding combat decisions); [ADR 0022](../adr/0022-ship-destruction-screen.md) (the destruction/game-over screen); [ADR 0032](../adr/0032-combat-hud-feedback.md) (combat HUD feedback); [ship-and-controls.md](ship-and-controls.md) (turrets/crew, sectional damage); [missions.md](missions.md) (combat missions = later phase); [ADR 0006](../adr/0006-determinism-and-playthrough-harness.md) (determinism), [ADR 0010](../adr/0010-crew-and-turret-operability.md) (crew gates turrets)
 
 ## Summary
 
@@ -51,6 +51,15 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
   the **outside→inside** crossing of an authored `EncounterZone` (so outrunning and leaving, then
   re-entering, can ambush again, but lingering after a cleared fight does not). Seeded
   `"encounter:$zoneId:$spawnTick"`. A `missionSpawn` hook injects the same shape for combat missions.
+- **Combat HUD feedback (UC44, [ADR 0032](../adr/0032-combat-hud-feedback.md)).** A pure, derived
+  read of the live `CombatState` drives the in-fight HUD: a **target-lock reticle** on the hostile the
+  turrets are auto-engaging (`CombatHudState` reuses `TargetingPriority.selectTarget` at the player's
+  kinematic firing point, suppressed when no operable turret would fire), **enemy hull bars** above the
+  nearest hostiles (faded by distance so a swarm does not clutter), and **hit feedback** — a damage-dealt
+  reticle pulse, a damage-taken full-screen flash, and a small camera **screen-shake** — from the pure,
+  deterministic `CombatFeedback` (decays to 0 when the fight ends). Shake and flash respect **reduced
+  motion** (UC39). The derivation is engine-free and **read-only**: no model change, no schema bump, and
+  replay stays byte-identical.
 
 ## Player-facing behavior
 
@@ -59,6 +68,10 @@ JVM-testable** so playthroughs replay bit-for-bit (UC02).
 - A **HUD ship schematic** (`ShipSchematicRenderer`) shows per-section health bars (green→amber→red); an
   "IN COMBAT" HUD cue appears while a fight is live. Hostiles and projectiles draw in world space
   (`HostileRenderer`).
+- The **combat HUD overlay** (UC44, `CombatHudRenderer`) reads the fight you are in: a lock reticle marks
+  the hostile your turrets are firing on (and disappears when no turret can fire), each nearby hostile
+  carries a hull bar that dims with distance, and hits register as a reticle pulse (dealt), a red
+  full-screen flash (taken) and a brief screen-shake — all suppressed under reduced motion (UC39).
 - **Destruction / game-over screen (UC33, [ADR 0022](../adr/0022-ship-destruction-screen.md)).** A hull
   hit that drops the ship to 0 no longer silently teleports the player home. Instead the simulation
   **halts** and a modal **destruction screen** appears: a dim tap-swallowing backdrop, a "SHIP DESTROYED"
