@@ -148,6 +148,32 @@ class GameNotificationsTest {
         assertTrue("the dock toast names the station", GameNotifications.docked("PORT NADIR").message.contains("PORT NADIR"))
     }
 
+    // --- UC40 AC#3: the styled economy-error builders replace the old bare status string ----------------
+
+    @Test
+    fun `insufficientCredits is a styled ERROR toast with a clear message`() {
+        val n = GameNotifications.insufficientCredits()
+        assertEquals("an unaffordable buy is the dedicated INSUFFICIENT-CREDITS cue", NotificationKind.INSUFFICIENT_CREDITS, n.kind)
+        assertEquals("it is styled at the ERROR tier, not a routine WARNING", NotificationSeverity.ERROR, n.severity)
+        assertTrue("the message is a clear, non-empty styled line (not a bare status string)", n.message.isNotBlank())
+    }
+
+    @Test
+    fun `actionRejected is a styled ERROR toast that surfaces its reason`() {
+        val n = GameNotifications.actionRejected("TANK FULL")
+        assertEquals("a refused-for-other-reason action is the ACTION-REJECTED cue", NotificationKind.ACTION_REJECTED, n.kind)
+        assertEquals("it is styled at the ERROR tier", NotificationSeverity.ERROR, n.severity)
+        assertEquals("the caller-supplied reason is surfaced verbatim", "TANK FULL", n.message)
+    }
+
+    @Test
+    fun `actionRejected falls back to a generic non-empty reason`() {
+        val n = GameNotifications.actionRejected()
+        assertEquals(NotificationKind.ACTION_REJECTED, n.kind)
+        assertEquals(NotificationSeverity.ERROR, n.severity)
+        assertTrue("a caller that cannot name the cause still gets a non-empty styled line", n.message.isNotBlank())
+    }
+
     // --- AC#1/AC#2: severity classification lives with the model, per kind ------------------------------
 
     @Test
@@ -159,8 +185,20 @@ class GameNotificationsTest {
                 NotificationKind.ENTERED_COMBAT,
                 NotificationKind.CREDIT_LOSS,
             )
+        // UC40 AC#3: a refused/failed economy action is a step beyond WARNING — the ERROR tier — so an
+        // unaffordable buy or an otherwise-invalid action reads as a distinct refusal, not a routine caution.
+        val error =
+            setOf(
+                NotificationKind.INSUFFICIENT_CREDITS,
+                NotificationKind.ACTION_REJECTED,
+            )
         for (kind in NotificationKind.entries) {
-            val expected = if (kind in warning) NotificationSeverity.WARNING else NotificationSeverity.INFO
+            val expected =
+                when (kind) {
+                    in error -> NotificationSeverity.ERROR
+                    in warning -> NotificationSeverity.WARNING
+                    else -> NotificationSeverity.INFO
+                }
             assertEquals("$kind must default to $expected", expected, kind.defaultSeverity)
         }
     }
@@ -181,6 +219,10 @@ class GameNotificationsTest {
                 NotificationKind.MISSION_FAILED_TIMEOUT,
                 NotificationKind.CREDIT_GAIN,
                 NotificationKind.CREDIT_LOSS,
+                // UC40 AC#3: repeated mis-taps on an unaffordable item / a refused action collapse into one
+                // toast rather than flooding the feed, so both new ERROR kinds are coalescable too.
+                NotificationKind.INSUFFICIENT_CREDITS,
+                NotificationKind.ACTION_REJECTED,
             )
         for (kind in NotificationKind.entries) {
             assertEquals("$kind coalescable flag", kind in coalescable, kind.coalescable)
