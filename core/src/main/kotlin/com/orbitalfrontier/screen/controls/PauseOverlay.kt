@@ -30,6 +30,10 @@ class PauseOverlay(skin: OrbitalUiSkin) : Disposable {
 
     // Edge-triggered callbacks — defaulted to no-ops; the screen wires them to its pause transitions.
     var onResume: () -> Unit = {}
+
+    // UC38: open the save-slot screen in SAVE mode (manual save, AC#2). The game stays paused while the
+    // save UI is shown; the screen owner reads the live snapshot to persist into the chosen slot.
+    var onSave: () -> Unit = {}
     var onSettings: () -> Unit = {}
     var onQuit: () -> Unit = {}
     var onBack: () -> Unit = {}
@@ -40,6 +44,7 @@ class PauseOverlay(skin: OrbitalUiSkin) : Disposable {
     private val backColumn = Table()
 
     private val resumeButton = TextButton("RESUME", skin.settingsButtonStyle)
+    private val saveButton = TextButton("SAVE", skin.settingsButtonStyle)
     private val settingsButton = TextButton("SETTINGS", skin.settingsButtonStyle)
     private val quitButton = TextButton("QUIT TO MAIN MENU", skin.settingsButtonStyle)
     private val backButton = TextButton("BACK", skin.settingsButtonStyle)
@@ -69,11 +74,12 @@ class PauseOverlay(skin: OrbitalUiSkin) : Disposable {
         )
 
         resumeButton.addListener(clickListener { onResume() })
+        saveButton.addListener(clickListener { onSave() })
         settingsButton.addListener(clickListener { onSettings() })
         quitButton.addListener(clickListener { onQuit() })
         backButton.addListener(clickListener { onBack() })
 
-        for (button in listOf(resumeButton, settingsButton, quitButton)) {
+        for (button in listOf(resumeButton, saveButton, settingsButton, quitButton)) {
             menuColumn.add(button).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padBottom(BUTTON_GAP)
             menuColumn.row()
         }

@@ -94,6 +94,17 @@ data class WorldState(
      * MVP the registry only ever grows (stations are never removed, AC#3).
      */
     val stations: StationRegistry = StationRegistry.EMPTY,
+    /**
+     * Total wall-of-play time accumulated in this save, in whole seconds (UC38 AC#1) — shown per slot in
+     * the save/load list. **Additive and defaulted to 0** so a fresh game, and every pre-UC38 save (whose
+     * header has no play-time column until the v16 -> v17 migration backfills 0), reads back at 0 and the
+     * snapshot stays byte-identical for a pre-UC38 playthrough. It is accumulated on the render thread from
+     * the same per-frame `dt` the simulation advances by (so it tracks *play* time, not the time-free
+     * deterministic sim), folded onto the autosave snapshot in [com.orbitalfrontier.screen.PlayScreen], and
+     * persisted as `game_state.play_time_seconds`. It is **not** part of the pure deterministic state — the
+     * record/replay harness (ADR 0006) never reads it — so it stays out of replay equality.
+     */
+    val playTimeSeconds: Long = 0L,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

@@ -22,6 +22,7 @@ import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.outfit.SlotCategory
 import com.orbitalfrontier.outfit.UpgradeCatalog
 import com.orbitalfrontier.outfit.UpgradeId
+import com.orbitalfrontier.platform.Clock
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.OwnedShip
@@ -40,10 +41,10 @@ import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.WorldState
 
 /**
- * SQLDelight-backed [GameStateRepository] (ADR 0003), mirroring [SqlDelightSettingsRepository]'s
- * pattern: constructor-injected generated [OrbitalFrontier] database + [Logger] (DIP), all writes
- * inside `transaction { }`, every failure caught + logged and never thrown (graceful degradation,
- * coding-guidelines § "Error handling").
+ * SQLDelight-backed [GameStateRepository] + [SaveSlotRepository] (ADR 0003 / ADR 0026), mirroring
+ * [SqlDelightSettingsRepository]'s pattern: constructor-injected generated [OrbitalFrontier] database +
+ * [Logger] (DIP), all writes inside `transaction { }`, every failure caught + logged and never thrown
+ * (graceful degradation, coding-guidelines § "Error handling").
  *
  * This class owns the single **Float ↔ Double** conversion at the persistence boundary: the model's
  * kinematics are `Float`, SQLite stores `REAL` (mapped to `Double`). `Float -> Double` is widening
@@ -51,32 +52,41 @@ import com.orbitalfrontier.world.WorldState
  * reload round-trip is exact (UC04 AC#8). No engine/Box2D types are persisted — only the pure
  * [ShipKinematics] the body is re-seeded from on load (UC04 pitfall).
  *
- * **UC09 — the whole fleet.** A save holds **multiple ships** (one `ship` row each, each with its own
- * cargo + `ship_upgrade` rows); load reconstructs every [OwnedShip], rebuilds its [Loadout] from its
- * upgrade rows, **re-derives** cargo/fuel capacities from `type + loadout` via [ShipStats] (so a save
- * never pins a stale capacity), and assembles a [Fleet] with `game_state.active_ship_id` selecting the
- * active one. Save writes every ship's kinematics/type/cargo/upgrades in one transaction. Unknown
- * ship type / upgrade id / resource name degrade gracefully (skip + WARN), never crashing the load —
- * "never stranded". In the MVP a fleet only grows, so ship rows are only ever added, never deleted.
+ * **UC38 — save slots.** Every read/write is scoped to a [SlotId]: the single DB partitions every
+ * game-state table by `slot_id` (ADR 0026), so loading / saving / deleting one slot never reads or
+ * mutates another (slot isolation, UC38 AC#4). A [Clock] is injected (DIP) so a save stamps the slot's
+ * `last_saved_epoch_millis` with real wall-clock time without `core` reading a platform clock directly
+ * (the pure simulation stays time-free, ADR 0006). An autosave updates only the gameplay columns and the
+ * autosave metadata — never the slot's player-chosen `name` (the name-clobber guard); renaming is the
+ * separate [renameSlot]. The active-slot pointer (`meta.active_slot_id`) selects which slot the autosave
+ * targets and `Continue` resumes (UC38 AC#3).
+ *
+ * **UC09 — the whole fleet (within a slot).** A slot holds **multiple ships** (one `ship` row each, each
+ * with its own cargo + `ship_upgrade` rows); load reconstructs every [OwnedShip], rebuilds its [Loadout],
+ * **re-derives** cargo/fuel/crew capacities from `type + loadout` via [ShipStats], and assembles a [Fleet]
+ * with `game_state.active_ship_id` selecting the active one. Unknown ship type / upgrade id / resource /
+ * faction / module degrade gracefully (skip + WARN), never crashing the load — "never stranded".
  */
 class SqlDelightGameStateRepository(
     private val database: OrbitalFrontier,
     private val logger: Logger,
-) : GameStateRepository {
+    private val clock: Clock,
+) : GameStateRepository, SaveSlotRepository {
     private val queries get() = database.orbitalFrontierQueries
 
-    override fun loadGameState(): WorldState? {
+    override fun loadGameState(slot: SlotId): WorldState? {
+        val slotId = slot.dbId
         return try {
-            val header = queries.selectGameState().executeAsOneOrNull() ?: return null
-            val shipRows = queries.selectAllShips().executeAsList()
+            val header = queries.selectGameStateForSlot(slotId).executeAsOneOrNull() ?: return null
+            val shipRows = queries.selectShipsForSlot(slotId).executeAsList()
             if (shipRows.isEmpty()) {
-                logger.error(TAG, "Save header present but no ship rows; treating as no save (New Game)")
+                logger.error(TAG, "Slot ${slot.value} header present but no ship rows; treating as no save")
                 return null
             }
 
-            val cargoByShip = loadCargoByShip()
-            val upgradesByShip = loadUpgradesByShip()
-            val sectionDamageByShip = loadSectionDamageByShip()
+            val cargoByShip = loadCargoByShip(slotId)
+            val upgradesByShip = loadUpgradesByShip(slotId)
+            val sectionDamageByShip = loadSectionDamageByShip(slotId)
 
             val ships =
                 shipRows
@@ -121,7 +131,7 @@ class SqlDelightGameStateRepository(
                 } else {
                     logger.warn(
                         TAG,
-                        "active_ship_id ${header.active_ship_id} not among owned ships; defaulting to first",
+                        "active_ship_id ${header.active_ship_id} not among slot ${slot.value} ships; defaulting to first",
                     )
                     Fleet(ships, ships.first().id)
                 }
@@ -132,14 +142,14 @@ class SqlDelightGameStateRepository(
                 // Null column (a v2 save migrated up, or a save written while in flight) -> not docked.
                 dockedStation = header.docked_station_id?.let { PoiId(it) },
                 // Field depletion: absent field = pristine; stored values are REMAINING units (UC06).
-                fieldDepletion = loadFieldDepletion(),
+                fieldDepletion = loadFieldDepletion(slotId),
                 // Credits (UC08): coerceAtLeast(0) guards a corrupt/negative row — never negative.
                 credits = header.credits.coerceAtLeast(0),
                 // Revealed hidden contacts (UC10): absent = still hidden; reveal is monotonic.
-                revealedContacts = loadRevealedContacts(),
+                revealedContacts = loadRevealedContacts(slotId),
                 // Missions (UC12): only the accepted / terminal missions are persisted; the available
                 // offers are regenerated from the static authored world on load (regenerate-and-filter).
-                missions = MissionLog(available = emptyList(), accepted = loadMissions()),
+                missions = MissionLog(available = emptyList(), accepted = loadMissions(slotId)),
                 // Combat (UC13): transient — hostiles/projectiles/RNG are regenerated from the seeded
                 // encounter, never persisted, so a load always starts with no live encounter (ADR 0012).
                 combat = com.orbitalfrontier.combat.CombatState.NONE,
@@ -148,34 +158,54 @@ class SqlDelightGameStateRepository(
                 lastDockedStation = header.last_docked_station_id?.let { PoiId(it) },
                 // Reputation (UC14): absent faction = neutral; only non-neutral standings are stored and
                 // each is coerced into the params' bounds, an unknown faction slug skipped (WARN).
-                reputation = loadReputation(),
+                reputation = loadReputation(slotId),
                 // Owned stations (UC15): the player-built stations + their modules; an unknown module
                 // slug is skipped (WARN). Empty for a fresh / migrated pre-UC15 save (ADR 0014).
-                stations = loadStations(),
+                stations = loadStations(slotId),
+                // Play time (UC38): the accumulated wall-of-play seconds shown per slot; coerced >= 0.
+                playTimeSeconds = header.play_time_seconds.coerceAtLeast(0),
             )
         } catch (e: Exception) {
-            logger.error(TAG, "Failed to load game state; treating as no save (New Game)", e)
+            logger.error(TAG, "Failed to load slot ${slot.value}; treating as no save (New Game)", e)
             null
         }
     }
 
-    override fun saveGameState(state: WorldState) {
+    override fun saveGameState(
+        slot: SlotId,
+        state: WorldState,
+    ) {
+        val slotId = slot.dbId
         try {
             // Header + every ship row written atomically: a failure rolls back all, so the previous
             // good save is never left half-overwritten (UC04 AC#3).
             queries.transaction {
-                queries.upsertGameState(
+                // Ensure the slot header row exists, establishing its player-facing name ONCE on first save
+                // (a no-op if the slot already exists — so an autosave never resets the name). The two
+                // no-DEFAULT columns (sector / active ship) are seeded here and re-set by updateSlotHeader.
+                queries.insertSlotHeaderIfAbsent(
+                    slot_id = slotId,
+                    current_sector = state.currentSector.value,
+                    active_ship_id = state.fleet.activeShipId.value,
+                    name = defaultSlotName(slot),
+                )
+                // Update ONLY the gameplay columns + autosave metadata (last-saved time, play time) — never
+                // `name` (the name-clobber guard, UC38). last-saved is the injected wall clock (UC38 AC#1).
+                queries.updateSlotHeader(
                     current_sector = state.currentSector.value,
                     active_ship_id = state.fleet.activeShipId.value,
                     docked_station_id = state.dockedStation?.value,
                     credits = state.credits,
-                    // Last docked station (UC13): the respawn point, persisted (null until the first dock).
                     last_docked_station_id = state.lastDockedStation?.value,
+                    last_saved_epoch_millis = clock.nowEpochMillis(),
+                    play_time_seconds = state.playTimeSeconds.coerceAtLeast(0),
+                    slot_id = slotId,
                 )
 
                 for (ship in state.fleet.ships) {
                     val kin = ship.kinematics
                     queries.upsertShip(
+                        slot_id = slotId,
                         id = ship.id.value,
                         pos_x = kin.position.x.toDouble(),
                         pos_y = kin.position.y.toDouble(),
@@ -192,10 +222,11 @@ class SqlDelightGameStateRepository(
 
                     // Cargo: full-snapshot rewrite of this ship's rows (delete-then-plain-INSERT,
                     // minSdk-24-safe). Only non-zero amounts are stored; capacity is not persisted.
-                    queries.deleteCargoForShip(ship.id.value)
+                    queries.deleteCargoForShip(slot_id = slotId, ship_id = ship.id.value)
                     for ((resource, units) in ship.cargo.contents) {
                         if (units > 0) {
                             queries.insertCargoEntry(
+                                slot_id = slotId,
                                 ship_id = ship.id.value,
                                 resource = resource.name,
                                 units = units.toLong(),
@@ -206,9 +237,10 @@ class SqlDelightGameStateRepository(
                     // Section damage (UC13): full-snapshot rewrite per ship (delete-then-INSERT), like
                     // cargo. An absent section is pristine, so only damaged sections (current HP stored)
                     // are written; an undamaged ship writes no rows. Max HP is derived, not persisted.
-                    queries.deleteShipSectionDamageForShip(ship.id.value)
+                    queries.deleteShipSectionDamageForShip(slot_id = slotId, ship_id = ship.id.value)
                     for ((section, currentHp) in ship.sectionDamage) {
                         queries.insertShipSectionDamage(
+                            slot_id = slotId,
                             ship_id = ship.id.value,
                             section = section.name,
                             current_hp = currentHp.toLong(),
@@ -217,10 +249,11 @@ class SqlDelightGameStateRepository(
 
                     // Installed upgrades (UC09): full-snapshot rewrite per ship (delete-then-INSERT). A
                     // gap-tolerant loadout persists exactly the filled (category, slot_index) rows.
-                    queries.deleteShipUpgradesForShip(ship.id.value)
+                    queries.deleteShipUpgradesForShip(slot_id = slotId, ship_id = ship.id.value)
                     for ((category, slots) in ship.loadout.slots) {
                         for ((slotIndex, upgradeId) in slots) {
                             queries.insertShipUpgrade(
+                                slot_id = slotId,
                                 ship_id = ship.id.value,
                                 slot_category = category.name,
                                 slot_index = slotIndex.toLong(),
@@ -235,6 +268,7 @@ class SqlDelightGameStateRepository(
                 for ((fieldId, remaining) in state.fieldDepletion) {
                     for ((resource, units) in remaining) {
                         queries.upsertFieldDeposit(
+                            slot_id = slotId,
                             field_id = fieldId.value,
                             resource = resource.name,
                             remaining_units = units.toLong(),
@@ -245,15 +279,16 @@ class SqlDelightGameStateRepository(
                 // Revealed hidden contacts (UC10): insert-or-ignore each id. Reveal is monotonic, so we
                 // only ever add rows and never delete — an already-revealed contact stays revealed.
                 for (contactId in state.revealedContacts) {
-                    queries.insertRevealedContact(contact_id = contactId.value)
+                    queries.insertRevealedContact(slot_id = slotId, contact_id = contactId.value)
                 }
 
-                // Missions (UC12): full-snapshot rewrite of the accepted / terminal missions
+                // Missions (UC12): full-snapshot rewrite of the accepted / terminal missions for this slot
                 // (delete-then-plain-INSERT, minSdk-24-safe). Available offers are NOT persisted — they
                 // are regenerated from the static authored world on load (regenerate-and-filter, ADR 0011).
-                queries.deleteAllMissions()
+                queries.deleteAllMissionsForSlot(slotId)
                 for (mission in state.missions.accepted) {
                     queries.insertMission(
+                        slot_id = slotId,
                         id = mission.id.value,
                         type = mission.type.name,
                         source = mission.source.name,
@@ -273,14 +308,13 @@ class SqlDelightGameStateRepository(
                     )
                 }
 
-                // Reputation (UC14): full-snapshot rewrite of the non-neutral per-faction standings
-                // (delete-then-plain-INSERT, minSdk-24-safe), like the mission table. Only non-neutral
-                // standings are stored — a faction at neutral (0) is simply absent (the Reputation map
-                // already holds only non-neutral entries, so this writes exactly the non-zero rows).
-                queries.deleteAllReputation()
+                // Reputation (UC14): full-snapshot rewrite of the non-neutral per-faction standings for this
+                // slot (delete-then-plain-INSERT, minSdk-24-safe), like the mission table. Only non-neutral
+                // standings are stored — a faction at neutral (0) is simply absent.
+                queries.deleteAllReputationForSlot(slotId)
                 for ((faction, value) in state.reputation.byFaction) {
                     if (value != 0) {
-                        queries.insertReputation(faction_id = faction.value, value_ = value.toLong())
+                        queries.insertReputation(slot_id = slotId, faction_id = faction.value, value_ = value.toLong())
                     }
                 }
 
@@ -290,10 +324,11 @@ class SqlDelightGameStateRepository(
                 // (slot_index) rows are written. Stations only grow, so rows are never deleted at the
                 // station level (no delete-station query); the module rewrite is per-station (ADR 0014).
                 for (station in state.stations.stations) {
-                    queries.upsertOwnedStation(id = station.id.value, sector = station.sector.value)
-                    queries.deleteStationModulesForStation(station.id.value)
+                    queries.upsertOwnedStation(slot_id = slotId, id = station.id.value, sector = station.sector.value)
+                    queries.deleteStationModulesForStation(slot_id = slotId, station_id = station.id.value)
                     for ((slotIndex, moduleId) in station.modules) {
                         queries.insertStationModule(
+                            slot_id = slotId,
                             station_id = station.id.value,
                             slot_index = slotIndex.toLong(),
                             module_type = moduleId.value,
@@ -303,58 +338,126 @@ class SqlDelightGameStateRepository(
             }
             logger.info(
                 TAG,
-                "Saved game state: sector=${state.currentSector.value}, ships=${state.fleet.ships.size}, " +
+                "Saved slot ${slot.value}: sector=${state.currentSector.value}, ships=${state.fleet.ships.size}, " +
                     "active=${state.fleet.activeShipId.value}",
             )
         } catch (e: Exception) {
             // Graceful degradation: keep the last good save, log, do not crash the app.
-            logger.error(TAG, "Failed to persist game state; last good save kept", e)
+            logger.error(TAG, "Failed to persist slot ${slot.value}; last good save kept", e)
         }
     }
 
-    override fun hasSave(): Boolean {
+    override fun hasSave(slot: SlotId): Boolean {
         return try {
-            queries.hasGameState().executeAsOne()
+            queries.hasSlot(slot.dbId).executeAsOne()
         } catch (e: Exception) {
-            logger.error(TAG, "Failed to query save presence; treating as no save", e)
+            logger.error(TAG, "Failed to query slot ${slot.value} presence; treating as no save", e)
             false
         }
     }
 
-    override fun clearSave() {
-        try {
-            // Every durable game-state table is cleared in ONE transaction so a wipe is atomic — a
-            // failure rolls back all of it, leaving the last good save intact (mirrors saveGameState's
-            // all-or-nothing guarantee, UC04 AC#3). `meta` (save-format version) and `settings`
-            // (handedness) are deliberately NOT touched: the wipe resets progress only (UC21).
-            queries.transaction {
-                queries.deleteGameState()
-                queries.deleteAllShips()
-                queries.deleteAllShipUpgrades()
-                queries.deleteAllCargo()
-                queries.deleteAllShipSectionDamage()
-                queries.deleteAllFieldDeposits()
-                queries.deleteAllRevealedContacts()
-                queries.deleteAllMissions()
-                queries.deleteAllReputation()
-                queries.deleteAllOwnedStations()
-                queries.deleteAllStationModules()
+    override fun clearSave(slot: SlotId) = wipeSlot(slot, "Cleared")
+
+    // ----- SaveSlotRepository (UC38) -----------------------------------------------------------
+
+    override fun listSlots(): List<SaveSlotSummary> {
+        val occupied =
+            try {
+                queries.listSlots().executeAsList().associate { row ->
+                    val id = SlotId(row.slot_id.toInt())
+                    id to
+                        SaveSlotSummary.Occupied(
+                            slotId = id,
+                            name = row.name,
+                            lastSavedEpochMillis = row.last_saved_epoch_millis,
+                            credits = row.credits.coerceAtLeast(0),
+                            sector = SectorId(row.current_sector),
+                            playTimeSeconds = row.play_time_seconds.coerceAtLeast(0),
+                        )
+                }
+            } catch (e: Exception) {
+                logger.error(TAG, "Failed to list slots; treating all as empty", e)
+                emptyMap()
             }
-            logger.info(TAG, "Cleared save (settings + meta kept)")
+        // Fill EVERY configured slot index: an occupied row where present, an Empty placeholder otherwise,
+        // in ascending slot order (UC38 AC#1). A row whose slot_id is out of the configured range is ignored.
+        return SaveSlots.ALL.map { id -> occupied[id] ?: SaveSlotSummary.Empty(id) }
+    }
+
+    override fun deleteSlot(slot: SlotId) = wipeSlot(slot, "Deleted")
+
+    override fun renameSlot(
+        slot: SlotId,
+        name: String,
+    ) {
+        try {
+            queries.setSlotName(name = name, slot_id = slot.dbId)
+            logger.info(TAG, "Renamed slot ${slot.value} to '$name'")
         } catch (e: Exception) {
-            // Graceful degradation: keep whatever was there, log, do not crash the app.
-            logger.error(TAG, "Failed to clear save; last good save kept", e)
+            logger.error(TAG, "Failed to rename slot ${slot.value}", e)
+        }
+    }
+
+    override fun activeSlot(): SlotId {
+        return try {
+            val value = queries.selectActiveSlot().executeAsOneOrNull() ?: return SlotId.LEGACY
+            val id = SlotId(value.toInt())
+            if (SaveSlots.isValid(id)) id else SlotId.LEGACY
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to read active slot; defaulting to legacy", e)
+            SlotId.LEGACY
+        }
+    }
+
+    override fun setActiveSlot(slot: SlotId) {
+        try {
+            queries.setActiveSlot(slot.dbId)
+            logger.info(TAG, "Active slot set to ${slot.value}")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to set active slot to ${slot.value}", e)
         }
     }
 
     /**
-     * Group every ship's persisted section-damage rows by ship id (UC13): section name -> current HP. An
-     * unknown section name (enum changed) is skipped with a WARN — the rest of the ship's damage still
-     * loads (never stranded). Stored values are raw current HP; the caller clamps them to the derived max.
+     * Atomically clear one slot's durable game-state rows (shared by [clearSave] and [deleteSlot]). Every
+     * non-meta / non-settings table is wiped for this slot in ONE transaction, leaving `meta` / `settings`
+     * and **every other slot** intact (UC38 AC#4). Corruption-safe — a failure is logged, never thrown.
      */
-    private fun loadSectionDamageByShip(): Map<Long, SectionDamage> {
+    private fun wipeSlot(
+        slot: SlotId,
+        verb: String,
+    ) {
+        val slotId = slot.dbId
+        try {
+            queries.transaction {
+                queries.deleteGameStateForSlot(slotId)
+                queries.deleteShipsForSlot(slotId)
+                queries.deleteAllShipUpgradesForSlot(slotId)
+                queries.deleteAllCargoForSlot(slotId)
+                queries.deleteAllShipSectionDamageForSlot(slotId)
+                queries.deleteAllFieldDepositsForSlot(slotId)
+                queries.deleteAllRevealedContactsForSlot(slotId)
+                queries.deleteAllMissionsForSlot(slotId)
+                queries.deleteAllReputationForSlot(slotId)
+                queries.deleteAllOwnedStationsForSlot(slotId)
+                queries.deleteAllStationModulesForSlot(slotId)
+            }
+            logger.info(TAG, "$verb slot ${slot.value} (settings + meta kept)")
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to clear slot ${slot.value}; last good save kept", e)
+        }
+    }
+
+    /** Default player-facing name for a slot created on first save: the legacy slot is "Autosave". */
+    private fun defaultSlotName(slot: SlotId): String = if (slot == SlotId.LEGACY) "Autosave" else "Save ${slot.value + 1}"
+
+    /**
+     * Group a slot's ship section-damage rows by ship id (UC13): section name -> current HP. An unknown
+     * section name (enum changed) is skipped with a WARN — the rest of the ship's damage still loads.
+     */
+    private fun loadSectionDamageByShip(slotId: Long): Map<Long, SectionDamage> {
         val byShip = LinkedHashMap<Long, LinkedHashMap<ShipSection, Int>>()
-        for (entry in queries.selectAllShipSectionDamage().executeAsList()) {
+        for (entry in queries.selectAllShipSectionDamageForSlot(slotId).executeAsList()) {
             val section = parseSection(entry.section) ?: continue
             byShip.getOrPut(entry.ship_id) { LinkedHashMap() }[section] = entry.current_hp.toInt()
         }
@@ -387,10 +490,10 @@ class SqlDelightGameStateRepository(
         return section
     }
 
-    /** Group every ship's persisted cargo rows by ship id (resource name -> units; unknown names skipped). */
-    private fun loadCargoByShip(): Map<Long, Map<ResourceType, Int>> {
+    /** Group a slot's cargo rows by ship id (resource name -> units; unknown names skipped). */
+    private fun loadCargoByShip(slotId: Long): Map<Long, Map<ResourceType, Int>> {
         val byShip = LinkedHashMap<Long, LinkedHashMap<ResourceType, Int>>()
-        for (entry in queries.selectAllCargo().executeAsList()) {
+        for (entry in queries.selectAllCargoForSlot(slotId).executeAsList()) {
             val resource = parseResource(entry.resource) ?: continue
             byShip.getOrPut(entry.ship_id) { LinkedHashMap() }[resource] = entry.units.toInt()
         }
@@ -398,13 +501,12 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Group every ship's persisted upgrade rows by ship id into a [Loadout] each. An unknown
-     * slot-category name or an [UpgradeId] the [UpgradeCatalog] no longer knows is skipped with a WARN
-     * (the rest of the loadout still loads — "never stranded").
+     * Group a slot's upgrade rows by ship id into a [Loadout] each. An unknown slot-category name or an
+     * [UpgradeId] the [UpgradeCatalog] no longer knows is skipped with a WARN (the rest still loads).
      */
-    private fun loadUpgradesByShip(): Map<Long, Loadout> {
+    private fun loadUpgradesByShip(slotId: Long): Map<Long, Loadout> {
         val slotsByShip = LinkedHashMap<Long, LinkedHashMap<SlotCategory, LinkedHashMap<Int, UpgradeId>>>()
-        for (entry in queries.selectAllShipUpgrades().executeAsList()) {
+        for (entry in queries.selectAllShipUpgradesForSlot(slotId).executeAsList()) {
             val category = parseSlotCategory(entry.slot_category) ?: continue
             val upgradeId = parseUpgrade(entry.upgrade_id) ?: continue
             slotsByShip
@@ -415,12 +517,12 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Reconstruct the per-field remaining-deposit map from `field_deposit`. Grouped by field id; a
+     * Reconstruct a slot's per-field remaining-deposit map from `field_deposit`. Grouped by field id; a
      * field with no rows is simply absent (pristine). Unrecognised resource names are skipped (WARN).
      */
-    private fun loadFieldDepletion(): Map<PoiId, Map<ResourceType, Int>> {
+    private fun loadFieldDepletion(slotId: Long): Map<PoiId, Map<ResourceType, Int>> {
         val byField = LinkedHashMap<PoiId, LinkedHashMap<ResourceType, Int>>()
-        for (entry in queries.selectFieldDeposits().executeAsList()) {
+        for (entry in queries.selectFieldDepositsForSlot(slotId).executeAsList()) {
             val resource = parseResource(entry.resource) ?: continue
             byField.getOrPut(PoiId(entry.field_id)) { LinkedHashMap() }[resource] = entry.remaining_units.toInt()
         }
@@ -428,27 +530,26 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Reconstruct the revealed-hidden-contact set from `revealed_contact` (UC10). Each row's id is a
-     * [PoiId]; an id whose contact the authored map no longer contains is kept harmlessly (it resolves
-     * to nothing when the renderer/scan logic looks it up). Empty when nothing has been scanned.
+     * Reconstruct a slot's revealed-hidden-contact set from `revealed_contact` (UC10). Each row's id is a
+     * [PoiId]; an id whose contact the authored map no longer contains is kept harmlessly. Empty when
+     * nothing has been scanned.
      */
-    private fun loadRevealedContacts(): Set<PoiId> {
+    private fun loadRevealedContacts(slotId: Long): Set<PoiId> {
         val ids = LinkedHashSet<PoiId>()
-        for (contactId in queries.selectRevealedContacts().executeAsList()) {
+        for (contactId in queries.selectRevealedContactsForSlot(slotId).executeAsList()) {
             ids.add(PoiId(contactId))
         }
         return ids
     }
 
     /**
-     * Reconstruct the accepted / terminal missions from the `mission` table (UC12). Each row maps to a
-     * [Mission]; a row whose enum / resource name no longer resolves is **skipped with a WARN** (the
-     * rest still load — "never stranded"), so an evolved catalog never crashes a load. Available offers
-     * are not stored — they are regenerated on load (the caller wraps this list in a [MissionLog]).
+     * Reconstruct a slot's accepted / terminal missions from the `mission` table (UC12). Each row maps to a
+     * [Mission]; a row whose enum / resource name no longer resolves is **skipped with a WARN** (the rest
+     * still load — "never stranded"). Available offers are not stored — they are regenerated on load.
      */
-    private fun loadMissions(): List<Mission> {
+    private fun loadMissions(slotId: Long): List<Mission> {
         val missions = ArrayList<Mission>()
-        for (row in queries.selectAllMissions().executeAsList()) {
+        for (row in queries.selectAllMissionsForSlot(slotId).executeAsList()) {
             val type = parseMissionType(row.type) ?: continue
             val source = parseMissionSource(row.source) ?: continue
             val status = parseMissionStatus(row.status) ?: continue
@@ -481,8 +582,7 @@ class SqlDelightGameStateRepository(
                     remainingTicks = row.remaining_ticks.toInt().coerceAtLeast(0),
                     pickedUp = row.picked_up != 0L,
                     // Faction attribution (UC14): best-effort — an unknown faction slug degrades to "no
-                    // attribution" (the mission still loads; it just grants no reputation on turn-in). The
-                    // gate (unlockFaction/unlockThreshold) is not persisted — accepted missions are never re-gated.
+                    // attribution" (the mission still loads; it just grants no reputation on turn-in).
                     factionId = parseFaction(row.faction_id),
                 )
         }
@@ -490,16 +590,14 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Reconstruct the player's per-faction reputation from the `reputation` table (UC14). Each row's
-     * value is coerced into the [ReputationParams] bounds; a faction whose slug the [Factions] catalog no
-     * longer knows is **skipped with a WARN** (never stranded). A standing that coerces to neutral (0) is
-     * dropped, keeping the in-memory map canonical (only non-neutral entries) — so a fully-neutral or
-     * migrated-empty save reads back as [Reputation.EMPTY].
+     * Reconstruct a slot's per-faction reputation from the `reputation` table (UC14). Each row's value is
+     * coerced into the [ReputationParams] bounds; a faction whose slug the [Factions] catalog no longer
+     * knows is **skipped with a WARN**. A standing that coerces to neutral (0) is dropped.
      */
-    private fun loadReputation(): Reputation {
+    private fun loadReputation(slotId: Long): Reputation {
         val params = ReputationParams()
         val standings = LinkedHashMap<FactionId, Int>()
-        for (row in queries.selectReputation().executeAsList()) {
+        for (row in queries.selectReputationForSlot(slotId).executeAsList()) {
             val faction = parseFaction(row.faction_id) ?: continue
             val value = row.value_.toInt().coerceIn(params.min, params.max)
             if (value != 0) standings[faction] = value
@@ -508,16 +606,14 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Reconstruct the player's [StationRegistry] from `owned_station` + `station_module` (UC15). Each
-     * station's modules are grouped by station id (slot index -> module slug); an unknown module slug is
-     * **skipped with a WARN** (the rest of the station's modules still load — never stranded). Stations
-     * are sorted by id for a deterministic, registry-invariant order. Empty for a fresh / migrated
-     * pre-UC15 save (no rows) — read back as [StationRegistry.EMPTY].
+     * Reconstruct a slot's [StationRegistry] from `owned_station` + `station_module` (UC15). Each station's
+     * modules are grouped by station id (slot index -> module slug); an unknown module slug is **skipped
+     * with a WARN**. Stations are sorted by id for a deterministic order. Empty for a fresh / pre-UC15 save.
      */
-    private fun loadStations(): StationRegistry {
-        val modulesByStation = loadStationModulesByStation()
+    private fun loadStations(slotId: Long): StationRegistry {
+        val modulesByStation = loadStationModulesByStation(slotId)
         val stations =
-            queries.selectAllOwnedStations().executeAsList()
+            queries.selectAllOwnedStationsForSlot(slotId).executeAsList()
                 .map { row ->
                     OwnedStation(
                         id = StationId(row.id),
@@ -530,13 +626,12 @@ class SqlDelightGameStateRepository(
     }
 
     /**
-     * Group every station's persisted module rows by station id (UC15): slot index -> [StationModuleId].
-     * A module slug the [StationModuleCatalog] no longer knows is skipped with a WARN (the rest of the
-     * station's modules still load — never stranded).
+     * Group a slot's station-module rows by station id (UC15): slot index -> [StationModuleId]. A module
+     * slug the [StationModuleCatalog] no longer knows is skipped with a WARN (the rest still load).
      */
-    private fun loadStationModulesByStation(): Map<Long, Map<Int, StationModuleId>> {
+    private fun loadStationModulesByStation(slotId: Long): Map<Long, Map<Int, StationModuleId>> {
         val byStation = LinkedHashMap<Long, LinkedHashMap<Int, StationModuleId>>()
-        for (entry in queries.selectAllStationModules().executeAsList()) {
+        for (entry in queries.selectAllStationModulesForSlot(slotId).executeAsList()) {
             val moduleId = parseStationModule(entry.module_type) ?: continue
             byStation.getOrPut(entry.station_id) { LinkedHashMap() }[entry.slot_index.toInt()] = moduleId
         }
@@ -622,6 +717,9 @@ class SqlDelightGameStateRepository(
         }
         return resource
     }
+
+    /** The SQLite `slot_id` (INTEGER -> Long) for a [SlotId] — the single Int -> Long conversion at the boundary. */
+    private val SlotId.dbId: Long get() = value.toLong()
 
     private companion object {
         const val TAG = "Save"

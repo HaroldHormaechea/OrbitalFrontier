@@ -1,0 +1,198 @@
+-- Migration v16 -> v17 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v16 (UC37) held a SINGLE autosave: `game_state` was single-row (CHECK (id = 0)) and every game-state
+-- table belonged implicitly to that one save. v17 (UC38, ADR 0026) adds **save-slot management** by
+-- partitioning every game-state table by a new `slot_id` column added to its primary key, and adds the
+-- per-slot display metadata + the active-slot pointer.
+--
+-- This is the FIRST table-rebuild migration in this codebase — all 15 prior `.sqm` files were additive
+-- (ADD COLUMN / CREATE TABLE only). Adding a column to an existing primary key cannot be done with
+-- ALTER TABLE, so each of the 11 game-state tables is rebuilt with the SQLite table-rebuild recipe:
+--   CREATE the v17-shape table -> INSERT … SELECT … (backfilling slot_id = 0 = the LEGACY slot) ->
+--   DROP the old table -> ALTER … RENAME the new one into place.
+-- The pre-UC38 single autosave is backfilled into slot 0 (UC38 AC#3), so an upgraded save reads back
+-- intact as the legacy slot, named "Autosave". Column order/type/affinity/constraints are written to
+-- match OrbitalFrontier.sq EXACTLY so the regenerated databases/17.db schema matches the .sq (the
+-- SQLDelight verifyMigrations gate). There are no foreign keys or explicit indices in this schema, so
+-- only the primary keys (recreated by the CREATE statements) need rebuilding; foreign_keys=OFF is set
+-- discipline. There are no foreign keys or explicit indices in this schema, so no PRAGMA toggling is
+-- needed (and the SQLDelight dialect rejects `PRAGMA foreign_keys=ON` at author time anyway).
+--
+-- `settings` is UNCHANGED (control/audio/UI preferences are global, not per-slot).
+
+-- meta: plain additive ADD COLUMN — the active-slot pointer. The single existing row keeps the DEFAULT 0,
+-- so the legacy save's autosave/Continue points at slot 0.
+ALTER TABLE meta ADD COLUMN active_slot_id INTEGER NOT NULL DEFAULT 0;
+
+-- game_state: drop the single-row CHECK (id = 0); repartition by `slot_id` (new PK); add the slot display
+-- metadata (name / last-saved / play-time). The legacy single row becomes slot 0 named "Autosave"
+-- (last-saved + play-time backfilled to 0 — unknown for a pre-UC38 save).
+CREATE TABLE game_state_new (
+    slot_id INTEGER NOT NULL PRIMARY KEY,
+    current_sector TEXT NOT NULL,
+    active_ship_id INTEGER NOT NULL,
+    docked_station_id TEXT,
+    credits INTEGER NOT NULL DEFAULT 0,
+    last_docked_station_id TEXT,
+    name TEXT NOT NULL DEFAULT '',
+    last_saved_epoch_millis INTEGER NOT NULL DEFAULT 0,
+    play_time_seconds INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO game_state_new (slot_id, current_sector, active_ship_id, docked_station_id, credits,
+                            last_docked_station_id, name, last_saved_epoch_millis, play_time_seconds)
+SELECT 0, current_sector, active_ship_id, docked_station_id, credits, last_docked_station_id,
+       'Autosave', 0, 0
+FROM game_state;
+DROP TABLE game_state;
+ALTER TABLE game_state_new RENAME TO game_state;
+
+-- ship: add slot_id to the PK (ship ids are per-save, so they collide across slots — composite PK).
+CREATE TABLE ship_new (
+    slot_id INTEGER NOT NULL,
+    id INTEGER NOT NULL,
+    pos_x REAL NOT NULL,
+    pos_y REAL NOT NULL,
+    vel_x REAL NOT NULL,
+    vel_y REAL NOT NULL,
+    heading REAL NOT NULL,
+    ang_vel REAL NOT NULL,
+    fuel REAL NOT NULL DEFAULT 100,
+    ship_type TEXT NOT NULL DEFAULT 'starter',
+    crew INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (slot_id, id)
+);
+INSERT INTO ship_new (slot_id, id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type, crew)
+SELECT 0, id, pos_x, pos_y, vel_x, vel_y, heading, ang_vel, fuel, ship_type, crew FROM ship;
+DROP TABLE ship;
+ALTER TABLE ship_new RENAME TO ship;
+
+-- ship_upgrade: add slot_id to the PK.
+CREATE TABLE ship_upgrade_new (
+    slot_id INTEGER NOT NULL,
+    ship_id INTEGER NOT NULL,
+    slot_category TEXT NOT NULL,
+    slot_index INTEGER NOT NULL,
+    upgrade_id TEXT NOT NULL,
+    PRIMARY KEY (slot_id, ship_id, slot_category, slot_index)
+);
+INSERT INTO ship_upgrade_new (slot_id, ship_id, slot_category, slot_index, upgrade_id)
+SELECT 0, ship_id, slot_category, slot_index, upgrade_id FROM ship_upgrade;
+DROP TABLE ship_upgrade;
+ALTER TABLE ship_upgrade_new RENAME TO ship_upgrade;
+
+-- cargo: add slot_id to the PK.
+CREATE TABLE cargo_new (
+    slot_id INTEGER NOT NULL,
+    ship_id INTEGER NOT NULL,
+    resource TEXT NOT NULL,
+    units INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, ship_id, resource)
+);
+INSERT INTO cargo_new (slot_id, ship_id, resource, units)
+SELECT 0, ship_id, resource, units FROM cargo;
+DROP TABLE cargo;
+ALTER TABLE cargo_new RENAME TO cargo;
+
+-- ship_section_damage: add slot_id to the PK.
+CREATE TABLE ship_section_damage_new (
+    slot_id INTEGER NOT NULL,
+    ship_id INTEGER NOT NULL,
+    section TEXT NOT NULL,
+    current_hp INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, ship_id, section)
+);
+INSERT INTO ship_section_damage_new (slot_id, ship_id, section, current_hp)
+SELECT 0, ship_id, section, current_hp FROM ship_section_damage;
+DROP TABLE ship_section_damage;
+ALTER TABLE ship_section_damage_new RENAME TO ship_section_damage;
+
+-- field_deposit: add slot_id to the PK.
+CREATE TABLE field_deposit_new (
+    slot_id INTEGER NOT NULL,
+    field_id TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    remaining_units INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, field_id, resource)
+);
+INSERT INTO field_deposit_new (slot_id, field_id, resource, remaining_units)
+SELECT 0, field_id, resource, remaining_units FROM field_deposit;
+DROP TABLE field_deposit;
+ALTER TABLE field_deposit_new RENAME TO field_deposit;
+
+-- revealed_contact: add slot_id to the PK.
+CREATE TABLE revealed_contact_new (
+    slot_id INTEGER NOT NULL,
+    contact_id TEXT NOT NULL,
+    PRIMARY KEY (slot_id, contact_id)
+);
+INSERT INTO revealed_contact_new (slot_id, contact_id)
+SELECT 0, contact_id FROM revealed_contact;
+DROP TABLE revealed_contact;
+ALTER TABLE revealed_contact_new RENAME TO revealed_contact;
+
+-- mission: add slot_id to the PK.
+CREATE TABLE mission_new (
+    slot_id INTEGER NOT NULL,
+    id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reward_credits INTEGER NOT NULL,
+    reward_resource TEXT,
+    reward_resource_units INTEGER NOT NULL DEFAULT 0,
+    quota_resource TEXT,
+    quota_units INTEGER NOT NULL DEFAULT 0,
+    pickup TEXT,
+    destination TEXT,
+    remaining_ticks INTEGER NOT NULL DEFAULT 0,
+    picked_up INTEGER NOT NULL DEFAULT 0,
+    faction_id TEXT,
+    PRIMARY KEY (slot_id, id)
+);
+INSERT INTO mission_new (slot_id, id, type, source, status, reward_credits, reward_resource,
+                         reward_resource_units, quota_resource, quota_units, pickup, destination,
+                         remaining_ticks, picked_up, faction_id)
+SELECT 0, id, type, source, status, reward_credits, reward_resource, reward_resource_units,
+       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id
+FROM mission;
+DROP TABLE mission;
+ALTER TABLE mission_new RENAME TO mission;
+
+-- reputation: add slot_id to the PK.
+CREATE TABLE reputation_new (
+    slot_id INTEGER NOT NULL,
+    faction_id TEXT NOT NULL,
+    value INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, faction_id)
+);
+INSERT INTO reputation_new (slot_id, faction_id, value)
+SELECT 0, faction_id, value FROM reputation;
+DROP TABLE reputation;
+ALTER TABLE reputation_new RENAME TO reputation;
+
+-- owned_station: add slot_id to the PK (station ids are per-save — composite PK).
+CREATE TABLE owned_station_new (
+    slot_id INTEGER NOT NULL,
+    id INTEGER NOT NULL,
+    sector TEXT NOT NULL,
+    PRIMARY KEY (slot_id, id)
+);
+INSERT INTO owned_station_new (slot_id, id, sector)
+SELECT 0, id, sector FROM owned_station;
+DROP TABLE owned_station;
+ALTER TABLE owned_station_new RENAME TO owned_station;
+
+-- station_module: add slot_id to the PK.
+CREATE TABLE station_module_new (
+    slot_id INTEGER NOT NULL,
+    station_id INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL,
+    module_type TEXT NOT NULL,
+    PRIMARY KEY (slot_id, station_id, slot_index)
+);
+INSERT INTO station_module_new (slot_id, station_id, slot_index, module_type)
+SELECT 0, station_id, slot_index, module_type FROM station_module;
+DROP TABLE station_module;
+ALTER TABLE station_module_new RENAME TO station_module;
+
+UPDATE meta SET save_version = 17 WHERE id = 0;
