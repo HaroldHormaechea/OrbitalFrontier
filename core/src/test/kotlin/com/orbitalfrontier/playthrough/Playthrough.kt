@@ -9,7 +9,9 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.faction.ReputationParams
@@ -81,6 +83,11 @@ import kotlinx.serialization.Serializable
  *   invalidate this replay (the payout it asserts is reproduced exactly). Marked `@EncodeDefault(NEVER)`
  *   so an artifact that ran under the default bounty tuning **omits** it on disk, keeping every pre-UC41
  *   fixture byte-identical despite the codec's global `encodeDefaults = true`.
+ * @property pricingConfig the pinned [PricingParams] snapshot the run was recorded under (UC46), same
+ *   rationale as [config] — a later retune of the elasticity / drift / decay / faction constants can't
+ *   silently invalidate this replay (the price moves it asserts are reproduced exactly). Marked
+ *   `@EncodeDefault(NEVER)` so an artifact that ran under the default pricing tuning **omits** it on disk,
+ *   keeping every pre-UC46 fixture byte-identical despite the codec's global `encodeDefaults = true`.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -107,6 +114,10 @@ data class Playthrough(
     // every pre-UC41 fixture byte-identical despite the codec's global encodeDefaults = true.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val bountyConfig: BountyParamsDto = BountyParamsDto.DEFAULT,
+    // UC46: @EncodeDefault(NEVER) so a run under the default pricing tuning omits this on disk, keeping
+    // every pre-UC46 fixture byte-identical despite the codec's global encodeDefaults = true.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val pricingConfig: PricingParamsDto = PricingParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -597,6 +608,16 @@ data class StateSnapshotDto(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val stations: StationsDto = StationsDto.EMPTY,
+    /**
+     * The dynamic per-station market pressure (UC46 AC#1/#3) — the save-wide state carried on
+     * [SimulationState.marketState]. Marked `@EncodeDefault(NEVER)` and defaulted to
+     * [StationMarketStateDto.EMPTY] so an empty (never-traded) state — every pre-UC46 fixture, and a fresh
+     * game — **omits** it on disk, keeping the committed fixtures byte-identical despite the codec's global
+     * `encodeDefaults = true`. A non-empty state is written as a compact `stationSlug → (resourceName →
+     * pressure)` map (only the non-zero rows, matching the domain [StationMarketState]).
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val marketState: StationMarketStateDto = StationMarketStateDto.EMPTY,
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -618,6 +639,8 @@ data class StateSnapshotDto(
             reputation = reputation.toReputation(),
             // UC15: the player's owned stations (an absent / omitted field decodes to the empty registry).
             stations = stations.toStationRegistry(),
+            // UC46: the dynamic market pressure (an absent / omitted field decodes to the empty state).
+            marketState = marketState.toMarketState(),
         )
 
     /**
@@ -684,7 +707,110 @@ data class StateSnapshotDto(
                 reputation = ReputationDto.from(state.reputation),
                 // UC15: the player's owned stations — empty registry omits on disk (byte-identical pre-UC15).
                 stations = StationsDto.from(state.stations),
+                // UC46: the dynamic market pressure — empty state omits on disk (byte-identical pre-UC46).
+                marketState = StationMarketStateDto.from(state.marketState),
             )
+    }
+}
+
+/**
+ * Serializable mirror of [StationMarketState] (UC46 AC#1/#3). Stores the dynamic per-station market
+ * pressure as a compact `stationSlug → (resourceName → pressure)` map — only the **non-zero** rows,
+ * exactly as the domain [StationMarketState] keeps only non-zero pressure, so the on-disk form is minimal
+ * and diffable. [EMPTY] (the no-pressure default) is the value [StateSnapshotDto.marketState] omits via
+ * `@EncodeDefault(NEVER)`, so a fresh game and every pre-UC46 fixture serialize without a marketState
+ * field at all. String-keyed (PoiId slug / ResourceType name) for the same stability reason as cargo /
+ * field depletion. On decode an unknown resource name throws (a fixture must reference real resources),
+ * matching how cargo / field-depletion DTOs decode.
+ */
+@Serializable
+data class StationMarketStateDto(
+    val pressure: Map<String, Map<String, Int>> = emptyMap(),
+) {
+    /** Reconstruct the domain [StationMarketState] (stationSlug → resourceName → pressure). */
+    fun toMarketState(): StationMarketState {
+        if (pressure.isEmpty()) return StationMarketState.EMPTY
+        return StationMarketState(
+            pressure
+                .mapKeys { (stationSlug, _) -> PoiId(stationSlug) }
+                .mapValues { (_, byResource) -> byResource.mapKeys { ResourceType.valueOf(it.key) } },
+        )
+    }
+
+    companion object {
+        /** The no-pressure default — a fresh game and every pre-UC46 / migrated save. */
+        val EMPTY: StationMarketStateDto = StationMarketStateDto()
+
+        /** Snapshot [state] into its serializable form (the non-zero pressure rows, slug/name-keyed). */
+        fun from(state: StationMarketState): StationMarketStateDto =
+            StationMarketStateDto(
+                state.pressureByStation
+                    .mapKeys { (stationId, _) -> stationId.value }
+                    .mapValues { (_, byResource) -> byResource.mapKeys { it.key.name } },
+            )
+    }
+}
+
+/**
+ * Serializable mirror of [PricingParams] (UC46 config snapshot).
+ *
+ * [PricingParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live in
+ * exactly one place. Pinning the pricing tuning per artifact (mirroring [ReputationParamsDto]) means a
+ * later retune of the elasticity / drift / decay / faction constants cannot silently invalidate an old
+ * recorded trading playthrough — the price moves it asserts are reproduced exactly. Defaulted (and
+ * `@EncodeDefault(NEVER)` on [Playthrough]) so older artifacts (recorded before dynamic pricing) decode
+ * unchanged and omit it on disk.
+ */
+@Serializable
+data class PricingParamsDto(
+    val elasticity: Double,
+    val pressureScale: Double,
+    val minMul: Double,
+    val maxMul: Double,
+    val driftAmplitude: Double,
+    val driftPeriodTicks: Int,
+    val decayNum: Int,
+    val decayDen: Int,
+    val decayPeriodTicks: Int,
+    val factionInfluence: Double,
+    val factionStandingScale: Double,
+) {
+    /** Reconstruct the domain [PricingParams] (its `init` re-validates the values). */
+    fun toPricingParams(): PricingParams =
+        PricingParams(
+            elasticity = elasticity,
+            pressureScale = pressureScale,
+            minMul = minMul,
+            maxMul = maxMul,
+            driftAmplitude = driftAmplitude,
+            driftPeriodTicks = driftPeriodTicks,
+            decayNum = decayNum,
+            decayDen = decayDen,
+            decayPeriodTicks = decayPeriodTicks,
+            factionInfluence = factionInfluence,
+            factionStandingScale = factionStandingScale,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: PricingParams): PricingParamsDto =
+            PricingParamsDto(
+                elasticity = params.elasticity,
+                pressureScale = params.pressureScale,
+                minMul = params.minMul,
+                maxMul = params.maxMul,
+                driftAmplitude = params.driftAmplitude,
+                driftPeriodTicks = params.driftPeriodTicks,
+                decayNum = params.decayNum,
+                decayDen = params.decayDen,
+                decayPeriodTicks = params.decayPeriodTicks,
+                factionInfluence = params.factionInfluence,
+                factionStandingScale = params.factionStandingScale,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: PricingParamsDto = from(PricingParams())
     }
 }
 

@@ -5,6 +5,7 @@ import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
@@ -110,6 +111,18 @@ data class SimulationState(
      * empty registry is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
      */
     val stations: StationRegistry = StationRegistry.EMPTY,
+    /**
+     * The dynamic per-station market pressure (UC46 AC#1/#3), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.marketState]. Save-wide (like [credits] / [reputation]); the
+     * pure [Simulation] decays it at each tick start ([StationMarketState.decayed]) and, on a docked trade,
+     * folds the clamped fill's pressure in ([StationMarketState.withTrade]) while
+     * [com.orbitalfrontier.economy.MarketPricing] turns it into the effective prices [Trading] resolves
+     * against. Defaults to [StationMarketState.EMPTY] (every station at base) and stays the SAME instance on
+     * a no-op tick (decay no-ops on an empty/off-period map, withTrade no-ops on a 0-unit fill), so every
+     * pre-UC46 fixture constructs and **steps byte-identically** — the empty default is also what the
+     * snapshot DTO omits via `@EncodeDefault(NEVER)`.
+     */
+    val marketState: StationMarketState = StationMarketState.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

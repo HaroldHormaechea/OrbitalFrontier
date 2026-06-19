@@ -1,8 +1,9 @@
--- Orbital Frontier save schema, version 19 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029).
+-- Orbital Frontier save schema, version 20 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034).
 --
--- This .sq file is ALWAYS the latest schema (currently v19). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v20). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
--- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19).
+-- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19;
+-- 19.sqm: v19 -> v20).
 -- Never edit this baseline destructively to make a schema change — bump the version and add a migration.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
@@ -35,6 +36,12 @@
 -- `kill_target` and `kill_progress` (the kill quota and durable progress). All additive (ALTER TABLE ADD
 -- COLUMN, minSdk-24-safe) and defaulted, so a pre-UC41 mission row reads them back at the non-bounty
 -- defaults (null / 0 / 0) and is byte-for-byte the behaviour it had. See the `mission` table comment.
+--
+-- v20 (UC46, ADR 0034) adds the **dynamic station pricing** state — a new per-slot `station_market` table
+-- holding net signed supply/demand pressure per (station, resource). It is purely additive (a new, empty
+-- table, minSdk-24-safe CREATE TABLE), so a pre-UC46 save reads it back empty → every station prices at its
+-- authored base → byte-identical to today. Only the pressure is persisted; drift + decay are recomputed
+-- from the tick (the ADR-0007 reconstructed-on-load philosophy). See the `station_market` table comment.
 --
 -- Slot isolation (UC38 AC#4): every read/write/delete is scoped by `slot_id`, so loading, saving or
 -- deleting one slot never reads or mutates another. `meta`/`settings` rows are single-row (CHECK (id = 0)).
@@ -219,6 +226,20 @@ CREATE TABLE station_module (
     slot_index INTEGER NOT NULL,
     module_type TEXT NOT NULL,
     PRIMARY KEY (slot_id, station_id, slot_index)
+);
+
+-- Dynamic station-market pressure (UC46; ADR 0034). One row per (slot, station, resource) with a
+-- NON-ZERO net signed pressure (+ = player net-sold here / oversupply / price drifts down; - = player
+-- net-bought / scarcity / price drifts up). An absent (station, resource) is at base (pressure 0). Only
+-- the pressure is stored — drift + decay are recomputed from the tick (ADR 0034), like the reputation
+-- table stores only non-neutral standings. Full-snapshot rewrite per slot (delete-then-insert). The
+-- `station_id` is a PoiId slug; an unknown resource slug degrades on load (skip with a WARN).
+CREATE TABLE station_market (
+    slot_id INTEGER NOT NULL,
+    station_id TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    pressure INTEGER NOT NULL,
+    PRIMARY KEY (slot_id, station_id, resource)
 );
 
 -- ============================================================================================
@@ -430,6 +451,19 @@ insertReputation:
 INSERT INTO reputation(slot_id, faction_id, value) VALUES (?, ?, ?);
 
 -- ============================================================================================
+-- station_market — per slot (UC46)
+-- ============================================================================================
+
+selectStationMarketForSlot:
+SELECT station_id, resource, pressure FROM station_market WHERE slot_id = ?;
+
+deleteAllStationMarketForSlot:
+DELETE FROM station_market WHERE slot_id = ?;
+
+insertStationMarketEntry:
+INSERT INTO station_market(slot_id, station_id, resource, pressure) VALUES (?, ?, ?, ?);
+
+-- ============================================================================================
 -- owned_station — per slot
 -- ============================================================================================
 
@@ -486,3 +520,6 @@ DELETE FROM owned_station WHERE slot_id = ?;
 
 deleteAllStationModulesForSlot:
 DELETE FROM station_module WHERE slot_id = ?;
+
+-- UC46: `station_market` is wiped per slot too — the wipe reuses `deleteAllStationMarketForSlot` (defined
+-- in the station_market section above), exactly as the reputation / mission tables reuse theirs.

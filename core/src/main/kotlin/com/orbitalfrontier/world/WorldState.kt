@@ -5,6 +5,7 @@ import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.ship.Fleet
@@ -121,6 +122,17 @@ data class WorldState(
      * record/replay harness (ADR 0006) never reads it — so it stays out of replay equality.
      */
     val playTimeSeconds: Long = 0L,
+    /**
+     * The mutable per-station market pressure (UC46 AC#1/#3) — the dynamic state behind the authored,
+     * immutable station [com.orbitalfrontier.economy.StationMarket]s, carried save-wide like [credits] /
+     * [reputation]. Net signed pressure per (station, resource) accumulates from the player's trades and
+     * [com.orbitalfrontier.economy.MarketPricing] turns it into the effective buy/sell prices; only the
+     * pressure is persisted (drift + decay are recomputed from the tick, ADR 0034). Defaults to
+     * [StationMarketState.EMPTY] (every station at its authored base) so a fresh game, and every pre-UC46
+     * save with no `station_market` rows, reads back at base prices and replays byte-identically — the
+     * empty default is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
+     */
+    val marketState: StationMarketState = StationMarketState.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

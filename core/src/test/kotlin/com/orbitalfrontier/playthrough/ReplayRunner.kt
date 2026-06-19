@@ -70,6 +70,7 @@ class ReplayRunner {
                 combatParams = playthrough.combatConfig.toCombatParams(),
                 reputationParams = playthrough.reputationConfig.toReputationParams(),
                 bountyParams = playthrough.bountyConfig.toBountyParams(),
+                pricingParams = playthrough.pricingConfig.toPricingParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()

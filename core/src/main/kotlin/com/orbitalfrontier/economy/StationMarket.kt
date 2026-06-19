@@ -5,9 +5,12 @@ package com.orbitalfrontier.economy
  *
  * [buyPrice] is what the player pays (credits per unit) to **buy** that resource **from** the
  * station; [sellPrice] is what the player receives (credits per unit) to **sell** it **to** the
- * station. Prices are MVP-fixed and data-driven — authored per station (see
- * [com.orbitalfrontier.world.MvpSectorMap]) rather than simulated; dynamic pricing is deferred
- * (UC14, see docs/design/economy-and-resources.md).
+ * station. These are the **authored base** prices per station (see
+ * [com.orbitalfrontier.world.MvpSectorMap]); since UC46 (ADR 0034) they are the anchor a *dynamic*
+ * effective price is computed from at trade time by [MarketPricing] — blending player-driven
+ * supply/demand ([StationMarketState]), bounded seeded drift and faction/reputation
+ * ([FactionPricing]). At pressure 0 / tick 0 / neutral standing the effective price equals this base,
+ * so the authored numbers remain the economy's backbone (see docs/design/economy-and-resources.md).
  *
  * **Invariant: `buyPrice > 0` and `0 <= sellPrice <= buyPrice`.** A positive buy price is what makes
  * the affordability division ([Trading.resolve]) safe (never divide by zero); `sellPrice <= buyPrice`
@@ -39,8 +42,11 @@ data class TradeOffer(
  *
  * **Prices are authored map data, not persisted rows.** The MVP markets are reconstructed from
  * [com.orbitalfrontier.world.MvpSectorMap] on load (they ride with the injected world), so the save
- * never pins a stale price table — see ADR 0007. When dynamic pricing arrives, per-station price
- * state will move into the save behind this same type without touching consumers.
+ * never pins a stale price table — see ADR 0007. UC46 (ADR 0034) realized the deferred dynamic-pricing
+ * plan: the *mutable* part — net per-station supply/demand pressure — now lives in the save as
+ * [StationMarketState], behind this same authored type. Only that pressure is persisted; drift and
+ * decay are recomputed from the tick, and the effective prices are produced by [MarketPricing] without
+ * the consumers ([Trading]) changing.
  */
 data class StationMarket(
     val offers: Map<ResourceType, TradeOffer>,

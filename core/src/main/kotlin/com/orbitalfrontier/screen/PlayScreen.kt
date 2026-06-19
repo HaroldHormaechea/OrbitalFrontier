@@ -44,12 +44,16 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
+import com.orbitalfrontier.economy.MarketPricing
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.PurchaseGate
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.SpendDecision
+import com.orbitalfrontier.economy.StationMarket
+import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.economy.StationRefuel
 import com.orbitalfrontier.economy.StationRefuelAction
 import com.orbitalfrontier.economy.StationRefuelStatus
@@ -348,6 +352,20 @@ class PlayScreen(
     // [StationBuilder.resolve]) and handed to the autosave via [currentWorldState]. Defaults to EMPTY for a
     // fresh / pre-UC15 save, so the snapshot stays byte-identical until the player builds their first station.
     private var stations: StationRegistry = initialWorldState.stations
+
+    // Dynamic station pricing (UC46): the live per-station supply/demand pressure, seeded from the
+    // loaded/initial snapshot. Mutated only by [trade] (folding each clamped fill's pressure in via the
+    // pure [StationMarketState.withTrade]) and decayed each flight frame; [MarketPricing] turns it + the
+    // station's authored base + the faction standing into the effective buy/sell prices the trade desk
+    // shows and [trade] charges against. Handed to the autosave via [currentWorldState]. Defaults to EMPTY
+    // for a fresh / pre-UC46 save, so prices sit at the authored base until the player moves a market.
+    private var marketState: StationMarketState = initialWorldState.marketState
+    private val pricingParams = PricingParams()
+
+    // UC46: a monotonic flight-frame counter that drives the pricing drift epoch + the decay cadence. Like
+    // [combatSpawnTick] it is a sim-frame clock (NOT wall time), advanced once per [advanceSimulation]; it is
+    // not persisted (drift + decay are recomputed from the tick, ADR 0034 — only the pressure is durable).
+    private var marketTick = 0
 
     // Courier timer drive (UC12): the model timer is TICK-based ([Missions.advance] decrements one
     // `remainingTicks` per call); the device paces those calls off accumulated real time so the
@@ -785,6 +803,13 @@ class PlayScreen(
      */
     private fun advanceSimulation(dt: Float) {
         val input = joystick.currentInput()
+
+        // UC46: advance the pricing clock one sim frame and apply market-pressure decay (mean-reversion
+        // recovery). A strict same-instance no-op while no price has moved (the EMPTY map), so it costs
+        // nothing on the common path; once the player has traded, accumulated pressure heals back toward
+        // base over time. The trade desk reads the decayed pressure for its effective prices.
+        marketTick++
+        marketState = marketState.decayed(marketTick, pricingParams)
 
         // UC25 debug point-and-go: consume an armed-tap teleport BEFORE this frame reads the body, so the
         // frame proceeds from the teleported state (and the docking check below shows the DOCK prompt when
@@ -1863,6 +1888,9 @@ class PlayScreen(
             reputation = reputation,
             // Owned stations (UC15): the live registry, folded onto the snapshot for the autosave.
             stations = stations,
+            // Station-market pressure (UC46): the live per-station supply/demand state, folded onto the
+            // snapshot so each save persists it (pressure only; drift + decay recompute from the tick).
+            marketState = marketState,
             // Play time (UC38 AC#1): the accumulated wall-of-play seconds, folded onto the snapshot so each
             // save/autosave persists it and the slot list shows it.
             playTimeSeconds = playTimeSeconds,
@@ -1905,7 +1933,11 @@ class PlayScreen(
      * existing hub REFUEL ([refuel] → [Refueling.resolve]); no special-case path is needed here.
      */
     fun trade(order: TradeOrder) {
-        val market = dockedStation?.let { sectorWorld.sector(currentSector).station(it)?.market }
+        // UC46: compute the EFFECTIVE market ONCE and use that single value for BOTH the displayed price
+        // (the trade desk reads it via [dockedMarket]) and [Trading.resolve] below — no display/charge
+        // mismatch. The effective market blends the docked station's authored base with the live
+        // supply/demand pressure ([marketState]), the seeded drift ([marketTick]) and the faction standing.
+        val market = dockedMarketOrNull()
         val result = Trading.resolve(credits, cargo, market, order)
         if (result.tradedUnits <= 0) {
             logger.info(ECONOMY_TAG, "Trade requested but nothing changed hands (unaffordable, hold full, nothing to sell, or not offered)")
@@ -1916,6 +1948,15 @@ class PlayScreen(
         }
         applyCreditChange(result.credits)
         cargo = result.cargo
+        // UC46: fold the clamped fill's pressure into the live market state (a SELL pushes the price down,
+        // a BUY up). The next render of the trade desk re-reads [dockedMarket] and shows the moved price.
+        result.kind?.let { kind ->
+            val resource = (order as? TradeOrder.Buy)?.resource ?: (order as? TradeOrder.Sell)?.resource
+            val stationId = dockedStation
+            if (resource != null && stationId != null) {
+                marketState = marketState.withTrade(stationId, resource, kind, result.tradedUnits)
+            }
+        }
         logger.info(
             ECONOMY_TAG,
             "Traded ${result.kind} ${result.tradedUnits} units; credits=$credits, cargo=${cargo.usedUnits}/${cargo.capacity}",
@@ -1923,6 +1964,30 @@ class PlayScreen(
         // Trading is a key world event (mirrors mining/dock/refuel) — persist it now.
         autosave.onEvent("trade")
         recordTutorialEvent(TutorialEvent.GATHERED) // UC36: a station trade completes GATHER (trade path)
+    }
+
+    /**
+     * The effective [StationMarket] for the **docked** station (UC46) — its authored base repriced by the
+     * live supply/demand pressure ([marketState]), the seeded drift ([marketTick]) and the player's
+     * standing with the station's faction, via the pure [MarketPricing]. Returns
+     * [StationMarket.EMPTY] when not docked / the station is unresolvable. This is what the trade desk
+     * lists and [trade] charges against, so the displayed price and the charged price are always the same.
+     */
+    fun dockedMarket(): StationMarket = dockedMarketOrNull() ?: StationMarket.EMPTY
+
+    /** The effective docked-station market, or null when not docked / unresolvable. See [dockedMarket]. */
+    private fun dockedMarketOrNull(): StationMarket? {
+        val stationId = dockedStation ?: return null
+        val station = sectorWorld.sector(currentSector).station(stationId) ?: return null
+        return MarketPricing.effectiveMarket(
+            base = station.market,
+            stationId = stationId,
+            state = marketState,
+            tick = marketTick,
+            params = pricingParams,
+            factionId = station.factionId,
+            reputation = reputation,
+        )
     }
 
     /** The active ship's current crew count (UC11) — read by the hire desk for its readout. */
@@ -2125,10 +2190,9 @@ class PlayScreen(
      * persisted (UC18 AC#1/#3/#4). Returns a short feedback line for the hub to display.
      */
     fun buyFuel(): String {
-        val price =
-            dockedStation?.let {
-                sectorWorld.sector(currentSector).station(it)?.market?.offerFor(ResourceType.HYDROGEN)?.buyPrice
-            }
+        // UC46: read the fuel price from the EFFECTIVE docked market (the same living price the trade desk
+        // shows), so buying fuel tracks the dynamic Hydrogen price rather than the static authored base.
+        val price = dockedMarketOrNull()?.offerFor(ResourceType.HYDROGEN)?.buyPrice
         val result = StationRefuel.resolve(credits, fuel, price, StationRefuelAction.BUY)
         return when (result.status) {
             StationRefuelStatus.REFUELED -> {
