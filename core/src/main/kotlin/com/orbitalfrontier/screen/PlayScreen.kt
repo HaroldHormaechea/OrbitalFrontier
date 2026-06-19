@@ -31,6 +31,7 @@ import com.orbitalfrontier.combat.PlayerCombatInput
 import com.orbitalfrontier.combat.Respawn
 import com.orbitalfrontier.combat.Salvage
 import com.orbitalfrontier.combat.SalvageDrop
+import com.orbitalfrontier.combat.SectionDamages
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
@@ -79,6 +80,9 @@ import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.render.AsteroidFieldRenderer
+import com.orbitalfrontier.render.CombatFeedback
+import com.orbitalfrontier.render.CombatHudRenderer
+import com.orbitalfrontier.render.CombatHudState
 import com.orbitalfrontier.render.DestructionState
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
@@ -143,7 +147,9 @@ import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
 import com.orbitalfrontier.world.WorldState
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * The single gameplay screen — a flyable ship in the current sector with inter-sector jump gates
@@ -257,6 +263,17 @@ class PlayScreen(
     // schematic. Both only read state and draw nothing while combat is inactive.
     private val hostileRenderer = HostileRenderer(gameAssets)
     private val shipSchematicRenderer = ShipSchematicRenderer(gameAssets)
+
+    // UC44: the combat HUD overlay — world-space lock reticle + enemy health bars, plus the full-screen
+    // hit-feedback flash/shake. [combatHudRenderer] is the GL-bound draw side (its own ShapeRenderer);
+    // [combatFeedback] is the pure, deterministic hit-intensity holder fed once per frame from the SAME
+    // structured CombatEvents the SFX/toasts already consume. [combatEventsThisFrame] accumulates those
+    // events from each combat tick this frame; [combatShakePhase] advances the (render-only) shake
+    // oscillation. All render-only — no simulation change, no schema bump (combat stays byte-identical).
+    private val combatHudRenderer = CombatHudRenderer()
+    private val combatFeedback = CombatFeedback()
+    private val combatEventsThisFrame = ArrayList<CombatEvent>()
+    private var combatShakePhase = 0f
 
     // Mining tunables (UC06). Authored defaults; the same params feed the pure [Mining.resolve] each
     // frame so live mining matches the replay harness exactly.
@@ -1064,8 +1081,28 @@ class PlayScreen(
         paused: Boolean,
         renderShip: ShipKinematics,
     ) {
-        // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7).
-        worldCamera.position.set(renderShip.position.x, renderShip.position.y, 0f)
+        // UC44 AC#3: fold this frame's combat events into the hit-feedback intensities once (the combat
+        // tick may have run several times), gated by the reduced-motion preference (UC39) passed as a
+        // parameter — CombatFeedback never reads the global. Decays toward 0 on a quiet frame, so when an
+        // encounter ends the flash/shake fade out and nothing sticks. Then drain the per-frame buffer.
+        combatFeedback.update(combatEventsThisFrame, dt, MotionPreference.reduced)
+        combatEventsThisFrame.clear()
+
+        // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7). UC44 PIN #2: the
+        // camera-follow position is rebuilt from the ship EACH frame, then a tiny, capped screen-shake
+        // offset is ADDED to that fresh position — never accumulated onto last frame's camera — so the
+        // shake decays cleanly to 0 (no drift, no stuck offset on EncounterCleared). shakeIntensity is
+        // already 0 under reduced motion (UC39).
+        val shake = combatFeedback.shakeIntensity
+        var cameraX = renderShip.position.x
+        var cameraY = renderShip.position.y
+        if (shake > 0f) {
+            combatShakePhase += dt * CAMERA_SHAKE_FREQUENCY
+            val magnitude = shake * CAMERA_SHAKE_MAX
+            cameraX += cos(combatShakePhase) * magnitude
+            cameraY += sin(combatShakePhase * CAMERA_SHAKE_Y_RATIO) * magnitude
+        }
+        worldCamera.position.set(cameraX, cameraY, 0f)
         worldCamera.update()
 
         // UC27: deepest-space backdrop from the design-system palette (void-900, AC#8).
@@ -1086,6 +1123,27 @@ class PlayScreen(
         shipRenderer.render(worldCamera, renderShip)
         // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
         hostileRenderer.render(worldCamera, combat)
+        // UC44 AC#1/#2: the combat HUD overlay — the auto-aim lock reticle + enemy health bars in WORLD
+        // space, drawn right after the hostiles so it sits on them. PIN #1: playerPos comes from the SAME
+        // physics kinematics Combat.step feeds the turrets, and the lock reuses TargetingPriority's pick,
+        // suppressed when no operable turret would fire (no crewed turret, or the TURRET section disabled)
+        // — so the reticle is honest to the firing point. No-op when combat is inactive / no hostiles.
+        val active = fleet.active
+        val playerPos = physics.readKinematics().position
+        val hasOperableTurrets =
+            ShipStats.weaponLoadout(active.type, active.loadout).operableTurrets(active.crew).isNotEmpty()
+        val turretDisabled =
+            SectionDamages.isDestroyed(
+                active.sectionDamage,
+                ShipSection.TURRET,
+                ShipStats.sectionHp(active.type, active.loadout, ShipSection.TURRET),
+            )
+        val combatHudState = CombatHudState.build(combat, playerPos, hasOperableTurrets, turretDisabled)
+        combatHudRenderer.render(worldCamera, combatHudState, combatFeedback)
+        // UC44 AC#3 (PIN #3): the damage-taken flash is a full-screen ShapeRenderer quad over the world
+        // (NOT a scene2d actor → zero layout footprint, can't overlap the FIRE arc/HUD; AC#4). 0 alpha
+        // (no-op) when no recent hit, and already 0 under reduced motion (UC39).
+        combatHudRenderer.renderDamageFlash(combatFeedback.takenFlash, viewportWidth, viewportHeight)
         // UC07/UC34: the expanded HUD readout block. The pure HudViewModel is assembled each frame from
         // the live sim state — speed/heading/fuel plus credits, cargo fill, the current sector name and
         // the active-mission objective — so every readout updates live (UC34 AC#1/#2/#4); the renderer
@@ -1169,9 +1227,9 @@ class PlayScreen(
         if (destructionState.isPending) pauseButton.isVisible = false
         pauseOverlay.actor.isVisible = paused
         destructionOverlay.actor.isVisible = destructionState.isPending
-        // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live.
+        // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live. Reuses the
+        // [active] ship resolved once above for the UC44 combat-HUD overlay.
         if (combat.active) {
-            val active = fleet.active
             shipSchematicRenderer.render(
                 active.sectionDamage,
                 ShipStats.sectionHpMap(active.type, active.loadout),
@@ -1571,6 +1629,10 @@ class PlayScreen(
         // UC31: play SFX for this tick's combat events (weapon fire, hostile hit, hostile destroyed) from
         // the pure model's structured output — audio is event-driven, the simulation stays audio-free (AC#4).
         result.events.forEach { event -> Sfx.forCombatEvent(event)?.let(audio::play) }
+
+        // UC44: accumulate this tick's events for the per-frame hit-feedback update in renderFrame (the
+        // combat tick can run multiple times per render frame; CombatFeedback folds them all in once).
+        combatEventsThisFrame.addAll(result.events)
 
         // UC35: surface combat-boundary toasts from the SAME structured events (left-combat on
         // EncounterCleared; every per-shot event maps to null upstream so the feed never floods — AC#1).
@@ -2276,6 +2338,7 @@ class PlayScreen(
         mapOverlay.dispose()
         hostileRenderer.dispose()
         shipSchematicRenderer.dispose()
+        combatHudRenderer.dispose()
         notificationRenderer.dispose()
         physics.dispose()
     }
@@ -2331,5 +2394,13 @@ class PlayScreen(
         // too. [MAX_COMBAT_TICKS_PER_FRAME] caps catch-up ticks after a stall. [TUNE]
         const val COMBAT_DT = 1f / 30f
         const val MAX_COMBAT_TICKS_PER_FRAME = 5
+
+        // UC44 screen-shake (render-only): the camera-follow jitter's max world-unit magnitude at full
+        // shake intensity (tiny — the FIRE arc is screen-space scene2d so it is unaffected), the
+        // oscillation frequency, and the slightly-detuned Y/X ratio so the shake reads as a wobble rather
+        // than a clean diagonal line. [TUNE]
+        const val CAMERA_SHAKE_MAX = 6f
+        const val CAMERA_SHAKE_FREQUENCY = 40f
+        const val CAMERA_SHAKE_Y_RATIO = 1.3f
     }
 }
