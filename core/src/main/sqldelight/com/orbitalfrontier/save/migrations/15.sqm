@@ -1,0 +1,28 @@
+-- Migration v15 -> v16 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v15 (UC36, ADR 0024) held meta + settings (handedness + the three audio columns + the first-run
+-- tutorial flag) + the save header (game_state) + per-ship rows + cargo + ship_upgrade +
+-- ship_section_damage + field_deposit + revealed_contact + mission + reputation + owned_station +
+-- station_module. v16 (UC37, ADR 0025) adds the **joystick tuning** and the **UI scale** to the
+-- single-row `settings` table:
+--
+--  1. `settings.joystick_sensitivity` — a new REAL column for the stick-magnitude multiplier,
+--     DEFAULT 1.0 (neutral — the prior implicit behaviour).
+--  2. `settings.joystick_deadzone`   — a new REAL column for the input dead band, DEFAULT 0.15
+--     (the pure model's own floor, ShipMovementParams.inputDeadzone — so a migrated save adds no
+--     extra dead band beyond what the simulation already ignored).
+--  3. `settings.ui_scale`            — a new REAL column for the UI/HUD magnification, DEFAULT 2.0
+--     (the ADR 0015 ×2 baseline that was previously a compile-time constant).
+--
+-- A pre-UC37 save had none of these preferences, so a migrated `settings` row reads them back at these
+-- defaults — byte-for-byte the behaviour the player already had (neutral stick, model-floor deadzone,
+-- ×2 UI). The new columns' DEFAULTs backfill the existing single row; handedness, the audio columns and
+-- the tutorial flag are untouched. ALTER TABLE ADD COLUMN is supported by the bundled SQLite on
+-- minSdk-24 devices (it long predates 24), so this is minSdk-safe — the same rationale as every prior
+-- additive migration. All prior data is untouched.
+
+ALTER TABLE settings ADD COLUMN joystick_sensitivity REAL NOT NULL DEFAULT 1.0;
+ALTER TABLE settings ADD COLUMN joystick_deadzone REAL NOT NULL DEFAULT 0.15;
+ALTER TABLE settings ADD COLUMN ui_scale REAL NOT NULL DEFAULT 2.0;
+
+UPDATE meta SET save_version = 16 WHERE id = 0;

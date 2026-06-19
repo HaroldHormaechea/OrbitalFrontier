@@ -35,6 +35,7 @@ still wins on any conflict â keep them in sync.
 | [0022](0022-ship-destruction-screen.md) | Ship-destruction screen: respawn-with-penalty (no permadeath), pure DestructionSummary + DestructionState gate nested under pause, durable onCriticalEvent flush (no schema bump), game-start fallback respawn | Accepted |
 | [0023](0023-notification-event-feed.md) | In-game notification feed: pure libGDX-free notify model (purity-guarded), two-level flood defense (per-tick combat→null + drop/refresh coalescing), event-driven enqueue from existing seams, top-centre toast band, transient-MVP / persistent-feed deferred | Accepted |
 | [0024](0024-first-run-tutorial-onboarding.md) | First-run tutorial & onboarding: pure libGDX-free step machine observing existing event seams (determinism-safe), draw-only hint overlay with visual-only control highlight, cross-screen two-part copy, additive v15 settings flag, replayable from settings | Accepted |
+| [0025](0025-settings-screen.md) | Full settings screen: one shared grouped SettingsPanel hosted by the in-flight overlay + a new main-menu screen; joystick sensitivity/deadzone tuning applied only at the joystick boundary (determinism-safe); UiScale promoted to a clamped mutable persisted control (rendering-only, on-rebuild HUD boundary); additive v16 settings migration; UC38/UC39 groups documented-omitted not faked | Accepted |
 
 ## Adding an ADR
 

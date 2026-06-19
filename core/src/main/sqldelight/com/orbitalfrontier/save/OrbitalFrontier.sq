@@ -86,13 +86,25 @@ CREATE TABLE meta (
 -- flag exists to stop it re-triggering every launch, AC#3). It is its own column with its own targeted
 -- UPDATE (updateTutorialCompleted), so persisting it never clobbers handedness or the audio columns
 -- (the same per-field discipline UC31 established).
+-- v16 (UC37, ADR 0025) adds the **joystick tuning** + the **UI scale** to this single-row table:
+--  - `joystick_sensitivity` REAL DEFAULT 1.0  — the stick-magnitude multiplier (clamped 0.25..3.0 in code).
+--  - `joystick_deadzone`    REAL DEFAULT 0.15 — the input dead band (clamped 0.15..0.9; 0.15 = the model floor).
+--  - `ui_scale`             REAL DEFAULT 2.0  — the UI/HUD magnification (clamped 1.0..3.0; 2.0 = ADR 0015 default).
+-- Each has a sensible DEFAULT so the v15 -> v16 migration backfills an existing settings row with the
+-- prior implicit behaviour (neutral sensitivity, model-floor deadzone, the ×2 UI scale) and no data loss.
+-- Each gets its own targeted UPDATE (updateJoystickTuning / updateUiScale), so persisting one never
+-- clobbers handedness, the audio columns, or the tutorial flag (the same per-field discipline UC31/UC36
+-- established).
 CREATE TABLE settings (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     handedness TEXT NOT NULL,
     master_muted INTEGER NOT NULL DEFAULT 0,
     sfx_volume REAL NOT NULL DEFAULT 1.0,
     music_volume REAL NOT NULL DEFAULT 0.5,
-    tutorial_completed INTEGER NOT NULL DEFAULT 0
+    tutorial_completed INTEGER NOT NULL DEFAULT 0,
+    joystick_sensitivity REAL NOT NULL DEFAULT 1.0,
+    joystick_deadzone REAL NOT NULL DEFAULT 0.15,
+    ui_scale REAL NOT NULL DEFAULT 2.0
 );
 
 -- Single-row save "header": which sector the player is in, which owned ship is active, which
@@ -271,9 +283,12 @@ INSERT OR IGNORE INTO meta(id, save_version) VALUES (0, ?);
 
 -- Read every persisted preference in one row (null on first run / before any save). UC31 widened
 -- this from handedness-only so the audio settings load in the same single-row read; UC36 widens it
--- again so the first-run tutorial flag loads in the same read.
+-- again for the first-run tutorial flag; UC37 widens it once more so the joystick tuning + UI scale
+-- load in the same single-row read.
 selectSettings:
-SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed FROM settings WHERE id = 0;
+SELECT handedness, master_muted, sfx_volume, music_volume, tutorial_completed,
+       joystick_sensitivity, joystick_deadzone, ui_scale
+FROM settings WHERE id = 0;
 
 -- Seed the single settings row with defaults once; idempotent (no-op if the row already exists). The
 -- caller binds the defaults, so the per-field UPDATE writes below always hit an existing row (UC31).
@@ -299,6 +314,19 @@ UPDATE settings SET master_muted = ?, sfx_volume = ?, music_volume = ? WHERE id 
 -- DEFAULT 0 (it is omitted from that INSERT), so a fresh row reads back as "tutorial not yet shown".
 updateTutorialCompleted:
 UPDATE settings SET tutorial_completed = ? WHERE id = 0;
+
+-- Targeted joystick-tuning write (UC37): updates ONLY the two joystick columns together, so persisting
+-- sensitivity/deadzone never touches handedness, the audio columns, or the tutorial flag. Relies on the
+-- row already existing (seedSettings runs first in the same transaction). `seedSettings` omits these
+-- columns, so a fresh row reads them back at their schema DEFAULTs (1.0 / 0.15).
+updateJoystickTuning:
+UPDATE settings SET joystick_sensitivity = ?, joystick_deadzone = ? WHERE id = 0;
+
+-- Targeted UI-scale write (UC37): updates ONLY the ui_scale column, so persisting the UI magnification
+-- never touches any other preference. Relies on the row already existing. `seedSettings` omits this
+-- column, so a fresh row reads it back at its schema DEFAULT 2.0 (the ADR 0015 ×2 baseline).
+updateUiScale:
+UPDATE settings SET ui_scale = ? WHERE id = 0;
 
 -- Read the save header (UC09: header only — ships are read separately via selectAllShips so the
 -- whole fleet loads, not just the active ship). Returns no rows when there is no save yet (-> New

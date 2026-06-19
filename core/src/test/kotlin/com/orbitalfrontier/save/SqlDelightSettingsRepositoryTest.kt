@@ -2,11 +2,14 @@ package com.orbitalfrontier.save
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.platform.Logger
+import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.settings.AudioSettings
 import com.orbitalfrontier.settings.Handedness
+import com.orbitalfrontier.settings.JoystickTuning
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -18,7 +21,9 @@ import org.junit.Test
  * transactional writes, graceful first-run / corrupt-row handling), plus UC31 AC#3 — the audio
  * preferences (master mute + per-channel volume) round-trip, default on first run, coerce a corrupt
  * stored value, and — Risk 1 — never clobber the handedness column (and vice-versa) since each
- * preference is written through its own column-scoped UPDATE.
+ * preference is written through its own column-scoped UPDATE. UC37 adds the joystick tuning
+ * (sensitivity + deadzone) and the UI scale: same round-trip / default-on-first-run / coerce-on-read /
+ * per-field-isolation contract, each via its own column-scoped UPDATE.
  *
  * "App restart" is simulated by constructing a fresh repository over the *same* live driver
  * (the in-memory DB persists for the lifetime of the connection), so the reload genuinely goes
@@ -52,10 +57,11 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC36 bumped the schema to v15 (the settings tutorial_completed column on top of the UC31 audio
-        // columns); ensureInitialized seeds SaveVersion.CURRENT (15L), pinned to OrbitalFrontier.Schema.version.
+        // UC37 bumped the schema to v16 (the settings joystick_sensitivity/joystick_deadzone/ui_scale
+        // columns on top of the UC36 tutorial flag); ensureInitialized seeds SaveVersion.CURRENT (16L),
+        // pinned to OrbitalFrontier.Schema.version.
         assertEquals(OrbitalFrontier.Schema.version, version)
-        assertEquals(15L, version)
+        assertEquals(16L, version)
     }
 
     @Test
@@ -65,7 +71,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-15 row", 15L, version)
+        assertEquals("repeated init keeps a single version-16 row", 16L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---
@@ -308,6 +314,169 @@ class SqlDelightSettingsRepositoryTest {
         val freshRepo = newRepository()
         assertTrue("tutorial flag survives handedness + audio writes", freshRepo.loadTutorialCompleted())
         assertEquals("handedness landed", Handedness.LEFT_HANDED, freshRepo.loadHandedness())
+    }
+
+    // --- UC37 AC#2: joystick tuning persists + reloads ---------------------------------------------
+
+    @Test
+    fun `first run with no settings row returns the default joystick tuning`() {
+        // No row written yet → a graceful default read, not an exception.
+        assertEquals(JoystickTuning.DEFAULT, newRepository().loadJoystickTuning())
+    }
+
+    @Test
+    fun `saved joystick tuning survives a reload`() {
+        val saved = JoystickTuning(sensitivity = 1.5f, deadzone = 0.4f)
+        newRepository().saveJoystickTuning(saved)
+
+        // Fresh repository over the same DB == app restart.
+        assertEquals(saved, newRepository().loadJoystickTuning())
+    }
+
+    @Test
+    fun `the latest saved joystick tuning wins`() {
+        val repo = newRepository()
+        repo.saveJoystickTuning(JoystickTuning(sensitivity = 0.5f, deadzone = 0.2f))
+        val latest = JoystickTuning(sensitivity = 2.5f, deadzone = 0.55f)
+        repo.saveJoystickTuning(latest)
+
+        assertEquals(latest, newRepository().loadJoystickTuning())
+    }
+
+    @Test
+    fun `loadJoystickTuning coerces an out-of-range stored value back into range`() {
+        // Inject out-of-range values directly (a corrupt save or a future control), bypassing
+        // saveJoystickTuning (which coerces on write) to prove the read path also coerces. Both bounds
+        // are exercised: a zero sensitivity + sub-floor deadzone, then over-max values. (NaN can't be
+        // stored — SQLite collapses it to NULL, which the NOT NULL column rejects — so NaN coercion is
+        // covered at the unit level in JoystickTuningTest.)
+        val queries = database.orbitalFrontierQueries
+        seedRow()
+        queries.updateJoystickTuning(0.0, 0.05)
+        val low = newRepository().loadJoystickTuning()
+        assertEquals("a zero sensitivity clamps to the minimum", JoystickTuning.MIN_SENSITIVITY, low.sensitivity, 0f)
+        assertEquals("a sub-floor deadzone clamps to the model floor", JoystickTuning.MIN_DEADZONE, low.deadzone, 0f)
+
+        queries.updateJoystickTuning(99.0, 9.0)
+        val high = newRepository().loadJoystickTuning()
+        assertEquals("an over-max sensitivity clamps to the maximum", JoystickTuning.MAX_SENSITIVITY, high.sensitivity, 0f)
+        assertEquals("an over-max deadzone clamps to the maximum", JoystickTuning.MAX_DEADZONE, high.deadzone, 0f)
+    }
+
+    @Test
+    fun `saveJoystickTuning does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        repo.saveJoystickTuning(JoystickTuning(sensitivity = 1.5f, deadzone = 0.3f))
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC37 AC#2: UI scale persists + reloads ----------------------------------------------------
+
+    @Test
+    fun `first run with no settings row returns the default UI scale`() {
+        assertEquals(UiScale.DEFAULT_FACTOR, newRepository().loadUiScale(), 0f)
+    }
+
+    @Test
+    fun `a saved UI scale survives a reload`() {
+        newRepository().saveUiScale(2.5f)
+
+        assertEquals(2.5f, newRepository().loadUiScale(), 0f)
+    }
+
+    @Test
+    fun `the latest saved UI scale wins`() {
+        val repo = newRepository()
+        repo.saveUiScale(1.5f)
+        repo.saveUiScale(3f)
+
+        assertEquals(3f, newRepository().loadUiScale(), 0f)
+    }
+
+    @Test
+    fun `loadUiScale coerces an out-of-range stored value back into range`() {
+        // Inject out-of-range factors directly to prove the read path coerces (both bounds).
+        val queries = database.orbitalFrontierQueries
+        seedRow()
+        queries.updateUiScale(9.0)
+        assertEquals("an over-max factor clamps to the maximum", UiScale.MAX_FACTOR, newRepository().loadUiScale(), 0f)
+        queries.updateUiScale(0.25)
+        assertEquals("a below-min factor clamps to the minimum", UiScale.MIN_FACTOR, newRepository().loadUiScale(), 0f)
+    }
+
+    @Test
+    fun `saveUiScale does not throw when the driver is unavailable`() {
+        val repo = newRepository()
+        driver.close() // subsequent SQL will fail inside the transaction
+
+        repo.saveUiScale(2.5f)
+
+        assertTrue("the write failure should be logged at ERROR", logger.errors.isNotEmpty())
+    }
+
+    // --- UC37 Risk (per-field writes, mirroring UC31 Risk 1): each new preference is column-scoped, so
+    //     writing one never clobbers the others (and they are never clobbered by handedness/audio/tutorial) ---
+
+    @Test
+    fun `each preference write leaves every sibling preference intact`() {
+        val repo = newRepository()
+        // Establish a distinct, non-default value for every column.
+        val audio = AudioSettings(masterMuted = true, sfxVolume = 0.3f, musicVolume = 0.6f)
+        val tuning = JoystickTuning(sensitivity = 2.0f, deadzone = 0.55f)
+        repo.saveHandedness(Handedness.RIGHT_HANDED)
+        repo.saveAudioSettings(audio)
+        repo.saveTutorialCompleted(true)
+        repo.saveJoystickTuning(tuning)
+        repo.saveUiScale(2.5f)
+
+        // A later joystick write must touch ONLY the joystick columns.
+        val newTuning = JoystickTuning(sensitivity = 0.75f, deadzone = 0.25f)
+        repo.saveJoystickTuning(newTuning)
+        var fresh = newRepository()
+        assertEquals("joystick tuning landed", newTuning, fresh.loadJoystickTuning())
+        assertEquals("handedness untouched by a joystick write", Handedness.RIGHT_HANDED, fresh.loadHandedness())
+        assertEquals("audio untouched by a joystick write", audio, fresh.loadAudioSettings())
+        assertTrue("tutorial flag untouched by a joystick write", fresh.loadTutorialCompleted())
+        assertEquals("UI scale untouched by a joystick write", 2.5f, fresh.loadUiScale(), 0f)
+
+        // A later UI-scale write must touch ONLY the ui_scale column.
+        repo.saveUiScale(1.5f)
+        fresh = newRepository()
+        assertEquals("UI scale landed", 1.5f, fresh.loadUiScale(), 0f)
+        assertEquals("joystick tuning untouched by a UI-scale write", newTuning, fresh.loadJoystickTuning())
+        assertEquals("handedness untouched by a UI-scale write", Handedness.RIGHT_HANDED, fresh.loadHandedness())
+        assertEquals("audio untouched by a UI-scale write", audio, fresh.loadAudioSettings())
+        assertTrue("tutorial flag untouched by a UI-scale write", fresh.loadTutorialCompleted())
+    }
+
+    @Test
+    fun `a handedness write does not clobber the joystick tuning or UI scale`() {
+        val repo = newRepository()
+        val tuning = JoystickTuning(sensitivity = 1.5f, deadzone = 0.4f)
+        repo.saveJoystickTuning(tuning)
+        repo.saveUiScale(2.5f)
+
+        repo.saveHandedness(Handedness.LEFT_HANDED)
+
+        val fresh = newRepository()
+        assertEquals("handedness landed", Handedness.LEFT_HANDED, fresh.loadHandedness())
+        assertEquals("joystick tuning survives a handedness write", tuning, fresh.loadJoystickTuning())
+        assertEquals("UI scale survives a handedness write", 2.5f, fresh.loadUiScale(), 0f)
+        // Sanity: the new preferences really persisted, not just defaulted to the same values.
+        assertNotEquals("the persisted tuning is genuinely non-default", JoystickTuning.DEFAULT, fresh.loadJoystickTuning())
+    }
+
+    /** Seed the single settings row the same way the repository does, so a targeted UPDATE hits a row. */
+    private fun seedRow() {
+        database.orbitalFrontierQueries.seedSettings(
+            Handedness.DEFAULT.name,
+            if (AudioSettings.DEFAULT.masterMuted) 1L else 0L,
+            AudioSettings.DEFAULT.sfxVolume.toDouble(),
+            AudioSettings.DEFAULT.musicVolume.toDouble(),
+        )
     }
 
     /** Logger that records WARN/ERROR messages so error-path tests can assert on them. */

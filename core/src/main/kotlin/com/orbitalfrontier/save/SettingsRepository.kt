@@ -2,6 +2,7 @@ package com.orbitalfrontier.save
 
 import com.orbitalfrontier.settings.AudioSettings
 import com.orbitalfrontier.settings.Handedness
+import com.orbitalfrontier.settings.JoystickTuning
 
 /**
  * Persistence boundary for player settings (handedness, AC#8; audio preferences, UC31 AC#3).
@@ -54,4 +55,31 @@ interface SettingsRepository {
      * call does not throw (autosave-style graceful degradation).
      */
     fun saveTutorialCompleted(completed: Boolean)
+
+    /**
+     * Current joystick tuning (UC37), or [JoystickTuning.DEFAULT] if none is stored yet or the row is
+     * unreadable. The returned value is always [JoystickTuning.coerced] (sensitivity + deadzone clamped
+     * to their valid ranges).
+     */
+    fun loadJoystickTuning(): JoystickTuning
+
+    /**
+     * Persist [tuning] atomically (coerced first) without touching any other settings column (UC37). On
+     * failure the last good value is left intact and the error is logged; this call does not throw.
+     */
+    fun saveJoystickTuning(tuning: JoystickTuning)
+
+    /**
+     * Current UI-scale factor (UC37), or the [com.orbitalfrontier.render.UiScale.DEFAULT_FACTOR] if none
+     * is stored yet or the row is unreadable. The returned value is always coerced into the valid range
+     * ([com.orbitalfrontier.render.UiScale.MIN_FACTOR]..[com.orbitalfrontier.render.UiScale.MAX_FACTOR]).
+     */
+    fun loadUiScale(): Float
+
+    /**
+     * Persist the UI-scale [factor] atomically (coerced first) without touching any other settings column
+     * (UC37). On failure the last good value is left intact and the error is logged; this call does not
+     * throw (autosave-style graceful degradation).
+     */
+    fun saveUiScale(factor: Float)
 }
