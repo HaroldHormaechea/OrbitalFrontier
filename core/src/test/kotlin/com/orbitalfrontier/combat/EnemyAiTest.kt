@@ -20,6 +20,12 @@ class EnemyAiTest {
     private val raider = HostileArchetypes.RAIDER // AGGRESSIVE, engageRange 480
     private val scavenger = HostileArchetypes.SCAVENGER // FLEE_WHEN_DAMAGED, hull 18, fleeHullFraction 0.34
 
+    // RETREAT_AND_REGROUP, hull 36, fleeHullFraction 0.34, regroupRange 700, engageRange 480, leashRange 1400.
+    private val regroup = HostileArchetypes.REGROUP_MARAUDER
+
+    /** Hull current-HP below the regroup marauder's flee threshold (0.34 * 36 ≈ 12.2), so it's "damaged". */
+    private val regroupDamaged = mapOf(ShipSection.HULL to 10)
+
     private fun hostile(
         archetype: HostileArchetype,
         position: Vec2,
@@ -88,5 +94,57 @@ class EnemyAiTest {
         val nearlyDead = hostile(raider, Vec2(0f, 0f), damage = mapOf(ShipSection.HULL to 1))
         val decision = EnemyAi.decide(nearlyDead, raider, Vec2(200f, 0f))
         assertTrue("an aggressive archetype keeps firing in range regardless of hull", decision.wantsToFire)
+    }
+
+    // --- RETREAT_AND_REGROUP (UC45 AC#2): engage while healthy; retreat inside regroupRange when damaged;
+    //     re-engage from beyond regroupRange. The AGGRESSIVE / FLEE branches above stay byte-identical. ---
+
+    @Test
+    fun `a healthy retreat-and-regroup hostile engages like an aggressive one`() {
+        // Pristine hull (fraction 1.0 >= 0.34) -> not retreating -> closes + fires in range.
+        val healthy = hostile(regroup, Vec2(0f, 0f))
+        val decision = EnemyAi.decide(healthy, regroup, Vec2(300f, 0f))
+        assertTrue("a healthy regroup marauder closes", decision.thrust)
+        assertTrue("a healthy regroup marauder fires inside engage range", decision.wantsToFire)
+        assertEquals("heads at the player while healthy", 0f, decision.desiredHeading, 1e-4f)
+    }
+
+    @Test
+    fun `a damaged retreat-and-regroup hostile inside regroup range runs away and holds fire`() {
+        // Hull below the flee threshold AND distance (300) < regroupRange (700) -> retreat.
+        val damaged = hostile(regroup, Vec2(0f, 0f), damage = regroupDamaged)
+        assertTrue("precondition: hull below the flee threshold", damaged.hullFraction(regroup) < regroup.fleeHullFraction)
+
+        val decision = EnemyAi.decide(damaged, regroup, Vec2(300f, 0f))
+        assertTrue("a retreating marauder still thrusts (to open the distance)", decision.thrust)
+        assertFalse("a retreating marauder holds fire", decision.wantsToFire)
+        val dir = Vec2.fromAngle(decision.desiredHeading)
+        assertEquals("retreats in -x (directly away from the player)", -1f, dir.x, 1e-4f)
+        assertEquals("no lateral drift on a head-on retreat", 0f, dir.y, 1e-4f)
+    }
+
+    @Test
+    fun `a damaged retreat-and-regroup hostile beyond regroup range turns back to re-engage`() {
+        // Same damaged hull, but distance (900) > regroupRange (700): it has reached its standoff distance,
+        // so it re-engages — turning back TOWARD the player and thrusting (the regroup, not a permanent flee).
+        val damaged = hostile(regroup, Vec2(0f, 0f), damage = regroupDamaged)
+        val decision = EnemyAi.decide(damaged, regroup, Vec2(900f, 0f))
+
+        assertTrue("a re-engaging marauder thrusts back toward the player", decision.thrust)
+        val dir = Vec2.fromAngle(decision.desiredHeading)
+        assertEquals("turns back TOWARD the player (+x), not fleeing", 1f, dir.x, 1e-4f)
+        assertEquals("no lateral drift heading straight back", 0f, dir.y, 1e-4f)
+        // 900 wu is beyond engageRange (480), so it holds fire until it has closed back into range.
+        assertFalse("holds fire until back inside engage range", decision.wantsToFire)
+    }
+
+    @Test
+    fun `a healthy retreat-and-regroup hostile beyond regroup range still engages`() {
+        // Pristine hull: never retreats, so even far out it closes (and fires only once inside engage range).
+        val healthy = hostile(regroup, Vec2(0f, 0f))
+        val decision = EnemyAi.decide(healthy, regroup, Vec2(900f, 0f))
+        assertTrue("a healthy marauder closes the distance", decision.thrust)
+        assertEquals("heads toward the player", 0f, decision.desiredHeading, 1e-4f)
+        assertFalse("holds fire beyond engage range", decision.wantsToFire)
     }
 }
