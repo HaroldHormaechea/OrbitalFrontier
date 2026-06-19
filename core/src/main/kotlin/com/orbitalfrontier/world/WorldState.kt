@@ -1,6 +1,7 @@
 package com.orbitalfrontier.world
 
 import com.orbitalfrontier.combat.CombatState
+import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -66,6 +67,21 @@ data class WorldState(
      * each ship's [com.orbitalfrontier.ship.OwnedShip.sectionDamage]) survives a save.
      */
     val combat: CombatState = CombatState.NONE,
+    /**
+     * The salvage wrecks currently floating in the world (UC42 AC#1/#2). **Transient**, exactly like
+     * [combat]: salvage is spawned from combat kills and collected by proximity, regenerated from play
+     * and **never row-persisted** (a mid-flight save reloads with no pending salvage, so there is no
+     * schema bump — ADR 0012's transient-combat precedent). Defaults to empty so a fresh game, every
+     * pre-UC42 save, and every replay step with no wrecks reads back with none — keeping the snapshot
+     * byte-identical for a pre-UC42 playthrough.
+     */
+    val salvage: List<SalvageDrop> = emptyList(),
+    /**
+     * The monotonic allocator for the next [com.orbitalfrontier.combat.SalvageId] (UC42) — like
+     * [CombatState.nextHostileId], ids only ever increase and are never reused, giving drops a stable
+     * total order. **Transient** (it rides with [salvage], never persisted). Defaults to 0.
+     */
+    val nextSalvageId: Long = 0L,
     /**
      * The [PoiId] of the station the player most recently docked at (UC13 AC#5) — the respawn point on
      * destruction. **Persisted** (unlike [dockedStation], which is null while in flight): it is the

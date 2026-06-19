@@ -347,6 +347,7 @@ data class MissionParamsDto(
  * ordinal) so the on-disk form is diffable and survives enum reordering — matching every other enum-keyed
  * DTO map here.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CombatParamsDto(
     val hitRadius: Float,
@@ -355,6 +356,14 @@ data class CombatParamsDto(
     val respawnCargoLossFraction: Float,
     val muzzleOffset: Float,
     val spawnDistance: Float,
+    // UC42: the salvage pickup radius. Unlike its sibling fields this is `@EncodeDefault(NEVER)` with a
+    // default derived from [CombatParams] — so a run under the default radius OMITS the key entirely.
+    // Every one of the 14 committed combat fixtures serializes its combatConfig block (the codec's global
+    // encodeDefaults = true), so a plain new field would have added a key to all of them and broken their
+    // bytes; omitting-by-default keeps them byte-identical (no fixture regen). A future playthrough that
+    // pins a non-default radius records it, so the replay it asserts is still reproduced exactly.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val salvagePickupRadius: Float = CombatParams().salvagePickupRadius,
 ) {
     /** Reconstruct the domain [CombatParams] (its `init` re-validates the values). */
     fun toCombatParams(): CombatParams =
@@ -365,6 +374,7 @@ data class CombatParamsDto(
             respawnCargoLossFraction = respawnCargoLossFraction,
             muzzleOffset = muzzleOffset,
             spawnDistance = spawnDistance,
+            salvagePickupRadius = salvagePickupRadius,
         )
 
     companion object {
@@ -377,6 +387,7 @@ data class CombatParamsDto(
                 respawnCargoLossFraction = params.respawnCargoLossFraction,
                 muzzleOffset = params.muzzleOffset,
                 spawnDistance = params.spawnDistance,
+                salvagePickupRadius = params.salvagePickupRadius,
             )
 
         /** The serialized default tuning, derived from the domain default (single source of truth). */

@@ -22,11 +22,14 @@ import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
 import com.orbitalfrontier.combat.CombatState
+import com.orbitalfrontier.combat.DestroyedHostile
 import com.orbitalfrontier.combat.DestructionSummary
 import com.orbitalfrontier.combat.EncounterSpawner
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.PlayerCombatInput
 import com.orbitalfrontier.combat.Respawn
+import com.orbitalfrontier.combat.Salvage
+import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
@@ -353,6 +356,15 @@ class PlayScreen(
     private var combatSpawnTick = 0
     private var combatTickAccumulator = 0f
     private val combatParams = CombatParams()
+
+    // Salvage (UC42): the wrecks currently floating in the world + the monotonic id allocator, seeded
+    // from the loaded/initial snapshot (empty on load — salvage is transient, never persisted, like
+    // combat). A combat kill spawns one drop via the shared [Salvage.spawn] in [stepCombatOnce]; the
+    // per-frame [collectSalvage] (run after movement, before the combat branch) folds proximity pickups
+    // into credits + cargo via [Salvage.collect]. [currentWorldState] hands both to the autosave (the
+    // repository never persists them). Held here alongside the other transient combat state.
+    private var salvage: List<SalvageDrop> = initialWorldState.salvage
+    private var nextSalvageId: Long = initialWorldState.nextSalvageId
 
     // UC31: previous-frame thrust state for the looping THRUST cue. The engine sound starts on the
     // not-thrusting -> thrusting rising edge ([audio].play) and stops on the falling edge ([audio].stopSfx),
@@ -1011,6 +1023,12 @@ class PlayScreen(
             }
         }
 
+        // UC42 collect: fold any proximity salvage pickup into credits + cargo. Runs once per tick,
+        // UNCONDITIONALLY, after movement and BEFORE the combat branch (post-movement position) — so a
+        // tick that ends combat (and would early-return inside the combat branch) can never skip the
+        // collection. This ordering is mirrored byte-for-byte by the test-set Simulation (project rule #1).
+        collectSalvage(ship.position)
+
         // UC13 combat: edge-triggered natural encounter spawn on the outside→inside zone crossing, then
         // the paced shared [Combat.step]. Hostiles/projectiles/combat-RNG are transient (regenerated, not
         // persisted); only the player's section damage + last docked station are durable.
@@ -1541,6 +1559,10 @@ class PlayScreen(
         // UC41 (b): capture the encounter's zone id BEFORE the step — a destroyed/cleared encounter resets
         // combat to NONE (zoneId ""), so the attribution key must be read pre-step.
         val preStepZoneId = combat.zoneId
+        // UC42: snapshot the hostiles BEFORE the step too — a [CombatEvent.HostileDestroyed] carries only
+        // the id, and the kill culls the hostile from the post-step state, so the kill position +
+        // archetype (the salvage spawn inputs) must be read from this pre-step list.
+        val preStepHostiles = combat.hostiles
         val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
         combat = result.combat
 
@@ -1581,6 +1603,24 @@ class PlayScreen(
             }
         }
 
+        // UC42 (a): spawn one salvage wreck per kill at the hostile's pre-step position, loot rolled
+        // deterministically from the encounter zone id + hostile id (independent of the combat RNG, so
+        // the committed combat fixtures stay byte-identical). Done BEFORE the destruction return so a
+        // kill on the death tick still drops its wreck — symmetric with the bounty fold above and
+        // mirrored byte-for-byte in the test-set Simulation. No-op (same list) when nothing died.
+        if (killsThisTick > 0) {
+            val byId = preStepHostiles.associateBy { it.id }
+            val destroyed =
+                result.events.asSequence()
+                    .filterIsInstance<CombatEvent.HostileDestroyed>()
+                    .mapNotNull { event -> byId[event.id] }
+                    .map { hostile -> DestroyedHostile(hostile.id, hostile.archetypeId, hostile.kinematics.position) }
+                    .toList()
+            val spawned = Salvage.spawn(salvage, nextSalvageId, preStepZoneId, destroyed)
+            salvage = spawned.drops
+            nextSalvageId = spawned.nextSalvageId
+        }
+
         if (result.destroyed) {
             respawnPlayer()
             return
@@ -1593,6 +1633,26 @@ class PlayScreen(
             autosave.onEvent("combat-cleared")
             logger.info(WORLD_TAG, "Combat ended in sector ${currentSector.value}")
         }
+    }
+
+    /**
+     * UC42 (b): collect any salvage within the pickup radius of [playerPosition] (the post-movement ship
+     * position this frame) via the shared pure [Salvage.collect] — the same function the test-set
+     * Simulation runs (project rule #1), so live and replayed pickup match. Credits route through the
+     * single [applyCreditChange] chokepoint (so the gain toast surfaces like any other), resources flow
+     * into [cargo] with a capacity-respecting partial fill, and a hold-full overflow surfaces the reused
+     * "CARGO FULL" [GameNotifications.actionRejected] cue (no new NotificationKind). A value-moving pickup
+     * triggers an event autosave so the collected loot is durable. A no-op tick (nothing in range, or a
+     * full hold over a credit-less leftover) returns the same instances and does nothing.
+     */
+    private fun collectSalvage(playerPosition: Vec2) {
+        val result = Salvage.collect(salvage, playerPosition, cargo, credits, combatParams.salvagePickupRadius)
+        if (!result.collectedAny) return
+        salvage = result.drops
+        cargo = result.cargo
+        applyCreditChange(result.credits)
+        if (result.overflow) notifications.enqueue(GameNotifications.actionRejected("CARGO FULL"))
+        autosave.onEvent("salvage-collected")
     }
 
     /**
@@ -1701,6 +1761,10 @@ class PlayScreen(
             // Combat (UC13) is transient — handed through so a snapshot is complete, but the repository
             // never persists it (a reload starts with no encounter). lastDockedStation IS persisted.
             combat = combat,
+            // Salvage (UC42) is transient too — handed through for snapshot completeness, but the
+            // repository never persists it (a reload starts with no pending wrecks), like combat.
+            salvage = salvage,
+            nextSalvageId = nextSalvageId,
             lastDockedStation = lastDockedStation,
             // Reputation (UC14): the live per-faction standing, folded onto the snapshot for the autosave.
             reputation = reputation,
