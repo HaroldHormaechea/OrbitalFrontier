@@ -60,11 +60,11 @@ class SqlDelightSettingsRepositoryTest {
         newRepository().ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        // UC39 bumped the schema to v18 (the accessibility settings columns — colorblind_mode / text_scale /
-        // reduced_motion — on top of UC38's save-slot partitioning); ensureInitialized seeds
-        // SaveVersion.CURRENT (18L), pinned to OrbitalFrontier.Schema.version.
+        // UC41 bumped the schema to v19 (the bounty mission columns — target_zone_id / kill_target /
+        // kill_progress — on top of UC39's accessibility settings columns); ensureInitialized seeds
+        // SaveVersion.CURRENT (19L), pinned to OrbitalFrontier.Schema.version.
         assertEquals(OrbitalFrontier.Schema.version, version)
-        assertEquals(18L, version)
+        assertEquals(19L, version)
     }
 
     @Test
@@ -74,7 +74,7 @@ class SqlDelightSettingsRepositoryTest {
         repo.ensureInitialized()
 
         val version = database.orbitalFrontierQueries.selectSaveVersion().executeAsOne()
-        assertEquals("repeated init keeps a single version-18 row", 18L, version)
+        assertEquals("repeated init keeps a single version-19 row", 19L, version)
     }
 
     // --- AC#13: first-run / missing settings row handled gracefully ---

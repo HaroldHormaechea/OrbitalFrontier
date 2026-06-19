@@ -108,6 +108,16 @@ object PlaythroughFixtures {
     const val UC15_STATION: String = "uc15-station"
 
     /**
+     * UC41 combat-bounty playthrough name (AC#5): start in flight just south of the authored
+     * `bounty-alpha-raider` zone and **in radio range** of Alpha Station, accept the broadcast bounty
+     * (UC12 radio), cross into the zone to spawn the contracted RAIDER, then hold FIRE until the turret
+     * destroys it — completing the bounty and paying the reward. [Uc41CombatBountyReplayTest] asserts the
+     * bounty ends COMPLETED with credits risen by exactly the reward, no reputation change (the UC43 seam),
+     * and bit-for-bit determinism. Loadable via `playtest -Dplaythrough.name=uc41-combat-bounty`.
+     */
+    const val UC41_COMBAT_BOUNTY: String = "uc41-combat-bounty"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -171,6 +181,7 @@ object PlaythroughFixtures {
             UC13_COMBAT to ::uc13Combat,
             UC14_FACTION to ::uc14Faction,
             UC15_STATION to ::uc15Station,
+            UC41_COMBAT_BOUNTY to ::uc41CombatBounty,
         )
 
     /**
@@ -810,6 +821,96 @@ object PlaythroughFixtures {
         // Loiter (released stick ⇒ drift to near-rest inside the picket) and keep firing: the turret
         // auto-aims and destroys the closing raider over the remaining ticks.
         for (tick in UC13_THRUST_IN_TICKS until UC13_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
+
+    /** The canonical bounty offer id Alpha Station posts (UC41) — `"bounty:<targetZoneId>"`. */
+    private val UC41_BOUNTY_ID: MissionId = MissionId("bounty:bounty-alpha-raider")
+
+    /** The authored `bounty-alpha-raider` target zone (read from the production map) — the AC#5 kill site. */
+    private val UC41_BOUNTY_ZONE = MvpSectorMap.bountyTargetZone("bounty-alpha-raider")!!
+
+    /**
+     * Combat tuning **pinned for the UC41 bounty fixture only** — the same HULL-funnelled, wide-hit-radius
+     * recipe [UC13_COMBAT_TUNING] uses so the contracted RAIDER's 30-HP hull falls in a fixed number of
+     * turret hits (a compact, deterministic kill) instead of a stochastic spread across four sections.
+     * Pinning per artifact (the UC02 config-pin rationale) means a later combat retune can't silently
+     * invalidate this replay.
+     */
+    private val UC41_COMBAT_TUNING: CombatParams =
+        CombatParams(sectionHitWeights = mapOf(ShipSection.HULL to 1), hitRadius = 60f)
+
+    /** Thrust-in ticks for [uc41CombatBounty] — enough to cross the bounty zone's r220 edge from just outside. */
+    private const val UC41_THRUST_IN_TICKS: Int = 24
+
+    /** Total ticks for [uc41CombatBounty] — the thrust-in plus a long loiter while the turret grinds the raider down. */
+    private const val UC41_TOTAL_TICKS: Int = 520
+
+    /**
+     * UC41 combat-bounty scenario (AC#5): the full accept → spawn → destroy → payout loop of the combat-bounty
+     * mission type, recorded as a deterministic playthrough.
+     *
+     * The player starts **in flight** just **south of** the authored `bounty-alpha-raider` zone (centre
+     * [UC41_BOUNTY_ZONE].center `(0, 1400)`, radius 220) in [MvpSectorMap.START_SECTOR] (Alpha), cruising
+     * north at max speed, **in radio range** of Alpha Station (≈530 wu < the 700-wu default radio reach), with
+     * **one crew aboard** (so the built-in auto-aim turret is operable, AC#2) and the last-docked station
+     * recorded at Alpha (the respawn point). The script:
+     *  - **tick 0**: [MissionOrder.Accept] the broadcast bounty offer (`bounty:bounty-alpha-raider`, kill 1) over
+     *    the ship radio (UC12 radio path) while still outside the zone — the bounty becomes ACTIVE (AC#1).
+     *  - **thrust-in**: thrust north for [UC41_THRUST_IN_TICKS] ticks, crossing the zone's r220 edge — the
+     *    edge-triggered [com.orbitalfrontier.combat.EncounterSpawner.missionSpawn] injects the contracted RAIDER
+     *    seeded by the crossing tick (AC#2);
+     *  - **loiter + fire**: release the stick and hold [FireAction.FIRE] for the rest of the run. The AGGRESSIVE
+     *    raider closes; the crew-gated turret auto-aims and (with the pinned HULL-funnelled tuning) grinds its
+     *    30-HP hull to destruction, which auto-completes the bounty and pays the reward (AC#3).
+     *
+     * [Uc41CombatBountyReplayTest] asserts the AC#5 contract: a fight occurred, the bounty ends COMPLETED with
+     * `killProgress == killTarget`, credits rose by exactly the reward, reputation is unchanged (the UC43 seam),
+     * and the replay is bit-for-bit deterministic. The combat tuning is the pinned [UC41_COMBAT_TUNING]; all
+     * geometry is read from the production [MvpSectorMap]. Loadable via `playtest -Dplaythrough.name=uc41-combat-bounty`.
+     */
+    fun uc41CombatBounty(): Playthrough {
+        // Start just OUTSIDE the r220 bounty zone on the -y (south) side, already cruising north at 120 wu/s so a
+        // few ticks of northward thrust carry the ship across the r220 edge and trip the bounty spawn. The start
+        // is ≈530 wu from Alpha Station — inside the 700-wu radio reach — so the bounty surfaces on the radio.
+        val start = UC41_BOUNTY_ZONE.center - Vec2(0f, UC41_BOUNTY_ZONE.radius + 50f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(0f, 120f), headingRadians = (Math.PI / 2).toFloat()),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC41_COMBAT_BOUNTY,
+                seed = 41L,
+                dtSeconds = DT_SECONDS,
+                combatConfig = UC41_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        fleet = fleet,
+                        // Start broke so the bounty payout is measured from a known-zero baseline.
+                        credits = 0L,
+                        // Start neutral — the AC asserts the bounty grants NO reputation (the UC43 seam).
+                        reputation = Reputation.EMPTY,
+                        // The respawn point on destruction (persisted); also the bounty's issuing station.
+                        lastDockedStation = PoiId("alpha-station"),
+                    ),
+            )
+
+        // Tick 0 (in flight, in radio range, still outside the zone): accept the broadcast bounty.
+        recorder.recordMission(0, MissionOrder.Accept(UC41_BOUNTY_ID))
+
+        val north = MovementInput(targetDirection = Vec2(0f, 1f), magnitude = 1f, released = false)
+        // Thrust north to cross the zone edge and spawn the contracted raider; FIRE the whole time.
+        for (tick in 0 until UC41_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, north)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        // Loiter (released stick ⇒ drift to near-rest inside the zone) and keep firing: the turret auto-aims and
+        // destroys the closing raider over the remaining ticks, completing the bounty and paying the reward.
+        for (tick in UC41_THRUST_IN_TICKS until UC41_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
         }
         return recorder.build()

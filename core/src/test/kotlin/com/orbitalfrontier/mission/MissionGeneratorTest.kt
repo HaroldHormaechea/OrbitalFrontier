@@ -149,6 +149,98 @@ class MissionGeneratorTest {
         assertEquals(emptyList<Mission>(), MissionGenerator.boardOffers(world, PoiId("no-such-station")))
     }
 
+    // --- UC41 combat-bounty offers (AC#1) ----------------------------------------------------------
+
+    /** The single canonical bounty offer Alpha Station posts: `bounty:<targetZoneId>`, kill-1, default reward. */
+    private val bountyId = MissionId("bounty:bounty-alpha-raider")
+
+    @Test
+    fun `the alpha-station board appends the canonical kill-1 bounty offer last`() {
+        // AC#1: with Alpha's authored bounty contract supplied, the board surfaces the bounty offer in
+        // ADDITION to the mining + courier + premium — and it is appended LAST so it never perturbs the others.
+        val offers =
+            MissionGenerator.boardOffers(
+                world,
+                alphaStation,
+                bountyContracts = MvpSectorMap.bountyContracts(alphaStation),
+            )
+
+        assertEquals("the bounty is appended after mining + courier + premium", 4, offers.size)
+        val bounty = offers.last()
+        assertEquals(bountyId, bounty.id)
+        assertEquals(MissionType.BOUNTY, bounty.type)
+        assertEquals(MissionSource.BOARD, bounty.source)
+        assertEquals(MissionStatus.AVAILABLE, bounty.status)
+        assertEquals("the bounty targets the authored zone", "bounty-alpha-raider", bounty.targetZoneId)
+        assertEquals("the kill target matches the contract", 1, bounty.killTarget)
+        assertEquals("a fresh bounty offer has no progress", 0, bounty.killProgress)
+        // Default BountyParams: 500 base + 300 per kill × 1 = 800.
+        assertEquals("the reward is BountyParams.reward(killTarget)", BountyParams().reward(1), bounty.rewardCredits)
+        assertEquals("the bounty is credited to the issuing station's faction", FactionId("league"), bounty.factionId)
+    }
+
+    @Test
+    fun `the same canonical bounty surfaces from both board and radio (AC#1)`() {
+        val board =
+            MissionGenerator.boardOffers(
+                world,
+                alphaStation,
+                bountyContracts = MvpSectorMap.bountyContracts(alphaStation),
+            ).single { it.type == MissionType.BOUNTY }
+        // In flight at Alpha Station's position (in radio range of the only in-range station).
+        val radio =
+            MissionGenerator.radioOffers(
+                world,
+                MvpSectorMap.START_SECTOR,
+                Vec2(0f, 600f),
+                bountyContracts = MvpSectorMap.BOUNTY_CONTRACTS,
+            ).single { it.type == MissionType.BOUNTY }
+
+        // Same canonical id from both surfaces ⇒ the takenIds filter dedups it across board and radio.
+        assertEquals("board and radio carry the same canonical bounty id", board.id, radio.id)
+        assertEquals(bountyId, radio.id)
+        assertEquals(MissionSource.RADIO, radio.source)
+        // Source aside, the contracted content (target, quota, reward, faction) is identical.
+        assertEquals(board.targetZoneId, radio.targetZoneId)
+        assertEquals(board.killTarget, radio.killTarget)
+        assertEquals(board.rewardCredits, radio.rewardCredits)
+        assertEquals(board.factionId, radio.factionId)
+    }
+
+    @Test
+    fun `bounty offers are RNG-free and deterministic across regenerations`() {
+        val contracts = MvpSectorMap.bountyContracts(alphaStation)
+        val first = MissionGenerator.boardOffers(MvpSectorMap.build(), alphaStation, bountyContracts = contracts)
+        val second = MissionGenerator.boardOffers(MvpSectorMap.build(), alphaStation, bountyContracts = contracts)
+        assertEquals("a bounty-bearing board generated twice is identical", first, second)
+    }
+
+    @Test
+    fun `a station that posts no bounty contract surfaces no bounty offer`() {
+        // Beta Station has no authored bounty contract, so even with the full contract list it gets none.
+        val offers =
+            MissionGenerator.boardOffers(
+                world,
+                betaStation,
+                bountyContracts = MvpSectorMap.BOUNTY_CONTRACTS,
+            )
+        assertTrue("a non-issuing station surfaces no bounty", offers.none { it.type == MissionType.BOUNTY })
+    }
+
+    @Test
+    fun `a retuned BountyParams changes only the reward (determinism-safe)`() {
+        val retuned = BountyParams(rewardBase = 1000L, rewardPerKill = 250L)
+        val bounty =
+            MissionGenerator.boardOffers(
+                world,
+                alphaStation,
+                bountyContracts = MvpSectorMap.bountyContracts(alphaStation),
+                bountyParams = retuned,
+            ).single { it.type == MissionType.BOUNTY }
+        assertEquals(bountyId, bounty.id)
+        assertEquals("the reward follows the injected params", retuned.reward(1), bounty.rewardCredits)
+    }
+
     @Test
     fun `the mining quota never exceeds what the sector field can supply`() {
         // The golden 8-unit Hydrogen quota is well under the alpha-belt's 20 Hydrogen, but assert the

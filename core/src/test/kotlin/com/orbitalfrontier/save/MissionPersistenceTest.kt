@@ -90,6 +90,21 @@ class MissionPersistenceTest {
             pickedUp = true,
         )
 
+    private fun activeBounty(
+        id: String = "bounty:bounty-alpha-raider",
+        target: Int = 3,
+        progress: Int = 1,
+    ) = Mission(
+        id = MissionId(id),
+        type = MissionType.BOUNTY,
+        source = MissionSource.RADIO,
+        status = MissionStatus.ACTIVE,
+        rewardCredits = 800,
+        targetZoneId = "bounty-alpha-raider",
+        killTarget = target,
+        killProgress = progress,
+    )
+
     // --- AC#5: accepted/terminal missions survive a save → reload exactly ---
 
     @Test
@@ -115,6 +130,36 @@ class MissionPersistenceTest {
         val courier = reloaded.missions.accepted.single { it.type == MissionType.COURIER }
         assertTrue("the picked-up flag persists", courier.pickedUp)
         assertEquals("the courier timer persists", 156, courier.remainingTicks)
+    }
+
+    // --- UC41: a BOUNTY mission's target zone + kill progress survive a save → reload ---
+
+    @Test
+    fun `an active bounty's target zone and kill progress survive a save and reload`() {
+        val saved = WorldState(missions = MissionLog(accepted = listOf(activeBounty(target = 3, progress = 1))))
+        repo().saveGameState(saved)
+
+        val reloaded = repo().loadGameState()
+        assertNotNull(reloaded)
+        val bounty = reloaded!!.missions.accepted.single { it.type == MissionType.BOUNTY }
+        assertEquals("the whole bounty round-trips", saved.missions.accepted.single(), bounty)
+        assertEquals("the target zone persists", "bounty-alpha-raider", bounty.targetZoneId)
+        assertEquals("the kill target persists", 3, bounty.killTarget)
+        assertEquals("the kill progress persists", 1, bounty.killProgress)
+        assertEquals(MissionStatus.ACTIVE, bounty.status)
+    }
+
+    @Test
+    fun `a completed bounty (killProgress == killTarget) round-trips terminal`() {
+        val completed = activeBounty(target = 1, progress = 1).copy(status = MissionStatus.COMPLETED)
+        repo().saveGameState(WorldState(missions = MissionLog(accepted = listOf(completed))))
+
+        val reloaded = repo().loadGameState()
+        assertNotNull(reloaded)
+        val bounty = reloaded!!.missions.accepted.single { it.type == MissionType.BOUNTY }
+        assertEquals(MissionStatus.COMPLETED, bounty.status)
+        assertEquals(1, bounty.killProgress)
+        assertEquals(1, bounty.killTarget)
     }
 
     // --- AC#5 / ADR 0011: available offers are NOT persisted; they are regenerated on load ---
@@ -206,10 +251,15 @@ class MissionPersistenceTest {
             // Continue the chain to the current schema so the now-current repository (which reads the
             // ship_section_damage table + game_state.last_docked_station_id added by v11, the reputation
             // table added by v12, the owned_station/station_module tables added by v13, the settings audio
-            // columns added by v14, and the per-slot partitioning + slot_id columns added by v17/UC38) can
-            // load — the canonical per-step migration assertions live in SaveMigrationTest.
-            OrbitalFrontier.Schema.migrate(v9, 10L, 17L)
-            assertEquals("the chain reaches the current save version", 17L, queries.selectSaveVersion().executeAsOne())
+            // columns added by v14, the per-slot partitioning + slot_id columns added by v17/UC38, and the
+            // bounty mission columns added by v19/UC41) can load — the canonical per-step migration
+            // assertions live in SaveMigrationTest.
+            OrbitalFrontier.Schema.migrate(v9, 10L, OrbitalFrontier.Schema.version)
+            assertEquals(
+                "the chain reaches the current save version",
+                OrbitalFrontier.Schema.version,
+                queries.selectSaveVersion().executeAsOne(),
+            )
 
             // The migrated save loads through the repository with an empty mission log, and a freshly
             // saved mission round-trips on top of it (the new table is writable, not just present).
