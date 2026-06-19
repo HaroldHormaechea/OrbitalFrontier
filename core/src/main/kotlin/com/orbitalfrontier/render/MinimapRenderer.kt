@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.settings.ColorVisionMode
 import com.orbitalfrontier.world.Contact
 import com.orbitalfrontier.world.ContactKind
 import com.orbitalfrontier.world.Named
@@ -144,7 +145,6 @@ class MinimapRenderer(
         // visible; a hidden contact (UC10) is drawn only once its id is in revealedContacts.
         batch.projectionMatrix = projection
         batch.begin()
-        batch.color = Color.WHITE
         for (poi in pois) {
             if (poi !is Contact) continue
             if (poi !is Transponder && poi.id !in revealedContacts) continue
@@ -154,16 +154,24 @@ class MinimapRenderer(
                     ContactKind.STATION -> stationRegion
                     ContactKind.SHIP -> contactRegion
                 }
+            // UC39: in colourblind mode tint the friendly (station) / hostile (contact) markers with the
+            // mode-aware Palette accessors so they carry a colourblind-safe state cue on top of their
+            // distinct shape; in STANDARD mode the markers stay WHITE (sprite art unchanged — zero
+            // default-mode regression). The gate marker is neutral and never tinted.
+            batch.color = markerTint(poi.contactKind)
             val (x, y) = clampToPanel(centerX, centerY, half, poi.position, scale)
             batch.draw(region, x - markerHalf, y - markerHalf, marker, marker)
         }
-        // The ship's own marker (mm-player).
+        // The ship's own marker (mm-player) — always neutral white.
+        batch.color = Color.WHITE
         val (sx, sy) = clampToPanel(centerX, centerY, half, shipPosition, scale)
         batch.draw(playerRegion, sx - markerHalf, sy - markerHalf, marker, marker)
 
         // Name labels (UC24): re-walk the same markers and draw each labelled POI's name centred just
         // above its marker, so the label tracks the (clamped) marker position. MapLabels.shouldLabel
-        // gates this to stations on the cluttered minimap.
+        // gates this to stations on the cluttered minimap. Reset the batch tint to WHITE so the label
+        // glyphs render at their intended LABEL_COLOR (not a leftover marker tint).
+        batch.color = Color.WHITE
         labelFont.color = LABEL_COLOR
         for (poi in pois) {
             if (!MapLabels.shouldLabel(poi, revealedContacts, MapLabels.Surface.MINIMAP)) continue
@@ -176,6 +184,23 @@ class MinimapRenderer(
 
         Gdx.gl.glDisable(GL20.GL_BLEND)
     }
+
+    /**
+     * UC39: the batch tint for a marker of [kind]. Neutral WHITE in the STANDARD palette (the sprite art's
+     * own appearance, unchanged), and the mode-aware colourblind-safe state colour in COLORBLIND_SAFE mode:
+     * friendly bluish-green for a station, hostile vermillion for a contact. Gates (and any other kind) stay
+     * neutral. Reads the shared [Color] instances [Palette] caches per mode, so there is no per-frame alloc.
+     */
+    private fun markerTint(kind: ContactKind): Color =
+        if (Palette.mode == ColorVisionMode.STANDARD) {
+            Color.WHITE
+        } else {
+            when (kind) {
+                ContactKind.STATION -> Palette.STATION_FRIENDLY
+                ContactKind.SHIP -> Palette.CONTACT_HOSTILE
+                ContactKind.GATE -> Color.WHITE
+            }
+        }
 
     /** Map a world position to a panel pixel, clamping it to stay within the panel's drawable area. */
     private fun clampToPanel(
