@@ -40,6 +40,7 @@ import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
+import com.orbitalfrontier.outfit.UsedPartParams
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
 import com.orbitalfrontier.power.PowerParams
@@ -109,6 +110,7 @@ class Simulation(
     private val reputationParams: ReputationParams = ReputationParams(),
     private val bountyParams: BountyParams = BountyParams(),
     private val pricingParams: PricingParams = PricingParams(),
+    private val usedPartParams: UsedPartParams = UsedPartParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -256,6 +258,15 @@ class Simulation(
                     outfitMarket = station?.outfitMarket ?: OutfitMarket.EMPTY,
                     isJunkyard = station?.kind == StationKind.JUNKYARD,
                     order = outfitOrder,
+                    // UC47: the junkyard's buy-used desk + the durable depletion + the per-junkyard stock
+                    // key + tunables, mirroring PlayScreen.outfit (project rule #1 lockstep). Only a
+                    // successful BuyUsed mutates outfit.junkyardStock; every other path threads the input
+                    // through unchanged (the anti-exploit invariant — compiler-enforced via the
+                    // non-defaulted OutfitResult.junkyardStock).
+                    usedPartMarket = station?.usedPartMarket ?: OutfitMarket.EMPTY,
+                    junkyardStock = state.junkyardStock,
+                    stationId = state.dockedStation,
+                    usedPartParams = usedPartParams,
                 )
             // Fold cargo (trade) + fuel (refuel) onto the active ship, then — only if the fit changed —
             // re-derive capacities via withLoadout (Δ-capacity propagation, UC09 AC#2). Contents/level
@@ -386,6 +397,10 @@ class Simulation(
                 // UC46: the market pressure after this tick's decay + trade fold (the SAME EMPTY instance on
                 // a no-trade docked tick, so a held-while-docked stretch is byte-identical).
                 marketState = marketAfter,
+                // UC47: the junkyard used-part depletion after this tick's outfit step — grown ONLY by a
+                // successful BuyUsed, otherwise the SAME instance as state.junkyardStock (the resolver
+                // threads the input through unchanged), so a held-while-docked stretch is byte-identical.
+                junkyardStock = outfit.junkyardStock,
             )
         }
 
@@ -712,6 +727,9 @@ class Simulation(
                         // UC46: in flight there is no trade, so the market only decays — thread the decayed
                         // pressure through (the SAME EMPTY instance on a pre-UC46 / never-traded run).
                         marketState = decayedMarket,
+                        // UC47: in flight there is no junkyard, so the depletion is untouched — thread the
+                        // input through (the SAME instance, byte-identical for a never-bought-used run).
+                        junkyardStock = state.junkyardStock,
                     )
                 }
 
@@ -749,6 +767,9 @@ class Simulation(
             // UC46: in flight there is no trade, so the market only decays — thread the decayed pressure
             // through (the SAME EMPTY instance on a pre-UC46 / never-traded run, so it stays byte-identical).
             marketState = decayedMarket,
+            // UC47: in flight there is no junkyard, so the depletion is untouched — thread the input through
+            // (the SAME instance, byte-identical for a never-bought-used run).
+            junkyardStock = state.junkyardStock,
         )
     }
 

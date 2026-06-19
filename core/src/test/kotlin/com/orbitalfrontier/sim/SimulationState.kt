@@ -8,6 +8,7 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.outfit.JunkyardStock
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.station.StationRegistry
@@ -123,6 +124,18 @@ data class SimulationState(
      * snapshot DTO omits via `@EncodeDefault(NEVER)`.
      */
     val marketState: StationMarketState = StationMarketState.EMPTY,
+    /**
+     * The durable junkyard used-part depletion (UC47 AC#3), mirroring the production
+     * [com.orbitalfrontier.world.WorldState.junkyardStock]. Save-wide (like [marketState]); the pure
+     * [Simulation] mutates it only through a successful [com.orbitalfrontier.outfit.OutfitOrder.BuyUsed]
+     * at a docked junkyard (threading the resolver's result), and the baseline available stock is
+     * recomputed (not stored) via [com.orbitalfrontier.outfit.UsedPartPricing.baselineStock]. Defaults to
+     * [JunkyardStock.EMPTY] (no purchases) and stays the SAME instance on any non-BuyUsed tick (the
+     * resolver threads the input depletion through unchanged — the anti-exploit invariant), so every
+     * pre-UC47 fixture constructs and **steps byte-identically** — the empty default is also what the
+     * snapshot DTO omits via `@EncodeDefault(NEVER)`.
+     */
+    val junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

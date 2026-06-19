@@ -17,6 +17,9 @@ import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.outfit.UpgradeId
+import com.orbitalfrontier.outfit.UsedPartParams
+import com.orbitalfrontier.outfit.UsedPartPricing
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.render.NotificationRenderer
 import com.orbitalfrontier.render.Palette
@@ -29,8 +32,9 @@ import com.orbitalfrontier.ship.Fleet
  * The station outfitting desk shown from the station hub while docked (UC09 AC#2/#3/#4).
  *
  * Intentionally a **thin view with no game logic** (SRP), mirroring [TradeScreen]: it lists the docked
- * station's offered upgrades (each with price + stat summary and an INSTALL button) and — at a
- * junkyard — the active ship's installed parts (each with a REMOVE/SELL button). A tap fires the
+ * station's offered upgrades (each with price + stat summary and an INSTALL button), and — at a
+ * junkyard — a **USED PARTS** buy list (each with its discounted price + remaining stock and a BUY USED
+ * button, UC47) plus the active ship's installed parts (each with a REMOVE/SELL button). A tap fires the
  * injected [onOutfit] intent (an [OutfitOrder]); the owner routes it to [PlayScreen.outfit], which runs
  * the **pure** [com.orbitalfrontier.outfit.Outfitting] resolver, re-derives the ship's capacities, and
  * autosaves. The screen then rebuilds its rows from the refreshed [fleetSupplier]/[creditsSupplier].
@@ -51,6 +55,12 @@ class OutfitScreen(
     // UC40: the shared transient notification queue (constructed once by the game), so a credit delta or a
     // styled error raised by an install here surfaces on this desk. Defaults to a fresh queue for JVM/tests.
     private val notifications: NotificationQueue = NotificationQueue(),
+    // UC47: the junkyard's discounted buy-used desk + the pricing/stock tunables + a live "available count"
+    // supplier (baseline − purchased, computed by PlayScreen). Defaults make a non-junkyard desk render no
+    // used section, and keep the JVM/test path zero-dependency.
+    private val usedPartMarket: OutfitMarket = OutfitMarket.EMPTY,
+    private val usedPartParams: UsedPartParams = UsedPartParams(),
+    private val usedStockSupplier: (UpgradeId) -> Int = { 0 },
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -146,6 +156,31 @@ class OutfitScreen(
                 )
                 root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
                 root.add(installButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+            }
+        }
+
+        // At a junkyard: the discounted buy-used desk (UC47 AC#1/#2), in catalog order. Each used part
+        // shows its discounted price + remaining stock; a tap fires a BuyUsed order (same install path as
+        // a new part — only price + stock differ). The pure resolver gates affordability / stock / slots.
+        if (isJunkyard) {
+            val usedOffered = catalog.all.filter { usedPartMarket.offers(it.id) }
+            if (usedOffered.isNotEmpty()) {
+                root.add(Label("USED PARTS (buy):", skin.labelStyle)).colspan(COLSPAN).padTop(SERVICE_GAP).padBottom(ROW_GAP).row()
+                for (upgrade in usedOffered) {
+                    val usedPrice = UsedPartPricing.usedPrice(upgrade.price, usedPartParams)
+                    val available = usedStockSupplier(upgrade.id)
+                    val info =
+                        Label(
+                            "${upgrade.displayName}  ${usedPrice}cr  [used, stock: $available]",
+                            skin.labelStyle,
+                        )
+                    val buyButton = TextButton("BUY USED", skin.settingsButtonStyle)
+                    buyButton.addListener(
+                        installListener(upgrade.displayName, usedPrice) { OutfitOrder.BuyUsed(upgrade.id) },
+                    )
+                    root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
+                    root.add(buyButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                }
             }
         }
 

@@ -75,10 +75,14 @@ import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.notify.GameNotifications
 import com.orbitalfrontier.notify.NotificationQueue
+import com.orbitalfrontier.outfit.JunkyardStock
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.Outfitting
 import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.outfit.UpgradeId
+import com.orbitalfrontier.outfit.UsedPartParams
+import com.orbitalfrontier.outfit.UsedPartPricing
 import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.NoOpAudioService
@@ -361,6 +365,15 @@ class PlayScreen(
     // for a fresh / pre-UC46 save, so prices sit at the authored base until the player moves a market.
     private var marketState: StationMarketState = initialWorldState.marketState
     private val pricingParams = PricingParams()
+
+    // Junkyard buy-used depletion (UC47): the live durable per-junkyard purchased counts, seeded from the
+    // loaded/initial snapshot. Mutated only by [outfit] on a successful BuyUsed (the result's
+    // [JunkyardStock]); the baseline available stock is recomputed per part via [UsedPartPricing] so
+    // `available = baseline − purchased` (ADR 0035 — persisting the depletion kills the reload-restock
+    // exploit). Handed to the autosave via [currentWorldState]. Defaults to EMPTY for a fresh / pre-UC47
+    // save, so every used part reads back at its full baseline until the player buys one.
+    private var junkyardStock: JunkyardStock = initialWorldState.junkyardStock
+    private val usedPartParams = UsedPartParams()
 
     // UC46: a monotonic flight-frame counter that drives the pricing drift epoch + the decay cadence. Like
     // [combatSpawnTick] it is a sim-frame clock (NOT wall time), advanced once per [advanceSimulation]; it is
@@ -1891,6 +1904,9 @@ class PlayScreen(
             // Station-market pressure (UC46): the live per-station supply/demand state, folded onto the
             // snapshot so each save persists it (pressure only; drift + decay recompute from the tick).
             marketState = marketState,
+            // Junkyard used-part depletion (UC47): the live durable per-junkyard purchased counts, folded
+            // onto the snapshot so each save persists it (depletion only; baseline recomputes on load).
+            junkyardStock = junkyardStock,
             // Play time (UC38 AC#1): the accumulated wall-of-play seconds, folded onto the snapshot so each
             // save/autosave persists it and the slot list shows it.
             playTimeSeconds = playTimeSeconds,
@@ -2062,7 +2078,8 @@ class PlayScreen(
      * folds the result back into the fleet, logs one line, and autosaves. A no-op tap changes nothing.
      */
     fun outfit(order: OutfitOrder) {
-        val station = dockedStation?.let { sectorWorld.sector(currentSector).station(it) } ?: return
+        val stationId = dockedStation ?: return
+        val station = sectorWorld.sector(currentSector).station(stationId) ?: return
         val active = fleet.active
         val result =
             Outfitting.resolve(
@@ -2072,15 +2089,33 @@ class PlayScreen(
                 outfitMarket = station.outfitMarket,
                 isJunkyard = station.kind == StationKind.JUNKYARD,
                 order = order,
+                // UC47: the buy-used desk + durable depletion + the per-junkyard stock key + tunables.
+                // Only a successful BuyUsed mutates the returned junkyardStock; every other path threads
+                // the input through unchanged (the anti-exploit invariant, AC#3).
+                usedPartMarket = station.usedPartMarket,
+                junkyardStock = junkyardStock,
+                stationId = stationId,
+                usedPartParams = usedPartParams,
             )
         if (!result.changed) {
-            logger.info(ECONOMY_TAG, "Outfit requested but nothing changed (not offered, unaffordable, no free slot, or empty slot)")
-            // UC40 AC#3: a refused INSTALL surfaces a styled error (cost = the upgrade's price; null for a REMOVE).
-            val cost = (order as? OutfitOrder.BuyInstall)?.let { UpgradeCatalog.MVP.upgrade(it.upgradeId)?.price }
+            logger.info(
+                ECONOMY_TAG,
+                "Outfit requested but nothing changed (not offered, unaffordable, no free slot, empty slot, or out of used stock)",
+            )
+            // UC40 AC#3: a refused buy surfaces a styled error (cost = the new/used price; null for a REMOVE).
+            val cost =
+                when (order) {
+                    is OutfitOrder.BuyInstall -> UpgradeCatalog.MVP.upgrade(order.upgradeId)?.price
+                    is OutfitOrder.BuyUsed ->
+                        UpgradeCatalog.MVP.upgrade(order.upgradeId)?.let { UsedPartPricing.usedPrice(it.price, usedPartParams) }
+                    else -> null
+                }
             enqueueEconomyError(cost)
             return
         }
         applyCreditChange(result.credits)
+        // UC47: fold the (possibly mutated) depletion back; a BuyUsed grew it, every other path left it ===.
+        junkyardStock = result.junkyardStock
         // Re-derive capacities from the new fit on the LIVE active ship (current cargo/fuel), then sync.
         val refitted = active.copy(cargo = cargo, fuel = fuel).withLoadout(result.loadout)
         cargo = refitted.cargo
@@ -2091,6 +2126,20 @@ class PlayScreen(
             "Outfit applied; credits=$credits, cargoCap=${cargo.capacity}, fuelCap=${fuel.capacity}",
         )
         autosave.onEvent("outfit")
+    }
+
+    /**
+     * The live **available** count of used part [upgradeId] at junkyard [stationId] (UC47 AC#3) — the
+     * deterministic baseline ([UsedPartPricing.baselineStock]) minus the player's persisted purchases
+     * ([JunkyardStock.purchasedCount]), floored at 0. The [OutfitScreen] used-buy list reads this back to
+     * show remaining stock; it shrinks as the player buys and survives save/reload (the depletion is durable).
+     */
+    fun usedStockAvailable(
+        stationId: PoiId,
+        upgradeId: UpgradeId,
+    ): Int {
+        val baseline = UsedPartPricing.baselineStock(stationId, upgradeId, usedPartParams)
+        return (baseline - junkyardStock.purchasedCount(stationId, upgradeId)).coerceAtLeast(0)
     }
 
     /**

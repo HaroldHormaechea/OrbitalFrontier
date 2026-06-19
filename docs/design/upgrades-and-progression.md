@@ -66,8 +66,15 @@ dockable `Station` — **not** a new `Poi` subtype — so docking/minimap/hub wo
 (see [ADR 0008](../adr/0008-fleet-and-outfitting-persistence.md), which supersedes the
 earlier "NEW POI type" wording). Selling a used part refunds a fraction of its catalog
 price (`Outfitting.USED_PART_REFUND_FRACTION`, a [TUNE] value). The MVP junkyard sits in
-Gamma Verge and also stocks a couple of tier-I parts so a refit can happen on the spot;
-buying _cheaper used_ parts is still TBD.
+Gamma Verge and also stocks a couple of tier-I parts so a refit can happen on the spot.
+**Implemented (UC47, [ADR 0035](../adr/0035-junkyard-buy-used-parts.md)):** junkyards now also
+**buy-used** — a separate authored `Station.usedPartMarket` lists a subset of catalog parts offered at a
+discount (`UsedPartParams.discountFraction`, default 0.6 — deliberately above the 0.5 sell refund so a
+buy-used→sell round-trip always loses money, no arbitrage), installed through the **same** install flow
+as a new part. Used stock is finite: a deterministic baseline per (junkyard, part) (seeded only on the
+stable slugs, recomputed on load) minus the player's **persisted** purchases (`JunkyardStock`), so
+`available = baseline − purchased` and a reload can never restock cheap parts. Used parts are **purely
+cheaper** — no condition/wear (MVP decision) — and there is **no time-based restock** (deferred).
 
 ## Player-facing behavior
 
@@ -95,8 +102,10 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
   slot counts**, and the **ship-purchase prices**. The structures shipped in UC09; the numbers are
   placeholders to tune.
 - **Crew upgrade** mechanics (deferred).
-- **Junkyard** used-part **buy-used** option and used-part pricing curve (only the sell/refit side
-  shipped; the refund fraction is a [TUNE] value).
+- **Junkyard** used-part **buy-used** option and used-part pricing curve — **shipped (UC47, [ADR
+  0035](../adr/0035-junkyard-buy-used-parts.md)):** data-driven flat discount + deterministic-baseline /
+  persisted-depletion finite stock; purely cheaper (no condition/wear) and **no time-based restock**
+  (restock cadence remains deferred). The discount fraction + stock bounds are [TUNE] values.
 - **Reputation gating of upgrades/ships** detail — still deferred. Reputation itself shipped in UC14
   (ADR 0013) but gates only **mission offers**; upgrade/ship acquisition is still cash-only.
 - Active-ship **switching while ships are parked apart**: the MVP presents the switched-to ship at the

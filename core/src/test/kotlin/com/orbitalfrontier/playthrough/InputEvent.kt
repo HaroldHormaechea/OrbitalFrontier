@@ -226,6 +226,9 @@ enum class OutfitOrderKind {
     /** Buy + install an upgrade (maps to [OutfitOrder.BuyInstall]); [OutfitEvent.upgradeId] is set. */
     BUY_INSTALL,
 
+    /** Buy + install a discounted used part at a junkyard (maps to [OutfitOrder.BuyUsed]); upgradeId set. */
+    BUY_USED,
+
     /** Remove + sell a used part at a junkyard (maps to [OutfitOrder.RemoveSell]); category+index set. */
     REMOVE_SELL,
 }
@@ -238,8 +241,8 @@ enum class OutfitOrderKind {
  * branch (so it only has an effect while docked).
  *
  * Flat serializable fields keep the domain [OutfitOrder] (a non-serializable sealed hierarchy)
- * annotation-free: [kind] is the discriminator, [upgradeId] is the part slug for a BUY_INSTALL, and
- * [slotCategory]/[slotIndex] address the slot for a REMOVE_SELL ([SlotCategory] is a plain enum,
+ * annotation-free: [kind] is the discriminator, [upgradeId] is the part slug for a BUY_INSTALL / BUY_USED,
+ * and [slotCategory]/[slotIndex] address the slot for a REMOVE_SELL ([SlotCategory] is a plain enum,
  * emitted by its constant name). A tick with no [OutfitEvent] reconstructs as [OutfitOrder.None].
  */
 @Serializable
@@ -257,6 +260,8 @@ data class OutfitEvent(
             OutfitOrderKind.NONE -> OutfitOrder.None
             OutfitOrderKind.BUY_INSTALL ->
                 OutfitOrder.BuyInstall(UpgradeId(requireNotNull(upgradeId) { "BUY_INSTALL requires an upgradeId" }))
+            OutfitOrderKind.BUY_USED ->
+                OutfitOrder.BuyUsed(UpgradeId(requireNotNull(upgradeId) { "BUY_USED requires an upgradeId" }))
             OutfitOrderKind.REMOVE_SELL ->
                 OutfitOrder.RemoveSell(
                     requireNotNull(slotCategory) { "REMOVE_SELL requires a slotCategory" },
@@ -273,6 +278,7 @@ data class OutfitEvent(
             when (order) {
                 OutfitOrder.None -> OutfitEvent(tick, OutfitOrderKind.NONE)
                 is OutfitOrder.BuyInstall -> OutfitEvent(tick, OutfitOrderKind.BUY_INSTALL, upgradeId = order.upgradeId.value)
+                is OutfitOrder.BuyUsed -> OutfitEvent(tick, OutfitOrderKind.BUY_USED, upgradeId = order.upgradeId.value)
                 is OutfitOrder.RemoveSell ->
                     OutfitEvent(tick, OutfitOrderKind.REMOVE_SELL, slotCategory = order.category, slotIndex = order.slotIndex)
             }

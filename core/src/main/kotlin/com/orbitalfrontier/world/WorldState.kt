@@ -8,6 +8,7 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.outfit.JunkyardStock
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.station.StationRegistry
@@ -133,6 +134,17 @@ data class WorldState(
      * empty default is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
      */
     val marketState: StationMarketState = StationMarketState.EMPTY,
+    /**
+     * The durable junkyard used-part depletion (UC47 AC#3) — the persisted half of the
+     * deterministic-baseline + persisted-depletion stock model (ADR 0035), carried save-wide like
+     * [marketState]. Records only how many of each used part the player has already bought per junkyard;
+     * the baseline available count is recomputed on load ([com.orbitalfrontier.outfit.UsedPartPricing
+     * .baselineStock]), so `available = baseline − purchased`. Persisting the *purchases* is what kills
+     * the reload-restock exploit. Defaults to [JunkyardStock.EMPTY] (no purchases) so a fresh game, and
+     * every pre-UC47 save with no `junkyard_stock` rows, reads back at full baseline stock and replays
+     * byte-identically — the empty default is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
+     */
+    val junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

@@ -302,6 +302,9 @@ object MvpSectorMap {
                                 position = Vec2(-500f, 200f),
                                 kind = StationKind.JUNKYARD,
                                 outfitMarket = GAMMA_JUNKYARD_OUTFIT,
+                                // UC47: the junkyard's discounted buy-used desk — a small subset of the
+                                // catalog the budget player can acquire cheaply.
+                                usedPartMarket = GAMMA_USED_PARTS,
                                 // The Gamma junkyard is run by the unaligned Independents (UC14).
                                 factionId = Factions.INDEPENDENTS.id,
                             ),
@@ -393,6 +396,22 @@ object MvpSectorMap {
             ),
         )
 
+    /**
+     * The Gamma junkyard's **buy-used** desk (UC47 AC#1): a subset of tier-I parts offered at a discount
+     * to the budget player. Authored independently of [GAMMA_JUNKYARD_OUTFIT] (the full-price refit
+     * stock); each is also a catalogued [UpgradeCatalog] part so its used price derives from the catalog
+     * price × the discount fraction. [TUNE]
+     */
+    private val GAMMA_USED_PARTS: OutfitMarket =
+        OutfitMarket.of(
+            listOf(
+                UpgradeCatalog.ENGINE_TUNE_I,
+                UpgradeCatalog.CARGO_POD_I,
+                UpgradeCatalog.SCANNER_I,
+                UpgradeCatalog.FUEL_TANK_I,
+            ),
+        )
+
     private fun station(
         id: String,
         displayName: String,
@@ -404,6 +423,7 @@ object MvpSectorMap {
         hiresCrew: Boolean = false,
         factionId: FactionId? = null,
         buildsStations: Boolean = false,
+        usedPartMarket: OutfitMarket = OutfitMarket.EMPTY,
     ): Station =
         Station(
             id = PoiId(id),
@@ -417,6 +437,7 @@ object MvpSectorMap {
             hiresCrew = hiresCrew,
             factionId = factionId,
             buildsStations = buildsStations,
+            usedPartMarket = usedPartMarket,
         )
 
     private fun asteroidField(
