@@ -93,6 +93,7 @@ import com.orbitalfrontier.screen.controls.DestructionOverlay
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.screen.controls.PauseOverlay
+import com.orbitalfrontier.screen.controls.TutorialOverlay
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.ScreenSide
@@ -107,6 +108,10 @@ import com.orbitalfrontier.ship.ShipPhysics
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationBuilder
 import com.orbitalfrontier.station.StationRegistry
+import com.orbitalfrontier.tutorial.TutorialEvent
+import com.orbitalfrontier.tutorial.TutorialHighlight
+import com.orbitalfrontier.tutorial.TutorialState
+import com.orbitalfrontier.tutorial.TutorialStep
 import com.orbitalfrontier.world.AsteroidField
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
@@ -153,8 +158,10 @@ import kotlin.math.roundToInt
  */
 class PlayScreen(
     private val logger: Logger,
-    settingsRepository: SettingsRepository,
-    saveExecutor: SaveExecutor,
+    // UC36: retained as fields (was a plain param) so the first-run tutorial can read the persisted
+    // completion flag at construction and persist it (via [saveExecutor]) when the tutorial finishes.
+    private val settingsRepository: SettingsRepository,
+    private val saveExecutor: SaveExecutor,
     private val autosave: AutosaveController,
     private val sectorWorld: SectorWorld,
     // UC27: the shared design-system art atlas, loaded once by the game and BORROWED here — the renderers
@@ -338,6 +345,19 @@ class PlayScreen(
     private val settingsOverlay: SettingsOverlay
     private val inputMultiplexer = InputMultiplexer(stage)
 
+    // UC36: the first-run tutorial. [tutorialOverlay] is the thin draw-only hint band (copy + SKIP / SKIP
+    // ALL); the pure [TutorialState] holds the progression. It starts at the first step on a genuine first
+    // run (the persisted flag is unset) and at the terminal state otherwise, so a returning player sees
+    // nothing (AC#3). [tutorialCompletionPersisted] guards the one-shot completion write; the seams below
+    // record [TutorialEvent]s into [pendingTutorialEvents], which are drained — and the state advanced —
+    // inside the gated per-frame advance (beside notifications.update), so the onboarding freezes under
+    // pause/destruction and never participates in the deterministic simulation (AC#4).
+    private val tutorialOverlay = TutorialOverlay(skin)
+    private var tutorialState: TutorialState =
+        if (settingsRepository.loadTutorialCompleted()) TutorialState.COMPLETED else TutorialState.NEW
+    private var tutorialCompletionPersisted: Boolean = tutorialState.isComplete
+    private val pendingTutorialEvents = mutableListOf<TutorialEvent>()
+
     // UC32: the in-flight pause overlay. [pauseState] is the pure paused/running gate (libGDX-free,
     // JVM-testable, the deliberate inverse of [mapOverlayState] — it FREEZES the sim, ADR 0021); read once
     // per frame to gate the entire per-frame state-advance below (AC#2). [pauseSettingsShown] tracks the
@@ -408,10 +428,25 @@ class PlayScreen(
                 // app at startup); the overlay then keeps them in sync as the player adjusts them.
                 initialAudio = settingsRepository.loadAudioSettings(),
                 audio = audio,
-            ) { newHandedness ->
-                handedness = newHandedness
-                layoutControls()
-            }
+                onHandednessChanged = { newHandedness ->
+                    handedness = newHandedness
+                    layoutControls()
+                },
+                // UC36 AC#3: REPLAY TUTORIAL restarts the onboarding from the first step (the persisted
+                // first-run flag is left set, so this is a one-session replay, not a re-arm of first-run).
+                onReplayTutorial = { replayTutorial() },
+            )
+
+        // UC36: SKIP advances past the current step; SKIP ALL jumps to the end. Both run on the UI thread;
+        // a resulting completion is persisted immediately (these are deliberate, not per-frame, events).
+        tutorialOverlay.onSkip = {
+            tutorialState = tutorialState.skipped()
+            persistTutorialIfComplete()
+        }
+        tutorialOverlay.onSkipAll = {
+            tutorialState = tutorialState.dismissed()
+            persistTutorialIfComplete()
+        }
 
         // UC26: wire the arc's edge-triggered taps to the same one-shot intents the retired context
         // panels set. Each callback runs on the UI thread between frames (like the old ClickListeners);
@@ -484,6 +519,11 @@ class PlayScreen(
         // everything (including the minimap) while the map overlay is open.
         stage.addActor(minimapTapTarget)
         stage.addActor(mapDismissActor)
+        // UC36: the tutorial hint band — above the HUD/controls (so its copy reads over the playfield and
+        // its SKIP buttons are tappable) but BELOW the pause button and the pause/destruction backdrops, so
+        // a pause/destruction frame covers it and its SKIP taps are suppressed while paused (it is hidden
+        // whenever a full-screen overlay is up, see renderFrame).
+        stage.addActor(tutorialOverlay.actor)
         // UC32: the HUD pause button, then the modal pause overlay LAST so its backdrop holds the top
         // z-order over the HUD, the minimap and the map dismiss actor while the game is paused.
         stage.addActor(pauseButton)
@@ -672,6 +712,8 @@ class PlayScreen(
         // when thrust begins, stop it when thrust ends, so it plays only while the stick is held.
         if (thrusting != previousThrusting) {
             if (thrusting) audio.play(Sfx.THRUST) else audio.stopSfx(Sfx.THRUST)
+            // UC36: the first thrust completes the STEER tutorial step (recorded on the rising edge).
+            if (thrusting) recordTutorialEvent(TutorialEvent.STEERED)
             previousThrusting = thrusting
         }
 
@@ -749,6 +791,7 @@ class PlayScreen(
                 // UC35: dock toast, naming the station (AC#1). Enqueued before the hub hand-off so it is in
                 // the queue and surfaces the next time the play screen is shown (on undock).
                 notifications.enqueue(GameNotifications.docked(available.displayName))
+                recordTutorialEvent(TutorialEvent.DOCKED) // UC36: completes the DOCK step
                 onDocked(available)
             }
         }
@@ -775,6 +818,7 @@ class PlayScreen(
             if (result.minedUnits > 0) {
                 cargo = result.cargo
                 fieldDepletion = result.fieldDepletion
+                recordTutorialEvent(TutorialEvent.GATHERED) // UC36: a productive mining tick completes GATHER
                 // UC31: mining cue, throttled (mining resolves every held frame; pulse, don't buzz — AC#1).
                 miningSfxCooldown -= dt
                 if (miningSfxCooldown <= 0f) {
@@ -864,6 +908,7 @@ class PlayScreen(
                     autosave.onEvent("mission-accept")
                     audio.play(Sfx.MISSION_ACCEPT) // UC31: mission-accept cue (AC#1)
                     notifications.enqueue(GameNotifications.missionAccepted()) // UC35 (AC#1)
+                    recordTutorialEvent(TutorialEvent.MISSION_ACCEPTED) // UC36: completes the ACCEPT_MISSION step
                     logger.info(WORLD_TAG, "Accepted radio mission ${offer.id.value} in sector ${currentSector.value}")
                 }
             }
@@ -900,6 +945,13 @@ class PlayScreen(
         // auto-dismiss in sim time and FREEZE under pause / the destruction screen exactly like everything
         // else (AC#3). The draw side reads visible() in renderFrame regardless, so frozen toasts stay shown.
         notifications.update(dt)
+
+        // UC36: drain and apply this frame's recorded tutorial events HERE, inside the gated advance and
+        // beside the notification update — so the onboarding only ever progresses while the sim is running
+        // (frozen under pause/destruction, AC#4) and never touches the deterministic simulation itself; it
+        // merely observes events the sim already produced. Cross-screen seams (trade/refuel/board-accept)
+        // record while docked; those drain on the next flight frame.
+        applyTutorialEvents()
     }
 
     /**
@@ -998,6 +1050,17 @@ class PlayScreen(
             actionCluster.actor.isVisible = true
         }
         mapDismissActor.isVisible = mapOpen
+        // UC36: the first-run tutorial hint band shows only while the gameplay controls are up (so it is
+        // suppressed under any full-screen overlay — map/pause/destruction — AC#1 composes with UC32/UC35)
+        // and a tutorial step is still active. It STAYS visible in combat (the FIRE step needs it). When
+        // shown, refresh the copy and emphasise the step's control (visual only — never gates input, AC#4);
+        // when hidden, clear the emphasis so the controls return to their normal tint.
+        val tutorialStep = tutorialState.activeStep
+        val showTutorial = !controlsHidden && tutorialStep != null
+        tutorialOverlay.actor.isVisible = showTutorial
+        if (showTutorial) tutorialOverlay.setStep(tutorialStep)
+        actionCluster.setHighlightedAction(if (showTutorial) arcHighlightFor(tutorialStep) else null)
+        joystick.setHighlighted(showTutorial && tutorialStep?.highlight == TutorialHighlight.JOYSTICK)
         // UC32: the HUD pause button is reachable any time the game is running and no overlay is open —
         // including mid-combat (AC#1); it hides while either overlay is up. The modal pause overlay (dim
         // backdrop + buttons) shows exactly while paused.
@@ -1114,6 +1177,8 @@ class PlayScreen(
         pauseOverlay.resize(screenWidth, screenHeight)
         // UC33: the modal destruction overlay fills the stage and re-centres its consequence column.
         destructionOverlay.resize(screenWidth, screenHeight)
+        // UC36: place the tutorial hint band in the bottom-centre clear strip above the corner controls.
+        tutorialOverlay.resize(screenWidth, screenHeight)
     }
 
     /**
@@ -1186,6 +1251,75 @@ class PlayScreen(
     }
 
     /**
+     * Record a tutorial [event] from a gameplay seam (UC36). It is only buffered while the tutorial is
+     * still running, so a finished/skipped onboarding adds no work; the buffer is drained and applied once
+     * per frame inside [advanceSimulation] (see [applyTutorialEvents]). Recording — not applying — at the
+     * seam keeps the state advance on the gated per-frame path, so it freezes under pause/destruction and
+     * never perturbs the deterministic simulation (AC#4). Safe to call from the cross-screen hub methods
+     * (trade/refuel/board-accept): those buffer while docked and drain on the next flight frame.
+     */
+    private fun recordTutorialEvent(event: TutorialEvent) {
+        if (!tutorialState.isComplete) pendingTutorialEvents.add(event)
+    }
+
+    /**
+     * Drain this frame's recorded [pendingTutorialEvents] and advance the [tutorialState] through them in
+     * order via the pure [TutorialState.advancedBy] (a non-matching event is a no-op), then persist the
+     * completion flag once if the tutorial just finished. Called once per frame from the gated advance.
+     */
+    private fun applyTutorialEvents() {
+        if (pendingTutorialEvents.isEmpty()) return
+        for (event in pendingTutorialEvents) {
+            tutorialState = tutorialState.advancedBy(event)
+        }
+        pendingTutorialEvents.clear()
+        persistTutorialIfComplete()
+    }
+
+    /**
+     * Persist the first-run-tutorial completion flag exactly once, the moment the tutorial reaches its
+     * terminal state (finished, skipped, or skip-all'd) — through the SAME [saveExecutor] single writer the
+     * settings/autosave use, so it never blocks the render thread (AC#3). Idempotent: the
+     * [tutorialCompletionPersisted] guard means repeated completions (or a replay that re-completes) write
+     * at most once per transition.
+     */
+    private fun persistTutorialIfComplete() {
+        if (tutorialState.isComplete && !tutorialCompletionPersisted) {
+            tutorialCompletionPersisted = true
+            saveExecutor.execute { settingsRepository.saveTutorialCompleted(true) }
+            logger.info(TAG, "First-run tutorial complete; flag persisted")
+        }
+    }
+
+    /**
+     * Replay the tutorial from the first step (UC36 AC#3), invoked from the settings panel's REPLAY
+     * TUTORIAL button. Resets the in-memory progression only; the persisted first-run flag stays set (a
+     * replay is a one-session re-run, not a re-arm of first launch), and re-completing it simply re-persists
+     * the already-set flag harmlessly. Runs on the render thread; the overlay surfaces next frame (it is
+     * hidden under the pause backdrop the player taps this from, and appears on resume).
+     */
+    private fun replayTutorial() {
+        tutorialState = TutorialState.NEW
+        tutorialCompletionPersisted = false
+        pendingTutorialEvents.clear()
+        logger.info(TAG, "Replaying first-run tutorial from settings")
+    }
+
+    /**
+     * Map a [TutorialStep]'s [TutorialHighlight] to the action-arc button to emphasise, or null when the
+     * step points at the joystick (handled separately) — so the arc tints DOCK/RADIO/MINE/FIRE for the
+     * matching step and nothing for STEER. Visual only (UC36 AC#2/#4).
+     */
+    private fun arcHighlightFor(step: TutorialStep?): ActionCluster.Action? =
+        when (step?.highlight) {
+            TutorialHighlight.DOCK -> ActionCluster.Action.DOCK
+            TutorialHighlight.RADIO -> ActionCluster.Action.RADIO
+            TutorialHighlight.MINE -> ActionCluster.Action.MINE
+            TutorialHighlight.FIRE -> ActionCluster.Action.FIRE
+            TutorialHighlight.JOYSTICK, null -> null
+        }
+
+    /**
      * Run UC13 combat for this frame: an edge-triggered natural-encounter spawn on the outside→inside
      * crossing of an authored zone (suppressed while docked or already fighting), then the paced shared
      * [Combat.step]. [playerPosition] is the post-gate ship position this frame; the previous frame's
@@ -1248,6 +1382,9 @@ class PlayScreen(
                 sectionDamage = active.sectionDamage,
             )
         val fireAction = if (actionCluster.isFirePressed()) FireAction.FIRE else FireAction.NONE
+        // UC36: holding FIRE in an encounter completes the FIRE tutorial step (visual/observational only —
+        // the fire intent itself is unchanged). Recorded into the pending buffer; applied at frame end.
+        if (fireAction == FireAction.FIRE) recordTutorialEvent(TutorialEvent.FIRED)
         val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
         combat = result.combat
 
@@ -1427,6 +1564,7 @@ class PlayScreen(
         )
         // Trading is a key world event (mirrors mining/dock/refuel) — persist it now.
         autosave.onEvent("trade")
+        recordTutorialEvent(TutorialEvent.GATHERED) // UC36: a station trade completes GATHER (trade path)
     }
 
     /** The active ship's current crew count (UC11) — read by the hire desk for its readout. */
@@ -1602,6 +1740,7 @@ class PlayScreen(
         )
         // Refuelling is a key world event (mirrors mining/dock) — persist it now.
         autosave.onEvent("refuel")
+        recordTutorialEvent(TutorialEvent.REFUELLED) // UC36: completes the REFUEL step
         return "Converted ${result.transferredUnits} H₂ to fuel"
     }
 
@@ -1635,6 +1774,7 @@ class PlayScreen(
                 )
                 // Buying fuel is a key world event (mirrors trade/refuel) — persist it now.
                 autosave.onEvent("buyFuel")
+                recordTutorialEvent(TutorialEvent.REFUELLED) // UC36: a credits fuel buy also completes REFUEL
                 "Refueled ${result.unitsBought} units"
             }
             StationRefuelStatus.FULL -> "Tank full"
@@ -1737,6 +1877,7 @@ class PlayScreen(
             is MissionOrder.Accept -> {
                 audio.play(Sfx.MISSION_ACCEPT)
                 notifications.enqueue(GameNotifications.missionAccepted())
+                recordTutorialEvent(TutorialEvent.MISSION_ACCEPTED) // UC36: a board accept also completes ACCEPT_MISSION
             }
             is MissionOrder.TurnIn -> {
                 audio.play(Sfx.MISSION_COMPLETE)
@@ -1859,10 +2000,10 @@ class PlayScreen(
 
         const val SETTINGS_WIDTH = 200f
 
-        // UC31: the settings panel now stacks four controls (handedness + mute + SFX + music volume), each
-        // a 44-high row with a 6 gap, so the panel is 4 × (44 + 6) = 200 tall. Still centred in the
-        // top-left band and hidden in combat / when the map overlay is open (unchanged from one button).
-        const val SETTINGS_HEIGHT = 200f
+        // UC31/UC36: the settings panel stacks five controls (handedness + mute + SFX + music volume +
+        // UC36 REPLAY TUTORIAL), each a 44-high row with a 6 gap, so the panel is 5 × (44 + 6) = 250 tall.
+        // Still centred in the top-left band and hidden in combat / when the map overlay is open.
+        const val SETTINGS_HEIGHT = 250f
 
         // UC22/UC34: world-space height of the top-left HUD readout block, measured down from the top.
         // The settings/handedness button is centred in the band below this and above the bottom controls,
