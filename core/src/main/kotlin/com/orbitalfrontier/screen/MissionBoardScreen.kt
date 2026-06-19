@@ -181,6 +181,9 @@ class MissionBoardScreen(
                 val carried = if (mission.pickedUp) "carrying" else "pickup ${mission.pickup?.value ?: "?"}"
                 "COURIER  → ${mission.destination?.value ?: "?"}  ($carried, ${mission.remainingTicks}t)  ${mission.rewardCredits}cr"
             }
+            // UC41: a bounty contract — the kill quota in its target zone and the payout.
+            MissionType.BOUNTY ->
+                "BOUNTY  ${mission.killProgress}/${mission.killTarget} @ ${mission.targetZoneId ?: "?"}  →  ${mission.rewardCredits}cr"
         }
 
     override fun show() {

@@ -8,6 +8,7 @@ import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.economy.TradeKind
 import com.orbitalfrontier.faction.ReputationParams
+import com.orbitalfrontier.mission.BountyParams
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.outfit.OutfitOrder
@@ -46,6 +47,7 @@ class PlaythroughRecorder(
     missionConfig: MissionParams = MissionParams(),
     combatConfig: CombatParams = CombatParams(),
     reputationConfig: ReputationParams = ReputationParams(),
+    bountyConfig: BountyParams = BountyParams(),
     initialState: SimulationState? = null,
 ) {
     init {
@@ -59,6 +61,7 @@ class PlaythroughRecorder(
     private val missionConfigDto = MissionParamsDto.from(missionConfig)
     private val combatConfigDto = CombatParamsDto.from(combatConfig)
     private val reputationConfigDto = ReputationParamsDto.from(reputationConfig)
+    private val bountyConfigDto = BountyParamsDto.from(bountyConfig)
     private val initialStateDto = initialState?.let(StateSnapshotDto::from)
     private val events = mutableListOf<InputEvent>()
     private var tickCount = 0
@@ -188,6 +191,7 @@ class PlaythroughRecorder(
             missionConfig = missionConfigDto,
             combatConfig = combatConfigDto,
             reputationConfig = reputationConfigDto,
+            bountyConfig = bountyConfigDto,
             initialState = initialStateDto,
             inputEvents = events.toList(),
         )

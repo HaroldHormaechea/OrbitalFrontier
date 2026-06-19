@@ -305,6 +305,11 @@ class SqlDelightGameStateRepository(
                         // Faction attribution (UC14): the faction this mission credits/costs reputation
                         // to; NULL for a faction-less mission. The gate is not persisted (offers are).
                         faction_id = mission.factionId?.value,
+                        // Bounty (UC41): the target encounter-zone (NULL for a non-bounty mission), the kill
+                        // quota and the durable kill progress. Defaults (null / 0 / 0) for mining/courier.
+                        target_zone_id = mission.targetZoneId,
+                        kill_target = mission.killTarget.toLong(),
+                        kill_progress = mission.killProgress.toLong(),
                     )
                 }
 
@@ -564,6 +569,12 @@ class SqlDelightGameStateRepository(
             // The optional reward resource is best-effort: an unknown one degrades to "no resource bonus".
             val rewardResource = row.reward_resource?.let { parseResource(it) }
 
+            // Bounty (UC41): coerce the persisted kill quota/progress against the Mission(killProgress in
+            // 0..killTarget) invariant, so a corrupt/negative row never throws on load (best-effort, like
+            // the credit/quota guards above).
+            val killTarget = row.kill_target.toInt().coerceAtLeast(0)
+            val killProgress = row.kill_progress.toInt().coerceIn(0, killTarget)
+
             missions +=
                 Mission(
                     id = MissionId(row.id),
@@ -584,6 +595,10 @@ class SqlDelightGameStateRepository(
                     // Faction attribution (UC14): best-effort — an unknown faction slug degrades to "no
                     // attribution" (the mission still loads; it just grants no reputation on turn-in).
                     factionId = parseFaction(row.faction_id),
+                    // Bounty (UC41): the target zone + kill quota/progress (null / 0 / 0 for a non-bounty).
+                    targetZoneId = row.target_zone_id,
+                    killTarget = killTarget,
+                    killProgress = killProgress,
                 )
         }
         return missions

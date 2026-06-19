@@ -26,9 +26,10 @@ value class MissionId(val value: String) {
 }
 
 /**
- * The two handcrafted MVP mission types (UC12 AC#1; docs/design/missions.md). A closed set modelled
- * as an `enum` (coding-guidelines § O): MVP launches with exactly these two; combat missions are a
- * later phase. New types are added by introducing a new constant, never by editing a central `when`.
+ * The handcrafted MVP mission types (UC12 AC#1, UC41; docs/design/missions.md). A closed set modelled
+ * as an `enum` (coding-guidelines § O). New types are added by introducing a new constant; every
+ * exhaustive `when` over this enum (turn-in resolution, the HUD objective line, the board row) is then
+ * updated to cover it — adding a constant without covering it fails to compile, which is the guard.
  */
 enum class MissionType {
     /** Gather a quota of a resource (from asteroid fields) and turn it in at a mission board. */
@@ -36,6 +37,15 @@ enum class MissionType {
 
     /** Pick up a (virtual) parcel at station A and deliver it to station B before the timer expires. */
     COURIER,
+
+    /**
+     * Destroy a quota of hostiles in a dedicated authored encounter zone (UC41). A bounty has no manual
+     * turn-in: while it is [MissionStatus.ACTIVE] the orchestrator edge-spawns the contracted hostiles in
+     * the mission's [Mission.targetZoneId] zone, player kills attributed to that zone raise
+     * [Mission.killProgress], and reaching [Mission.killTarget] auto-completes and pays the bounty (via the
+     * pure [BountyTracking.applyKills]). There is no failure timer (mining-style) and no abandon order.
+     */
+    BOUNTY,
 }
 
 /**
@@ -121,12 +131,26 @@ data class Mission(
     val factionId: FactionId? = null,
     val unlockFaction: FactionId? = null,
     val unlockThreshold: Int = 0,
+    // UC41 BOUNTY type params (defaulted ⇒ additive / back-compatible — a non-bounty mission leaves these
+    // at their defaults, which is what the persistence layer and every pre-UC41 fixture read back).
+    //  - [targetZoneId] is the authored encounter-zone id the bounty contracts: the offer's match key, the
+    //    spawn zoneId handed to [com.orbitalfrontier.combat.EncounterSpawner.missionSpawn], AND the
+    //    kill-attribution key (a [com.orbitalfrontier.combat.CombatState.zoneId] match) — equal by
+    //    construction so all three never disagree. `null` for a non-bounty mission. Plain String (no
+    //    combat import) so the `mission` package stays engine-free / JVM-testable.
+    //  - [killTarget] is how many hostiles must be destroyed to complete; [killProgress] is how many have
+    //    been (durably persisted, raised by [BountyTracking.applyKills], capped at [killTarget]).
+    val targetZoneId: String? = null,
+    val killTarget: Int = 0,
+    val killProgress: Int = 0,
 ) {
     init {
         require(rewardCredits >= 0) { "Mission $id rewardCredits must not be negative: $rewardCredits" }
         require(rewardResourceUnits >= 0) { "Mission $id rewardResourceUnits must not be negative: $rewardResourceUnits" }
         require(quotaUnits >= 0) { "Mission $id quotaUnits must not be negative: $quotaUnits" }
         require(remainingTicks >= 0) { "Mission $id remainingTicks must not be negative: $remainingTicks" }
+        require(killTarget >= 0) { "Mission $id killTarget must not be negative: $killTarget" }
+        require(killProgress in 0..killTarget) { "Mission $id killProgress must be in 0..$killTarget: $killProgress" }
     }
 
     /** True when this mission is a terminal outcome (completed or failed) — kept for offer filtering. */

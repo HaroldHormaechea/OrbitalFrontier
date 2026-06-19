@@ -1,6 +1,7 @@
 package com.orbitalfrontier.sim
 
 import com.orbitalfrontier.combat.Combat
+import com.orbitalfrontier.combat.CombatEvent
 import com.orbitalfrontier.combat.CombatLimitedMovement
 import com.orbitalfrontier.combat.CombatParams
 import com.orbitalfrontier.combat.EncounterSpawner
@@ -20,10 +21,13 @@ import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.faction.ReputationGate
 import com.orbitalfrontier.faction.ReputationParams
+import com.orbitalfrontier.mission.BountyParams
+import com.orbitalfrontier.mission.BountyTracking
 import com.orbitalfrontier.mission.MissionGenerator
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.mission.MissionResult
+import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.outfit.OutfitMarket
 import com.orbitalfrontier.outfit.OutfitOrder
@@ -96,6 +100,7 @@ class Simulation(
     private val missionParams: MissionParams = MissionParams(),
     private val combatParams: CombatParams = CombatParams(),
     private val reputationParams: ReputationParams = ReputationParams(),
+    private val bountyParams: BountyParams = BountyParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -255,7 +260,13 @@ class Simulation(
             // hides offers the player hasn't unlocked; generation stays a pure function of static state, so a
             // gated `:premium` offer never perturbs the bytes of the mining/courier offers it sits beside.
             val boardOffers =
-                MissionGenerator.boardOffers(world, dockedStationId, missionParams)
+                MissionGenerator.boardOffers(
+                    world,
+                    dockedStationId,
+                    missionParams,
+                    MvpSectorMap.bountyContracts(dockedStationId),
+                    bountyParams,
+                )
                     .filter { it.id !in state.missions.takenIds }
                     .filter { ReputationGate.isAvailable(it, state.reputation) }
             val missionResolve =
@@ -418,7 +429,14 @@ class Simulation(
                 // UC14: the reputation gate — the SEPARATE filter applied AFTER the takenIds filter (the radio
                 // site of the three symmetric gating sites — mirroring PlayScreen's radio-offer surfacing).
                 val radioOffers =
-                    MissionGenerator.radioOffers(world, nextSector, nextShip.position, missionParams)
+                    MissionGenerator.radioOffers(
+                        world,
+                        nextSector,
+                        nextShip.position,
+                        missionParams,
+                        MvpSectorMap.BOUNTY_CONTRACTS,
+                        bountyParams,
+                    )
                         .filter { it.id !in state.missions.takenIds }
                         .filter { ReputationGate.isAvailable(it, state.reputation) }
                 Missions.resolve(
@@ -462,6 +480,13 @@ class Simulation(
         var combat = state.combat
         val lastDockedStation = nextDocked ?: state.lastDockedStation
         var combatFleet = state.fleet.withActive(updatedActive)
+        // UC41: the mission log / wallet / standing after this tick's bounty-kill fold. Seeded from the
+        // post-mission-resolve values and threaded into BOTH the destroyed-path and normal-path returns so
+        // a bounty completion (auto-pay) persists exactly as on device. Same instances when no bounty kill
+        // landed this tick — so pre-UC41 fixtures stay byte-identical.
+        var bountyLog = missionAdvance.log
+        var bountyCredits = missionAdvance.credits
+        var bountyReputation = missionAdvance.reputation
 
         if (nextDocked == null) {
             // Edge-triggered natural spawn: previous (pre-movement) position outside -> new (post-gate)
@@ -471,6 +496,36 @@ class Simulation(
                 for (zone in MvpSectorMap.encounterZones(nextSector)) {
                     val spawned =
                         EncounterSpawner.naturalSpawn(combat, zone, state.ship.position, nextShip.position, state.tick, combatParams)
+                    if (spawned !== combat) {
+                        combat = spawned
+                        break
+                    }
+                }
+            }
+
+            // UC41 (a): edge-triggered BOUNTY spawn — the lockstep mirror of PlayScreen.runCombat. For each
+            // ACTIVE bounty whose target zone is in this sector, the SAME outside->inside crossing
+            // (pre-movement position outside, post-gate position inside) injects the contracted hostiles via
+            // [EncounterSpawner.missionSpawn], seeded by [tick] (the sim spawn-seed convention; the device
+            // uses combatSpawnTick), suppressed while a fight is already active. The spawned zoneId equals
+            // the bounty's targetZoneId, so kills attribute back to it.
+            if (!combat.active) {
+                for (bounty in bountyLog.activeMissions) {
+                    if (bounty.type != MissionType.BOUNTY) continue
+                    val zoneId = bounty.targetZoneId ?: continue
+                    val zone = MvpSectorMap.bountyTargetZone(zoneId) ?: continue
+                    if (zone.sectorId != nextSector.value) continue
+                    if (zone.contains(state.ship.position) || !zone.contains(nextShip.position)) continue
+                    val spawned =
+                        EncounterSpawner.missionSpawn(
+                            combat,
+                            zoneId,
+                            zone.archetypeId,
+                            zone.hostileCount,
+                            nextShip.position,
+                            state.tick,
+                            combatParams,
+                        )
                     if (spawned !== combat) {
                         combat = spawned
                         break
@@ -488,8 +543,32 @@ class Simulation(
                         crew = combatShip.crew,
                         sectionDamage = combatShip.sectionDamage,
                     )
+                // UC41 (b): capture the encounter's zone id BEFORE the step (a destroyed/cleared encounter
+                // resets combat to NONE), then fold this tick's hostile kills into any matching ACTIVE
+                // bounty — the lockstep mirror of PlayScreen.stepCombatOnce. Applied BEFORE the destruction
+                // return so a kill on the death tick still counts; same instances when no kill landed.
+                val preStepZoneId = combat.zoneId
                 val result = Combat.step(combat, playerInput, fireAction, combatParams, dt)
                 combat = result.combat
+
+                val killsThisTick = result.events.count { it is CombatEvent.HostileDestroyed }
+                if (killsThisTick > 0) {
+                    val bounty =
+                        BountyTracking.applyKills(
+                            bountyLog,
+                            preStepZoneId,
+                            killsThisTick,
+                            bountyCredits,
+                            combatShip.cargo,
+                            bountyReputation,
+                            reputationParams,
+                        )
+                    if (bounty.changed) {
+                        bountyLog = bounty.log
+                        bountyCredits = bounty.credits
+                        bountyReputation = bounty.reputation
+                    }
+                }
 
                 if (result.destroyed) {
                     // Forgiving respawn (AC#5, no permadeath): relocate to the last docked station's
@@ -508,11 +587,12 @@ class Simulation(
                         currentSector = respawnSector ?: nextSector,
                         dockedStation = null,
                         fieldDepletion = mining.fieldDepletion,
-                        credits = missionAdvance.credits,
+                        // UC41: bounty-folded wallet/log/standing (a kill on the death tick still pays out).
+                        credits = bountyCredits,
                         revealedContacts = revealedContacts,
-                        missions = missionAdvance.log,
-                        // UC14: standing after this tick's mission resolve/advance (SAME instance if untouched).
-                        reputation = missionAdvance.reputation,
+                        missions = bountyLog,
+                        // UC14/UC41: standing after this tick's mission resolve/advance + bounty fold.
+                        reputation = bountyReputation,
                         combat = respawn.combat,
                         lastDockedStation = lastDockedStation,
                     )
@@ -532,16 +612,17 @@ class Simulation(
             dockedStation = nextDocked,
             fieldDepletion = mining.fieldDepletion,
             // In flight there is no station market, so trading is a no-op; the wallet threads through
-            // unchanged unless a courier just expired this tick (its penalty is deducted by advance).
-            credits = missionAdvance.credits,
+            // unchanged unless a courier just expired this tick (penalty) or a bounty just paid out (UC41).
+            credits = bountyCredits,
             // Revealed hidden contacts after this tick's scan (UC10): grown by a SCAN, otherwise the
             // prior set threaded through unchanged (monotonic).
             revealedContacts = revealedContacts,
-            // The mission log after this tick's resolve + advance (UC12); the SAME instance on a no-op tick.
-            missions = missionAdvance.log,
-            // UC14: the per-faction standing after this tick (SAME instance on a no-op tick — a radio turn-in
-            // can't happen in flight, but a courier expiry via advance can move it).
-            reputation = missionAdvance.reputation,
+            // The mission log after this tick's resolve + advance (UC12) + bounty kill fold (UC41); the
+            // SAME instance on a no-op tick.
+            missions = bountyLog,
+            // UC14/UC41: the per-faction standing after this tick (SAME instance on a no-op tick — a courier
+            // expiry via advance can move it; the bounty fold threads it unchanged today, the UC43 seam).
+            reputation = bountyReputation,
             // UC13: the live encounter (NONE same-instance on a no-op tick) and the persisted respawn point.
             combat = combat,
             lastDockedStation = lastDockedStation,

@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 18 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026).
+-- Orbital Frontier save schema, version 19 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029).
 --
--- This .sq file is ALWAYS the latest schema (currently v18). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v19). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
--- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18). Never edit this
--- baseline destructively to make a schema change — bump the version and add a migration instead.
+-- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19).
+-- Never edit this baseline destructively to make a schema change — bump the version and add a migration.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
 -- (UC04..UC08) the single-slot autosave header (`game_state`) + ship kinematics + dock + cargo +
@@ -29,6 +29,12 @@
 -- (palette mode), `text_scale` (UI text-size multiplier on top of the UI scale) and `reduced_motion`
 -- (the parallax/animation toggle). Like every other settings column they are global (not per-slot) and
 -- each has its own targeted UPDATE. See the `settings` table comment below.
+--
+-- v19 (UC41, ADR 0029) adds the **combat-bounty** mission columns to the per-slot `mission` table —
+-- `target_zone_id` (the authored encounter-zone the bounty contracts / its kill-attribution key),
+-- `kill_target` and `kill_progress` (the kill quota and durable progress). All additive (ALTER TABLE ADD
+-- COLUMN, minSdk-24-safe) and defaulted, so a pre-UC41 mission row reads them back at the non-bounty
+-- defaults (null / 0 / 0) and is byte-for-byte the behaviour it had. See the `mission` table comment.
 --
 -- Slot isolation (UC38 AC#4): every read/write/delete is scoped by `slot_id`, so loading, saving or
 -- deleting one slot never reads or mutates another. `meta`/`settings` rows are single-row (CHECK (id = 0)).
@@ -161,6 +167,10 @@ CREATE TABLE revealed_contact (
 -- Accepted / terminal missions (UC12; v17 adds `slot_id` to the PK). One row per (slot, mission). AVAILABLE
 -- offers are NOT stored — regenerated-and-filtered on load (ADR 0011). Enum/resource columns store the enum
 -- NAMEs (stable across reordering). Unknown enum/resource/faction degrades on load (skip with a WARN).
+-- v19 (UC41) adds the combat-bounty columns: `target_zone_id` (the authored encounter-zone the bounty
+-- contracts — the spawn/attribution key; null for a non-bounty mission), `kill_target` (the kill quota)
+-- and `kill_progress` (durable kills so far). Additive + defaulted, so a pre-UC41 row reads them back at
+-- null / 0 / 0 (the non-bounty defaults).
 CREATE TABLE mission (
     slot_id INTEGER NOT NULL,
     id TEXT NOT NULL,
@@ -177,6 +187,9 @@ CREATE TABLE mission (
     remaining_ticks INTEGER NOT NULL DEFAULT 0,
     picked_up INTEGER NOT NULL DEFAULT 0,
     faction_id TEXT,
+    target_zone_id TEXT,
+    kill_target INTEGER NOT NULL DEFAULT 0,
+    kill_progress INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (slot_id, id)
 );
 
@@ -388,7 +401,8 @@ INSERT OR IGNORE INTO revealed_contact(slot_id, contact_id) VALUES (?, ?);
 
 selectAllMissionsForSlot:
 SELECT id, type, source, status, reward_credits, reward_resource, reward_resource_units,
-       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id
+       quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id,
+       target_zone_id, kill_target, kill_progress
 FROM mission
 WHERE slot_id = ?
 ORDER BY id;
@@ -398,8 +412,9 @@ DELETE FROM mission WHERE slot_id = ?;
 
 insertMission:
 INSERT INTO mission(slot_id, id, type, source, status, reward_credits, reward_resource, reward_resource_units,
-                    quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    quota_resource, quota_units, pickup, destination, remaining_ticks, picked_up, faction_id,
+                    target_zone_id, kill_target, kill_progress)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- ============================================================================================
 -- reputation — per slot

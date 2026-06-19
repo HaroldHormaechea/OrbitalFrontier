@@ -78,6 +78,26 @@ class HudViewModelTest {
         assertNull(HudViewModel.objectiveLine(null, Cargo.empty()))
     }
 
+    // --- UC41: the BOUNTY objective line surfaces kill progress (UC34) -----------------------------
+
+    @Test
+    fun `bounty objective shows kill progress over the kill target`() {
+        // Cargo is irrelevant to a bounty's readout — the displayed field IS the completion field.
+        val objective = HudViewModel.objectiveLine(bountyMission(killTarget = 3, killProgress = 1), Cargo.empty())
+        assertEquals("Bounty 1/3", objective)
+    }
+
+    @Test
+    fun `a fresh bounty reads zero progress`() {
+        assertEquals("Bounty 0/1", HudViewModel.objectiveLine(bountyMission(killTarget = 1, killProgress = 0), Cargo.empty()))
+    }
+
+    @Test
+    fun `build surfaces the active bounty's kill-progress objective`() {
+        val model = model(missionLog = MissionLog(accepted = listOf(bountyMission(killTarget = 2, killProgress = 1))))
+        assertEquals("Bounty 1/2", model.objective)
+    }
+
     @Test
     fun `build hides the objective when the log has no active mission`() {
         // EMPTY log -> no active mission -> objective null.
@@ -226,6 +246,22 @@ class HudViewModelTest {
                 pickup = PoiId(pickup),
                 destination = PoiId(destination),
                 pickedUp = pickedUp,
+            )
+
+        fun bountyMission(
+            killTarget: Int,
+            killProgress: Int,
+            status: MissionStatus = MissionStatus.ACTIVE,
+        ): Mission =
+            Mission(
+                id = MissionId("bounty:bounty-alpha-raider"),
+                type = MissionType.BOUNTY,
+                source = MissionSource.BOARD,
+                status = status,
+                rewardCredits = 800L,
+                targetZoneId = "bounty-alpha-raider",
+                killTarget = killTarget,
+                killProgress = killProgress,
             )
 
         fun cargoOf(

@@ -1155,10 +1155,10 @@ class SaveMigrationTest {
         // continuing the chain (the repository is now v12-aware and needs the reputation table to load).
         assertEquals(11L, queries.selectSaveVersion().executeAsOne())
 
-        // Continue to the current schema so the v13-aware repository can load (it reads the v12 reputation
-        // table + the v13 owned_station/station_module tables; the canonical per-step migration assertions
-        // live in the dedicated v11->v12 and v12->v13 tests).
-        OrbitalFrontier.Schema.migrate(driver, 11L, 17L)
+        // Continue to the current schema so the now-current repository can load (it reads the v12 reputation
+        // table + the v13 owned_station/station_module tables + the v19 bounty mission columns; the canonical
+        // per-step migration assertions live in the dedicated per-version tests).
+        OrbitalFrontier.Schema.migrate(driver, 11L, OrbitalFrontier.Schema.version)
 
         // The full save now loads through the v13-aware repository: the prior single starter ship with its
         // sector + cargo + fuel + credits + revealed contact intact, 0 crew, pristine sections, no last dock.
@@ -1314,9 +1314,10 @@ class SaveMigrationTest {
         // The stored save-format version is bumped to 12 (AC#2) — assert the v11->v12 step before continuing.
         assertEquals(12L, queries.selectSaveVersion().executeAsOne())
 
-        // Continue to the current schema so the v13-aware repository can load (it reads the v13
-        // owned_station/station_module tables; the canonical v12->v13 assertions live in the dedicated test).
-        OrbitalFrontier.Schema.migrate(driver, 12L, 17L)
+        // Continue to the current schema so the now-current repository can load (it reads the v13
+        // owned_station/station_module tables + the v19 bounty mission columns; the canonical v12->v13
+        // assertions live in the dedicated test).
+        OrbitalFrontier.Schema.migrate(driver, 12L, OrbitalFrontier.Schema.version)
 
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         val loaded = gameStateRepo.loadGameState()
@@ -1485,9 +1486,10 @@ class SaveMigrationTest {
         // The stored save-format version is bumped to 13 (AC#4) — assert the v12->v13 step before continuing.
         assertEquals(13L, queries.selectSaveVersion().executeAsOne())
 
-        // Continue to the current (slot-aware, v17) schema so the repository can load the migrated save (its
-        // queries reference the v17 slot_id column; the per-step v13..v17 assertions live in their own tests).
-        OrbitalFrontier.Schema.migrate(driver, 13L, 17L)
+        // Continue to the current schema so the repository can load the migrated save (its queries reference
+        // the v17 slot_id column + the v19 bounty mission columns; the per-step v13..v19 assertions live in
+        // their own tests).
+        OrbitalFrontier.Schema.migrate(driver, 13L, OrbitalFrontier.Schema.version)
 
         val gameStateRepo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
         val loaded = gameStateRepo.loadGameState()
@@ -2065,6 +2067,13 @@ class SaveMigrationTest {
         // Data survival: the pre-UC38 settings are untouched (settings are global, not per-slot).
         assertEquals("v16 settings must survive", "LEFT_HANDED", readHandedness())
 
+        // The v16 -> v17 step itself landed at v17 (the step under test) before we continue the chain.
+        assertEquals("the v16 -> v17 step bumps to 17", 17L, queries.selectSaveVersion().executeAsOne())
+        // Continue to the current schema so the now-current slot-aware repository can load the backfilled
+        // save (its queries reference the v19 bounty mission columns; the per-step v17..v19 assertions live
+        // in their own tests).
+        OrbitalFrontier.Schema.migrate(driver, 17L, OrbitalFrontier.Schema.version)
+
         val repo = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock)
 
         // AC#3: the legacy single autosave is backfilled into slot 0 (SlotId.LEGACY), which the autosave /
@@ -2099,8 +2108,9 @@ class SaveMigrationTest {
         assertEquals("the legacy slot summary carries the saved credits", 1234L, legacy.credits)
         assertTrue("slots 1..N read back empty", slots.drop(1).all { it is SaveSlotSummary.Empty })
 
-        // The stored save-format version is bumped to 17 (the current schema).
-        assertEquals(17L, queries.selectSaveVersion().executeAsOne())
+        // The stored save-format version is now the current schema (the chain was continued past v17 so the
+        // backfilled save could load through the now-current repository).
+        assertEquals(OrbitalFrontier.Schema.version, queries.selectSaveVersion().executeAsOne())
     }
 
     // --- UC39 AC#4: v17 -> v18 adds the three accessibility columns to the global settings row, ----
@@ -2232,5 +2242,121 @@ class SaveMigrationTest {
             freshRepo.loadAudioSettings(),
         )
         assertTrue("the UC39 writes must not clobber the migrated tutorial flag", freshRepo.loadTutorialCompleted())
+    }
+
+    // --- UC41 AC#5 / ADR 0029: v18 -> v19 adds the three bounty columns to the per-slot `mission` table, --
+    // --- backfilling a pre-UC41 mission to the non-bounty defaults (null target zone, 0/0 kill counts). ----
+
+    /**
+     * Build the exact v18 `mission` schema — the UC12/UC14 columns through `faction_id` and the v17 `slot_id`
+     * PK, but NONE of the UC41 bounty columns (exactly what 18.sqm adds) — plus a minimal `meta`. The v18→v19
+     * migration only touches `mission` + `meta` (additive `ALTER TABLE ADD COLUMN`), so — like the settings-only
+     * migration tests — only those two tables need to exist for it to run and for a direct SQL read-back. A
+     * pre-UC41 mining mission row is seeded so the migration's backfill assertion is meaningful.
+     */
+    private fun buildRealV18MissionTable() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE mission (slot_id INTEGER NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, source TEXT NOT NULL, " +
+                "status TEXT NOT NULL, reward_credits INTEGER NOT NULL, reward_resource TEXT, " +
+                "reward_resource_units INTEGER NOT NULL DEFAULT 0, quota_resource TEXT, quota_units INTEGER NOT NULL DEFAULT 0, " +
+                "pickup TEXT, destination TEXT, remaining_ticks INTEGER NOT NULL DEFAULT 0, " +
+                "picked_up INTEGER NOT NULL DEFAULT 0, faction_id TEXT, PRIMARY KEY (slot_id, id))",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 18)", 0)
+        // A pre-UC41 board mining mission (the golden 8-Hydrogen offer) — exactly the shape a v18 save carries.
+        driver.execute(
+            null,
+            "INSERT INTO mission(slot_id, id, type, source, status, reward_credits, quota_resource, quota_units, faction_id) " +
+                "VALUES (0, 'board:alpha-station:mining', 'MINING', 'BOARD', 'ACTIVE', 400, 'HYDROGEN', 8, 'league')",
+            0,
+        )
+    }
+
+    /** Read a single mission row's TEXT column directly via SQL (the target_zone_id backfill assertion). */
+    private fun readMissionText(column: String): String? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM mission WHERE slot_id = 0 AND id = 'board:alpha-station:mining'",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    /** Read a single mission row's INTEGER column directly via SQL (the kill_target / kill_progress backfill). */
+    private fun readMissionLong(column: String): Long? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM mission WHERE slot_id = 0 AND id = 'board:alpha-station:mining'",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    @Test
+    fun `migrating a real v18 database to v19 adds the bounty columns, backfills the non-bounty defaults, and bumps version`() {
+        buildRealV18MissionTable()
+
+        // Apply the sequential v18 -> v19 migration (runs migrations/18.sqm — purely additive on the mission table).
+        OrbitalFrontier.Schema.migrate(driver, 18L, 19L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The three new bounty columns now exist on the per-slot mission table.
+        assertTrue("mission.target_zone_id column must exist after migration", columnExists("mission", "target_zone_id"))
+        assertTrue("mission.kill_target column must exist after migration", columnExists("mission", "kill_target"))
+        assertTrue("mission.kill_progress column must exist after migration", columnExists("mission", "kill_progress"))
+
+        // Backfill: a pre-UC41 mission had none of these, so the migrated row reads them back at the
+        // non-bounty defaults — null target zone, 0 kill target, 0 kill progress (no behaviour change).
+        assertNull("target_zone_id backfills to NULL for a non-bounty mission", readMissionText("target_zone_id"))
+        assertEquals("kill_target backfills to 0", 0L, readMissionLong("kill_target"))
+        assertEquals("kill_progress backfills to 0", 0L, readMissionLong("kill_progress"))
+
+        // Data survival: the pre-UC41 mission columns are untouched by the migration.
+        assertEquals("the pre-UC41 quota resource survives", "HYDROGEN", readMissionText("quota_resource"))
+        assertEquals("the pre-UC41 quota units survive", 8L, readMissionLong("quota_units"))
+        assertEquals("the pre-UC41 faction survives", "league", readMissionText("faction_id"))
+
+        // The stored save-format version is bumped to 19 (the current schema).
+        assertEquals(19L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the bumped version equals the generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new columns are writable, not just present: a bounty row inserts + reads back through SQL.
+        driver.execute(
+            null,
+            "INSERT INTO mission(slot_id, id, type, source, status, reward_credits, target_zone_id, kill_target, kill_progress) " +
+                "VALUES (0, 'bounty:bounty-alpha-raider', 'BOUNTY', 'RADIO', 'ACTIVE', 800, 'bounty-alpha-raider', 1, 0)",
+            0,
+        )
+        val zone =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT target_zone_id FROM mission WHERE id = 'bounty:bounty-alpha-raider'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getString(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a bounty row round-trips its target zone on the migrated DB", "bounty-alpha-raider", zone)
     }
 }

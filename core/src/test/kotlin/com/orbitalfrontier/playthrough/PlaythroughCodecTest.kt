@@ -1,6 +1,13 @@
 package com.orbitalfrontier.playthrough
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.mission.BountyParams
+import com.orbitalfrontier.mission.Mission
+import com.orbitalfrontier.mission.MissionId
+import com.orbitalfrontier.mission.MissionLog
+import com.orbitalfrontier.mission.MissionSource
+import com.orbitalfrontier.mission.MissionStatus
+import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
@@ -8,6 +15,7 @@ import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.world.SectorId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -127,6 +135,72 @@ class PlaythroughCodecTest {
                 .build()
         val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(playthrough))
         assertEquals(SectorId("gamma"), decoded.initialState!!.toSimulationState().currentSector)
+    }
+
+    @Test
+    fun `round-trips a pinned bounty config and an active bounty mission (UC41)`() {
+        // A playthrough that pins a non-default BountyParams and carries an ACTIVE bounty in its initial state.
+        val bounty =
+            Mission(
+                id = MissionId("bounty:bounty-alpha-raider"),
+                type = MissionType.BOUNTY,
+                source = MissionSource.RADIO,
+                status = MissionStatus.ACTIVE,
+                rewardCredits = 1750L,
+                targetZoneId = "bounty-alpha-raider",
+                killTarget = 2,
+                killProgress = 1,
+            )
+        val playthrough =
+            PlaythroughRecorder(
+                name = "bounty-round-trip",
+                seed = 41L,
+                dtSeconds = 1f / 60f,
+                bountyConfig = BountyParams(rewardBase = 1000L, rewardPerKill = 375L),
+                initialState = SimulationState(missions = MissionLog(accepted = listOf(bounty))),
+            ).build()
+
+        val decoded = PlaythroughCodec.decode(PlaythroughCodec.encode(playthrough))
+
+        // The pinned bounty tuning survives the codec.
+        assertEquals(1000L, decoded.bountyConfig.toBountyParams().rewardBase)
+        assertEquals(375L, decoded.bountyConfig.toBountyParams().rewardPerKill)
+        // The bounty mission's UC41 fields survive embedded in the initial state.
+        val decodedBounty = decoded.initialState!!.toSimulationState().missions.accepted.single()
+        assertEquals(MissionType.BOUNTY, decodedBounty.type)
+        assertEquals("bounty-alpha-raider", decodedBounty.targetZoneId)
+        assertEquals(2, decodedBounty.killTarget)
+        assertEquals(1, decodedBounty.killProgress)
+    }
+
+    @Test
+    fun `a default bounty config and non-bounty missions omit the UC41 fields on disk (byte-identity)`() {
+        // A mining mission (no bounty fields) under the default bounty tuning: the new UC41 fields must NOT
+        // appear on disk (their @EncodeDefault(NEVER) guard), keeping every pre-UC41 fixture byte-identical.
+        val mining =
+            Mission(
+                id = MissionId("board:alpha-station:mining"),
+                type = MissionType.MINING,
+                source = MissionSource.BOARD,
+                status = MissionStatus.ACTIVE,
+                rewardCredits = 400L,
+                quotaResource = com.orbitalfrontier.economy.ResourceType.HYDROGEN,
+                quotaUnits = 8,
+            )
+        val json =
+            PlaythroughCodec.encode(
+                PlaythroughRecorder(
+                    name = "no-bounty",
+                    seed = 1L,
+                    dtSeconds = 1f / 60f,
+                    initialState = SimulationState(missions = MissionLog(accepted = listOf(mining))),
+                ).build(),
+            )
+
+        assertFalse("default bountyConfig is omitted on disk", json.contains("bountyConfig"))
+        assertFalse("a non-bounty mission omits targetZoneId", json.contains("targetZoneId"))
+        assertFalse("a non-bounty mission omits killTarget", json.contains("killTarget"))
+        assertFalse("a non-bounty mission omits killProgress", json.contains("killProgress"))
     }
 
     @Test

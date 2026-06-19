@@ -69,6 +69,48 @@ object MvpSectorMap {
     /** The authored encounter zones in [sectorId] (UC13) — what the screen checks for an edge-crossing. */
     fun encounterZones(sectorId: SectorId): List<EncounterZone> = ENCOUNTER_ZONES.filter { it.sectorId == sectorId.value }
 
+    /**
+     * The authored **bounty target zones** (UC41) — the dedicated encounter zones a combat-bounty contract
+     * spawns its hostiles in. Kept in a SEPARATE list from [ENCOUNTER_ZONES] (these are NOT natural
+     * encounters: the orchestrator edge-spawns them only while the matching bounty is ACTIVE), and each is
+     * authored **geometrically disjoint** from every natural zone so a bounty kill is never confused with a
+     * natural-encounter kill. The MVP map has one: a single [HostileArchetypes.RAIDER] in open space in
+     * Alpha (well north of the start cluster, disjoint from the `alpha-raider-picket` natural zone east of
+     * centre), targeted by Alpha Station's bounty. [TUNE]
+     */
+    val BOUNTY_TARGET_ZONES: List<EncounterZone> =
+        listOf(
+            EncounterZone(
+                id = "bounty-alpha-raider",
+                sectorId = "alpha",
+                center = Vec2(0f, 1400f),
+                radius = 220f,
+                archetypeId = HostileArchetypes.RAIDER.id,
+                hostileCount = 1,
+            ),
+        )
+
+    /** The authored bounty target zone with [zoneId] (UC41), or null if no such zone is authored. */
+    fun bountyTargetZone(zoneId: String): EncounterZone? = BOUNTY_TARGET_ZONES.firstOrNull { it.id == zoneId }
+
+    /**
+     * The authored **bounty contracts** (UC41) — which station posts which bounty. The MVP map has one:
+     * Alpha Station contracts a kill-1 bounty on the `bounty-alpha-raider` zone. The generated offer is
+     * credited to the issuing station's own faction (the Trade League), and its kill quota matches the
+     * target zone's `hostileCount` so the contract is always completable. [TUNE]
+     */
+    val BOUNTY_CONTRACTS: List<BountyContract> =
+        listOf(
+            BountyContract(
+                issuingStation = PoiId("alpha-station"),
+                targetZoneId = "bounty-alpha-raider",
+                killTarget = 1,
+            ),
+        )
+
+    /** The bounty contracts posted by the station with [stationId] (UC41); empty if it posts none. */
+    fun bountyContracts(stationId: PoiId): List<BountyContract> = BOUNTY_CONTRACTS.filter { it.issuingStation == stationId }
+
     /** Distance (world-units) of each gate from its sector centre — out toward the content edge. [TUNE] */
     private const val GATE_ORBIT_RADIUS: Float = 1300f
 

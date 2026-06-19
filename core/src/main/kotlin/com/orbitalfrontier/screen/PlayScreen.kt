@@ -52,12 +52,15 @@ import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.faction.ReputationGate
 import com.orbitalfrontier.faction.ReputationParams
+import com.orbitalfrontier.mission.BountyParams
+import com.orbitalfrontier.mission.BountyTracking
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionGenerator
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.mission.MissionParams
 import com.orbitalfrontier.mission.MissionStatus
+import com.orbitalfrontier.mission.MissionType
 import com.orbitalfrontier.mission.Missions
 import com.orbitalfrontier.notify.GameNotifications
 import com.orbitalfrontier.notify.NotificationQueue
@@ -304,6 +307,10 @@ class PlayScreen(
     // Mission tunables (UC12). Authored defaults; the same params feed the generator and the pure
     // [Missions.resolve]/[Missions.advance] here, so live mission behaviour matches the replay harness.
     private val missionParams = MissionParams()
+
+    // Bounty tunables (UC41). Authored defaults; the same params feed the bounty offer generation here and
+    // in the replay harness, so a bounty offer's reward matches between live and replay.
+    private val bountyParams = BountyParams()
 
     // Reputation (UC14): the player's per-faction standing, seeded from the loaded/initial snapshot.
     // Save-wide (like credits). Mutated only by the pure [Missions.resolve] (a faction mission turn-in)
@@ -937,7 +944,14 @@ class PlayScreen(
                 // UC14: the reputation gate is a SEPARATE filter applied AFTER the takenIds filter (one of
                 // the three symmetric sites) — generation stays a pure function of static state; this only
                 // hides offers the player hasn't unlocked.
-                MissionGenerator.radioOffers(sectorWorld, currentSector, ship.position, missionParams)
+                MissionGenerator.radioOffers(
+                    sectorWorld,
+                    currentSector,
+                    ship.position,
+                    missionParams,
+                    MvpSectorMap.BOUNTY_CONTRACTS,
+                    bountyParams,
+                )
                     .filter { it.id !in missionLog.takenIds }
                     .filter { ReputationGate.isAvailable(it, reputation) }
             } else {
@@ -1449,6 +1463,38 @@ class PlayScreen(
                 }
             }
         }
+        // UC41 (a): edge-triggered BOUNTY spawn. For each ACTIVE bounty whose target zone is in this sector,
+        // detect the SAME outside->inside crossing the natural spawner uses, then inject the contracted
+        // hostiles via [EncounterSpawner.missionSpawn] (no positional crossing of its own — the trigger is
+        // here). Seeded by [combatSpawnTick] (the device's spawn-seed convention; the sim uses state.tick),
+        // and suppressed while a fight is already active so a natural and a bounty encounter can't stack.
+        // The spawned [CombatState.zoneId] equals the bounty's targetZoneId, so kills attribute back to it.
+        if (!combat.active && dockedStation == null) {
+            for (bounty in missionLog.activeMissions) {
+                if (bounty.type != MissionType.BOUNTY) continue
+                val zoneId = bounty.targetZoneId ?: continue
+                val zone = MvpSectorMap.bountyTargetZone(zoneId) ?: continue
+                if (zone.sectorId != currentSector.value) continue
+                if (zone.contains(previousShipPosition) || !zone.contains(playerPosition)) continue
+                val spawned =
+                    EncounterSpawner.missionSpawn(
+                        combat,
+                        zoneId,
+                        zone.archetypeId,
+                        zone.hostileCount,
+                        playerPosition,
+                        combatSpawnTick,
+                        combatParams,
+                    )
+                if (spawned !== combat) {
+                    combat = spawned
+                    combatSpawnTick++
+                    autosave.onEvent("bounty-encounter")
+                    logger.info(WORLD_TAG, "Bounty hostiles spawned in zone $zoneId (sector ${currentSector.value})")
+                    break
+                }
+            }
+        }
         previousShipPosition = playerPosition
 
         // UC35: entered-combat toast on the combat-active false->true edge (AC#1). The CombatEvent hierarchy
@@ -1492,6 +1538,9 @@ class PlayScreen(
         // UC36: holding FIRE in an encounter completes the FIRE tutorial step (visual/observational only —
         // the fire intent itself is unchanged). Recorded into the pending buffer; applied at frame end.
         if (fireAction == FireAction.FIRE) recordTutorialEvent(TutorialEvent.FIRED)
+        // UC41 (b): capture the encounter's zone id BEFORE the step — a destroyed/cleared encounter resets
+        // combat to NONE (zoneId ""), so the attribution key must be read pre-step.
+        val preStepZoneId = combat.zoneId
         val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
         combat = result.combat
 
@@ -1506,6 +1555,30 @@ class PlayScreen(
         // Fold the player's new section damage onto the active ship (=== check skips a no-op tick).
         if (result.sectionDamage !== active.sectionDamage) {
             fleet = fleet.withActive(active.withSectionDamage(result.sectionDamage))
+        }
+
+        // UC41 (b): fold this tick's hostile kills into any matching ACTIVE bounty (auto-complete + pay).
+        // Done BEFORE the destruction return so a kill that lands on the same tick the player dies still
+        // counts (mirrored byte-for-byte in the test-set Simulation). killProgress is now in missionLog, so
+        // it persists with the hostile-destroyed autosave below (normal path) or the respawn critical
+        // autosave (destroyed path) — durable per kill. No-op (same instances) when there were no kills.
+        val killsThisTick = result.events.count { it is CombatEvent.HostileDestroyed }
+        if (killsThisTick > 0) {
+            val bounty =
+                BountyTracking.applyKills(
+                    missionLog,
+                    preStepZoneId,
+                    killsThisTick,
+                    credits,
+                    cargo,
+                    reputation,
+                    reputationParams,
+                )
+            if (bounty.changed) {
+                missionLog = bounty.log
+                applyCreditChange(bounty.credits)
+                reputation = bounty.reputation
+            }
         }
 
         if (result.destroyed) {
@@ -1956,7 +2029,7 @@ class PlayScreen(
      */
     fun stationMissionBoard(): List<Mission> {
         val station = dockedStation ?: return emptyList()
-        return MissionGenerator.boardOffers(sectorWorld, station, missionParams)
+        return MissionGenerator.boardOffers(sectorWorld, station, missionParams, MvpSectorMap.bountyContracts(station), bountyParams)
             .filter { it.id !in missionLog.takenIds }
             // UC14: the reputation gate — the SEPARATE filter applied AFTER generation + the takenIds
             // filter (the board site of the three symmetric gating sites). A gated `:premium` offer only
@@ -1974,7 +2047,7 @@ class PlayScreen(
      */
     fun lockedStationOffers(): List<Mission> {
         val station = dockedStation ?: return emptyList()
-        return MissionGenerator.boardOffers(sectorWorld, station, missionParams)
+        return MissionGenerator.boardOffers(sectorWorld, station, missionParams, MvpSectorMap.bountyContracts(station), bountyParams)
             .filter { it.id !in missionLog.takenIds }
             .filter { !ReputationGate.isAvailable(it, reputation) }
     }

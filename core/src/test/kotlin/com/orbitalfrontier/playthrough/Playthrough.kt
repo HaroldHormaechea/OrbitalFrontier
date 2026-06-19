@@ -13,6 +13,7 @@ import com.orbitalfrontier.economy.ResourceType
 import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.faction.Reputation
 import com.orbitalfrontier.faction.ReputationParams
+import com.orbitalfrontier.mission.BountyParams
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionId
 import com.orbitalfrontier.mission.MissionLog
@@ -75,6 +76,11 @@ import kotlinx.serialization.Serializable
  *   clamp bounds can't silently invalidate this replay. Marked `@EncodeDefault(NEVER)` so an artifact
  *   that ran under the default params **omits** it on disk, keeping every pre-UC14 fixture byte-identical
  *   (`encodeDefaults = true` would otherwise write it into all of them).
+ * @property bountyConfig the pinned [BountyParams] snapshot the run was recorded under (UC41), same
+ *   rationale as [config] — a later retune of the bounty reward base / per-kill bonus can't silently
+ *   invalidate this replay (the payout it asserts is reproduced exactly). Marked `@EncodeDefault(NEVER)`
+ *   so an artifact that ran under the default bounty tuning **omits** it on disk, keeping every pre-UC41
+ *   fixture byte-identical despite the codec's global `encodeDefaults = true`.
  * @property initialState optional starting snapshot; when null the replay starts from the default
  *   [SimulationState].
  * @property inputEvents the ordered input script; supports 0..N events per tick.
@@ -97,6 +103,10 @@ data class Playthrough(
     // every pre-UC14 fixture byte-identical despite the codec's global encodeDefaults = true.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val reputationConfig: ReputationParamsDto = ReputationParamsDto.DEFAULT,
+    // UC41: @EncodeDefault(NEVER) so a run under the default bounty tuning omits this on disk, keeping
+    // every pre-UC41 fixture byte-identical despite the codec's global encodeDefaults = true.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val bountyConfig: BountyParamsDto = BountyParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -413,6 +423,42 @@ data class ReputationParamsDto(
 
         /** The serialized default tuning, derived from the domain default (single source of truth). */
         val DEFAULT: ReputationParamsDto = from(ReputationParams())
+    }
+}
+
+/**
+ * Serializable mirror of [BountyParams] (UC41 config snapshot).
+ *
+ * [BountyParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live
+ * in exactly one place. Pinning the bounty tuning per artifact (mirroring [MissionParamsDto]) means a
+ * later balance change to the reward base / per-kill bonus cannot silently invalidate an old recorded
+ * bounty playthrough — the payout it grants on completion is reproduced exactly. Defaulted (and
+ * `@EncodeDefault(NEVER)` on [Playthrough]) so older artifacts (recorded before bounties) decode
+ * unchanged and omit it on disk.
+ */
+@Serializable
+data class BountyParamsDto(
+    val rewardBase: Long,
+    val rewardPerKill: Long,
+) {
+    /** Reconstruct the domain [BountyParams] (its `init` re-validates the values). */
+    fun toBountyParams(): BountyParams =
+        BountyParams(
+            rewardBase = rewardBase,
+            rewardPerKill = rewardPerKill,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: BountyParams): BountyParamsDto =
+            BountyParamsDto(
+                rewardBase = params.rewardBase,
+                rewardPerKill = params.rewardPerKill,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: BountyParamsDto = from(BountyParams())
     }
 }
 
@@ -738,7 +784,13 @@ data class MissionLogDto(
  * quota are stored by their stable **name** (not ordinal), and [PoiId]s by their slug, so the on-disk
  * form is diffable and survives enum reordering. The optional type-specific fields mirror [Mission]'s
  * nullable mining / courier params one-for-one.
+ *
+ * **UC41 bounty fields** ([targetZoneId], [killTarget], [killProgress]) mirror [Mission]'s additive bounty
+ * params. Each is marked `@EncodeDefault(NEVER)` so a non-bounty mission (every pre-UC41 mission, where they
+ * sit at their `null`/`0` defaults) **omits** them on disk despite the codec's global `encodeDefaults = true`,
+ * keeping every pre-UC41 fixture byte-identical; only a real BOUNTY mission (non-default values) writes them.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MissionDto(
     val id: String,
@@ -754,6 +806,13 @@ data class MissionDto(
     val destination: String? = null,
     val remainingTicks: Int = 0,
     val pickedUp: Boolean = false,
+    // UC41 BOUNTY params — @EncodeDefault(NEVER) so a non-bounty mission omits them (byte-identical pre-UC41).
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val targetZoneId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val killTarget: Int = 0,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val killProgress: Int = 0,
 ) {
     /** Reconstruct the domain [Mission]. */
     fun toMission(): Mission =
@@ -771,6 +830,9 @@ data class MissionDto(
             destination = destination?.let(::PoiId),
             remainingTicks = remainingTicks,
             pickedUp = pickedUp,
+            targetZoneId = targetZoneId,
+            killTarget = killTarget,
+            killProgress = killProgress,
         )
 
     companion object {
@@ -790,6 +852,9 @@ data class MissionDto(
                 destination = mission.destination?.value,
                 remainingTicks = mission.remainingTicks,
                 pickedUp = mission.pickedUp,
+                targetZoneId = mission.targetZoneId,
+                killTarget = mission.killTarget,
+                killProgress = mission.killProgress,
             )
     }
 }
