@@ -559,7 +559,10 @@ class OrbitalFrontierGame(
             TradeScreen(
                 logger = logger,
                 stationName = station.displayName,
-                market = station.market,
+                // UC46: the effective (dynamic) docked-station market — the living buy/sell prices the
+                // play screen computes from supply/demand pressure + drift + faction standing. Falls back
+                // to the authored base if the play screen is gone (headless/edge).
+                marketSupplier = { playScreen?.dockedMarket() ?: station.market },
                 creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
                 cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
                 onTrade = { order: TradeOrder -> playScreen?.trade(order) },
@@ -685,7 +688,8 @@ class OrbitalFrontierGame(
             TradeScreen(
                 logger = logger,
                 stationName = station.displayName,
-                market = station.market,
+                // UC46: the effective (dynamic) docked-station market — see [openShopFromWalkaround].
+                marketSupplier = { playScreen?.dockedMarket() ?: station.market },
                 creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
                 cargoSupplier = { playScreen?.cargoSnapshot() ?: Cargo.empty() },
                 onTrade = { order: TradeOrder -> playScreen?.trade(order) },

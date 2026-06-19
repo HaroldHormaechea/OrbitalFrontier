@@ -1,7 +1,7 @@
 # Design Note — Economy & Resources
 
 - **Status:** in-progress (model decided; resource values, fuel & shipyard detail open)
-- **Last updated:** 2026-06-07
+- **Last updated:** 2026-06-19
 - **Related:** PROJECT_BRIEF.md → core_gameplay_loop (Earn → Improve); non_goals (no large-scale economy sim in MVP); [missions.md](missions.md) (rewards, courier cargo), [world-and-sector.md](world-and-sector.md) (asteroids, stations, prices), [upgrades-and-progression.md](upgrades-and-progression.md) (sinks: upgrades/ships/cargo), [save-and-persistence.md](save-and-persistence.md) (wallet/cargo/prices)
 
 ## Summary
@@ -9,14 +9,15 @@
 A single **credits** currency. The player earns credits from **mission rewards** and by
 **selling resources**, and spends them on **ship upgrades, repairs, refueling, crew,
 cargo, and buying additional ships to pilot**. **Inter-station trading is in scope** for
-the MVP (buy low / sell high), with **fixed prices in the MVP** and **dynamic pricing
-later**. This is the bridge from "Earn" to "Improve".
+the MVP (buy low / sell high), with **dynamic prices since UC46** (authored base modulated
+by player-driven supply/demand, bounded drift, and faction/reputation — ADR 0034). This is
+the bridge from "Earn" to "Improve".
 
 ## Goals
 
 - A legible, single-currency economy that makes upgrades feel earned.
 - Mining and trading are both viable income paths (alongside mission rewards).
-- No full market sim for MVP — fixed prices now, dynamic later.
+- No full market sim for MVP — bounded dynamic pricing (UC46, ADR 0034), not a cross-station economy sim.
 
 ## Mechanics / ideas
 
@@ -46,17 +47,20 @@ upgrades** _(TODO: do upgrades cost resources + credits, or credits only?)_.
 **Earning:** **mission rewards** + **selling resources** (and, later, combat loot/salvage).
 
 **Trading (in MVP):** stations **buy and sell** resources/goods. Buying low at one
-station and selling high at another is a valid income path. **Prices are fixed for the
-MVP** but **dynamic later** (driven by sector/faction state — see
-[world-and-sector.md](world-and-sector.md), factions). Station offers/prices/stock are
-**persisted**.
+station and selling high at another is a valid income path. **Prices are dynamic since
+UC46** ([ADR 0034](../adr/0034-dynamic-station-pricing.md)) — authored base prices,
+modulated by player-driven supply/demand, bounded seeded drift, and faction/reputation
+state (see [world-and-sector.md](world-and-sector.md), factions). The mutable per-station
+price state is **persisted**.
 
-> **Faction state now exists (UC14), but dynamic pricing is still deferred.** UC14
-> ([ADR 0013](../adr/0013-factions-and-reputation.md)) added station-owning factions and a
-> per-faction reputation that gates **mission offers**. It deliberately did **not** wire
-> reputation/faction state into prices — `FactionPricing` (reputation- or faction-state-driven
-> price modulation) is recorded in ADR 0013 as an explicit deferred hook. Prices remain the fixed
-> authored `StationMarket` tables of UC08 until a later UC implements it.
+> **Dynamic pricing is implemented (UC46, [ADR 0034](../adr/0034-dynamic-station-pricing.md)).**
+> UC14 ([ADR 0013](../adr/0013-factions-and-reputation.md)) added station-owning factions and a
+> per-faction reputation that gates mission offers but deliberately left pricing fixed, recording
+> `FactionPricing` as a deferred hook. UC46 realizes it: prices now blend the authored base with
+> player-driven supply/demand (`StationMarketState` net signed pressure), a small seeded drift, and
+> the `FactionPricing` faction/reputation seam — all anchored so the price equals the base at
+> pressure 0 / tick 0 / neutral standing. ADR 0034 **supersedes** the dynamic-pricing deferral in
+> ADR 0007 and the `FactionPricing`-deferral framing in ADR 0013.
 
 **Implemented (UC08, [ADR 0007](../adr/0007-trading-prices.md)).** Each station carries a
 `StationMarket` — a map of `ResourceType` → `TradeOffer(buyPrice, sellPrice)` (both `Long`
@@ -72,13 +76,15 @@ unaffordable / hold full / nothing to sell) a no-op. Trade resolves only while *
 comes from the docked station). **Buying Hydrogen feeds fuel (AC#5)** with no special case — it lands
 in cargo and the existing station REFUEL converts it (UC07).
 
-**Fixed prices are authored, not row-persisted** ([ADR 0007](../adr/0007-trading-prices.md)). Because
-MVP prices are fixed authored constants, they are reconstructed from `MvpSectorMap` on load (like
-cargo/fuel *capacity*), not stored per save — a save always reloads the same prices, so AC#4's
-"prices persist" holds by reconstruction. Only the player's **credits** wallet is persisted
-(`game_state.credits`, schema v6). Dynamic pricing (a deferred `FactionPricing` hook, ADR 0013 — **not**
-done in UC14) is where mutable per-station price state will later move into the save, behind the same
-`StationMarket` type. UC14 added the faction state it would key on, but not the pricing itself.
+**Base prices are authored, not row-persisted; the dynamic pressure is** ([ADR 0007](../adr/0007-trading-prices.md)
+/ [ADR 0034](../adr/0034-dynamic-station-pricing.md)). The authored **base** prices are still
+reconstructed from `MvpSectorMap` on load (like cargo/fuel *capacity*), never stored. Since UC46 the
+**mutable** part — net per-station supply/demand **pressure** (`StationMarketState`) — is persisted in a
+new per-slot `station_market` table (schema v20). Only the pressure is stored; drift and decay are
+recomputed from the tick, so a later re-tune of the pricing constants reaches old saves for free (the same
+philosophy as ADR 0007's reconstruct-on-load base). The player's **credits** wallet remains persisted
+(`game_state.credits`, schema v6). `MarketPricing` blends base + pressure + drift + faction at trade time
+to produce the effective `StationMarket` that `Trading.resolve` charges against.
 
 **Spending sinks:**
 - **Ship upgrades** (see [upgrades-and-progression.md](upgrades-and-progression.md))
@@ -127,20 +133,20 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Credits** — implemented as `game_state.credits` (schema v6, UC08).
 - **Cargo/inventory per ship**; **owned ships + their loadouts**; **active ship**.
 - **Fuel level per ship.**
-- **Station prices/offers** — MVP-fixed, so **reconstructed from `MvpSectorMap` on load, not stored
-  per save** ([ADR 0007](../adr/0007-trading-prices.md)); a save reloads the same fixed prices, so
-  they "persist" by reconstruction. (Mutable per-station price/stock state would land in the save with
-  **dynamic pricing** — a deferred `FactionPricing` hook, ADR 0013; UC14 added factions/reputation but
-  not dynamic pricing.) Asteroid-field **depletion** is persisted and owned by
-  [world-and-sector.md](world-and-sector.md).
+- **Station base prices/offers** — authored, so **reconstructed from `MvpSectorMap` on load, not stored
+  per save** ([ADR 0007](../adr/0007-trading-prices.md)). The **mutable** per-station supply/demand
+  **pressure** behind dynamic pricing (UC46, [ADR 0034](../adr/0034-dynamic-station-pricing.md)) **is**
+  persisted — `station_market(slot_id, station_id, resource, pressure)`, schema v20, non-zero rows only;
+  drift + decay are recomputed from the tick, so only pressure is durable. Asteroid-field **depletion** is
+  persisted and owned by [world-and-sector.md](world-and-sector.md).
 
 ## Dependencies & interactions
 
 - **Fed by** missions (rewards), mining (world asteroids), and combat loot (later).
 - **Drains into** upgrades & progression (upgrades, **ships**, cargo), crew
   (wages/hiring), repairs (sectional damage), and fuel.
-- **Trading** couples to stations (world); a station's owning **faction** exists as of UC14
-  (ADR 0013), but **dynamic pricing** off faction/reputation state is still a deferred hook.
+- **Trading** couples to stations (world); a station's owning **faction** (UC14, ADR 0013) now feeds
+  **dynamic pricing** via the `FactionPricing` seam (UC46, [ADR 0034](../adr/0034-dynamic-station-pricing.md)).
 - **Ship-switching** couples to ship-and-controls and upgrades (each ship has its own
   loadout/cargo/fuel).
 - **Fuel** couples to ship-and-controls (modulates `max_speed`).
@@ -157,14 +163,15 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 - **Upgrade slot categories:** the full list and per-category slot counts (with
   [upgrades-and-progression.md](upgrades-and-progression.md)).
 - **Shipyard:** where ships are sold, how many can be owned, where idle ships are stored.
-- **Dynamic pricing** model (post-MVP).
+- **Per-seed price variance** (deferred — needs a persisted world seed; UC46 / ADR 0034) and a fuller
+  cross-station market sim (out of MVP scope).
 
 ## Decided
 
 - **Single credits currency.**
 - **5–10 asteroid resources** (provisional list above).
 - Earn via **mission rewards + selling resources**.
-- **Inter-station trading in MVP**; **fixed prices for MVP, dynamic later**.
+- **Inter-station trading in MVP**; **dynamic pricing since UC46** ([ADR 0034](../adr/0034-dynamic-station-pricing.md)).
 - Sinks: **upgrades, repairs, refueling, crew, cargo, buying ships**.
 - **Own & switch multiple ships** (while docked).
 - **Fuel = Hydrogen** (minable or buyable); **soft constraint** (low fuel → lower max

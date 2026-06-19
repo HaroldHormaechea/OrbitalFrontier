@@ -18,9 +18,12 @@ import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
+import com.orbitalfrontier.economy.MarketPricing
 import com.orbitalfrontier.economy.MiningParams
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.RefuelAction
 import com.orbitalfrontier.economy.Refueling
+import com.orbitalfrontier.economy.StationMarket
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.economy.Trading
 import com.orbitalfrontier.faction.ReputationGate
@@ -105,6 +108,7 @@ class Simulation(
     private val combatParams: CombatParams = CombatParams(),
     private val reputationParams: ReputationParams = ReputationParams(),
     private val bountyParams: BountyParams = BountyParams(),
+    private val pricingParams: PricingParams = PricingParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -192,6 +196,12 @@ class Simulation(
         // returns fuel + cargo unchanged, so pre-UC07 fixtures thread the same values through.
         val refuel = Refueling.resolve(state.fuel, state.cargo, refuelAction, fuelParams)
 
+        // UC46: decay the dynamic market pressure at tick start (mean-reversion recovery). A strict
+        // same-instance no-op while no price has moved (empty map) OR off the decay cadence, so pre-UC46
+        // fixtures thread the SAME EMPTY instance through and step byte-identically. The decayed pressure
+        // feeds BOTH the docked effective-market computation and the in-flight pass-through below.
+        val decayedMarket = state.marketState.decayed(state.tick, pricingParams)
+
         // Docked and not explicitly undocking ⇒ frozen: short-circuit movement AND gate traversal.
         // Only the tick advances (plus any refuel just resolved); position, velocity, heading, sector,
         // dock state and field depletion are untouched, so a held-while-docked stretch is bit-for-bit
@@ -203,7 +213,35 @@ class Simulation(
             // Trading.resolve no-ops. TradeOrder.None (the default) is a no-op too — credits + cargo
             // thread through unchanged, so a held-while-docked stretch stays bit-for-bit stable.
             val station = world.sector(state.currentSector).station(state.dockedStation)
-            val trade = Trading.resolve(state.credits, refuel.cargo, station?.market, tradeOrder)
+            // UC46: compute the EFFECTIVE market ONCE — the authored base repriced by the live
+            // supply/demand pressure (decayedMarket), the seeded drift (state.tick) and the station's
+            // faction standing — and use that single value for Trading.resolve (the device's
+            // PlayScreen.trade does the same, so live + replayed prices match, project rule #1). At
+            // pressure 0 / tick 0 / neutral standing every multiplier is exactly 1.0 ⇒ effective == base,
+            // so uc08's tick-0 Titanium sell still yields 800 credits (the byte-identity anchor).
+            val effectiveMarket =
+                MarketPricing.effectiveMarket(
+                    base = station?.market ?: StationMarket.EMPTY,
+                    stationId = state.dockedStation,
+                    state = decayedMarket,
+                    tick = state.tick,
+                    params = pricingParams,
+                    factionId = station?.factionId,
+                    reputation = state.reputation,
+                )
+            val trade = Trading.resolve(state.credits, refuel.cargo, effectiveMarket, tradeOrder)
+            // UC46: fold this trade's clamped fill into the market pressure (SELL pushes price down, BUY
+            // up). A no-op fill (TradeOrder.None / nothing moved) returns the SAME decayedMarket instance,
+            // so a held-while-docked stretch stays byte-identical.
+            val marketAfter =
+                trade.kind?.let { kind ->
+                    val resource = (tradeOrder as? TradeOrder.Buy)?.resource ?: (tradeOrder as? TradeOrder.Sell)?.resource
+                    if (resource != null) {
+                        decayedMarket.withTrade(state.dockedStation, resource, kind, trade.tradedUnits)
+                    } else {
+                        decayedMarket
+                    }
+                } ?: decayedMarket
 
             // UC09 composition while docked: refuel -> trade -> outfit -> fleet. Outfitting resolves
             // against the active ship's loadout + slot layout and the docked station's outfit desk;
@@ -345,6 +383,9 @@ class Simulation(
                 // path (encounter zones sit in open space, away from stations), so combat threads through
                 // unchanged here.
                 lastDockedStation = state.dockedStation,
+                // UC46: the market pressure after this tick's decay + trade fold (the SAME EMPTY instance on
+                // a no-trade docked tick, so a held-while-docked stretch is byte-identical).
+                marketState = marketAfter,
             )
         }
 
@@ -668,6 +709,9 @@ class Simulation(
                         salvage = salvage,
                         nextSalvageId = nextSalvageId,
                         lastDockedStation = lastDockedStation,
+                        // UC46: in flight there is no trade, so the market only decays — thread the decayed
+                        // pressure through (the SAME EMPTY instance on a pre-UC46 / never-traded run).
+                        marketState = decayedMarket,
                     )
                 }
 
@@ -702,6 +746,9 @@ class Simulation(
             salvage = salvage,
             nextSalvageId = nextSalvageId,
             lastDockedStation = lastDockedStation,
+            // UC46: in flight there is no trade, so the market only decays — thread the decayed pressure
+            // through (the SAME EMPTY instance on a pre-UC46 / never-traded run, so it stays byte-identical).
+            marketState = decayedMarket,
         )
     }
 

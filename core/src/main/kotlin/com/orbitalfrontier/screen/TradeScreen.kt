@@ -49,7 +49,11 @@ import com.orbitalfrontier.screen.controls.PurchaseConfirmDialog
 class TradeScreen(
     private val logger: Logger,
     stationName: String,
-    private val market: StationMarket,
+    // UC46: a SUPPLIER of the effective (dynamic) market rather than a fixed snapshot — the docked
+    // station's living buy/sell prices, re-read after every trade so the player sees the price move as
+    // their supply/demand pressure shifts. The offered RESOURCE SET is fixed (pricing only scales prices,
+    // never adds/removes offers), so the row layout is built once from the first read; only the prices update.
+    private val marketSupplier: () -> StationMarket,
     private val creditsSupplier: () -> Long,
     private val cargoSupplier: () -> Cargo,
     private val onTrade: (TradeOrder) -> Unit,
@@ -71,8 +75,13 @@ class TradeScreen(
     // Per-resource "held: N" readouts, refreshed alongside the balance after each trade.
     private val heldLabels = LinkedHashMap<ResourceType, Label>()
 
+    // UC46: per-resource price readouts, refreshed after each trade so a moved price shows immediately.
+    private val priceLabels = LinkedHashMap<ResourceType, Label>()
+
     init {
         skin.installTapSound(stage) // UC31: UI-tap cue on button taps (AC#1)
+        // UC46: snapshot the market once to lay out the (fixed) offered-resource rows; prices update live.
+        val market = marketSupplier()
         val root = Table()
         root.setFillParent(true)
         root.pad(MARGIN)
@@ -93,14 +102,16 @@ class TradeScreen(
         } else {
             for (resource in offered) {
                 val offer = market.offerFor(resource) ?: continue
-                val priceLabel =
-                    Label("${resource.displayName}  buy ${offer.buyPrice}  sell ${offer.sellPrice}", skin.labelStyle)
+                val priceLabel = Label(priceText(resource), skin.labelStyle)
+                priceLabels[resource] = priceLabel
                 val heldLabel = Label(heldText(resource), skin.labelStyle)
                 heldLabels[resource] = heldLabel
 
                 val buyButton = TextButton("BUY", skin.settingsButtonStyle)
                 buyButton.addListener(
-                    buyListener(resource.displayName, offer.buyPrice * UNITS_PER_TAP) {
+                    // UC46: the confirm-dialog cost is computed from the LIVE price at tap time (not this
+                    // build-time snapshot), so the confirmed amount always matches the price now on screen.
+                    buyListener(resource.displayName, { currentBuyCost(resource) }) {
                         TradeOrder.Buy(resource, UNITS_PER_TAP)
                     },
                 )
@@ -144,10 +155,14 @@ class TradeScreen(
             }
         }
 
-    /** A click listener that routes a buy of [item] costing [cost] credits through [attemptPurchase]. */
+    /**
+     * A click listener that routes a buy of [item] through [attemptPurchase]. [cost] is a supplier
+     * evaluated at tap time (UC46) so the confirm-dialog amount reflects the LIVE price, not a stale
+     * build-time snapshot.
+     */
     private fun buyListener(
         item: String,
-        cost: Long,
+        cost: () -> Long,
         order: () -> TradeOrder,
     ): ClickListener =
         object : ClickListener() {
@@ -156,7 +171,7 @@ class TradeScreen(
                 x: Float,
                 y: Float,
             ) {
-                attemptPurchase(item, cost) { onTrade(order()) }
+                attemptPurchase(item, cost()) { onTrade(order()) }
             }
         }
 
@@ -190,17 +205,37 @@ class TradeScreen(
         }
     }
 
-    /** Re-read the balance + per-resource held counts after a trade and update the labels in place. */
+    /**
+     * Re-read the balance, per-resource held counts AND the live prices after a trade and update the
+     * labels in place. UC46: the price labels track the effective (dynamic) market, so the player sees a
+     * buy/sell move the price as their supply/demand pressure shifts.
+     */
     private fun refresh() {
         balanceLabel.setText(balanceText())
         for ((resource, label) in heldLabels) {
             label.setText(heldText(resource))
+        }
+        for ((resource, label) in priceLabels) {
+            label.setText(priceText(resource))
         }
     }
 
     private fun balanceText(): String = "CREDITS: ${creditsSupplier()}"
 
     private fun heldText(resource: ResourceType): String = "held: ${cargoSupplier().contents[resource] ?: 0}"
+
+    /** The current buy/sell readout for [resource] from the effective (dynamic) market (UC46). */
+    private fun priceText(resource: ResourceType): String {
+        val offer = marketSupplier().offerFor(resource)
+        return if (offer != null) {
+            "${resource.displayName}  buy ${offer.buyPrice}  sell ${offer.sellPrice}"
+        } else {
+            "${resource.displayName}  —"
+        }
+    }
+
+    /** The live cost of one BUY tap of [resource] from the effective market (UC46), 0 if unavailable. */
+    private fun currentBuyCost(resource: ResourceType): Long = (marketSupplier().offerFor(resource)?.buyPrice ?: 0L) * UNITS_PER_TAP
 
     override fun show() {
         Gdx.input.inputProcessor = stage

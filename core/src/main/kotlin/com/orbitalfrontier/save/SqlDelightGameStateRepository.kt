@@ -7,6 +7,7 @@ import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
+import com.orbitalfrontier.economy.StationMarketState
 import com.orbitalfrontier.faction.FactionId
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
@@ -162,6 +163,10 @@ class SqlDelightGameStateRepository(
                 // Owned stations (UC15): the player-built stations + their modules; an unknown module
                 // slug is skipped (WARN). Empty for a fresh / migrated pre-UC15 save (ADR 0014).
                 stations = loadStations(slotId),
+                // Station-market pressure (UC46): the dynamic per-station supply/demand state; an unknown
+                // resource slug is skipped (WARN), a zero pressure dropped. Empty for a fresh / migrated
+                // pre-UC46 save (no station_market rows), so every station reads back at its authored base.
+                marketState = loadStationMarketState(slotId),
                 // Play time (UC38): the accumulated wall-of-play seconds shown per slot; coerced >= 0.
                 playTimeSeconds = header.play_time_seconds.coerceAtLeast(0),
             )
@@ -323,6 +328,25 @@ class SqlDelightGameStateRepository(
                     }
                 }
 
+                // Station-market pressure (UC46): full-snapshot rewrite of the non-zero per-(station,
+                // resource) pressure for this slot (delete-then-plain-INSERT, minSdk-24-safe), exactly like
+                // the reputation table. Only non-zero pressure is stored — a (station, resource) at base
+                // (pressure 0) is simply absent — so a never-traded save writes no rows and reads back at
+                // base prices (byte-identical to pre-UC46).
+                queries.deleteAllStationMarketForSlot(slotId)
+                for ((stationId, pressures) in state.marketState.pressureByStation) {
+                    for ((resource, pressure) in pressures) {
+                        if (pressure != 0) {
+                            queries.insertStationMarketEntry(
+                                slot_id = slotId,
+                                station_id = stationId.value,
+                                resource = resource.name,
+                                pressure = pressure.toLong(),
+                            )
+                        }
+                    }
+                }
+
                 // Owned stations (UC15): one upserted owned_station row per station + a full-snapshot
                 // rewrite of its station_module rows (delete-then-INSERT, minSdk-24-safe), exactly like a
                 // ship's upgrades. A station's module slot map is gap-tolerant, so only the filled
@@ -444,6 +468,7 @@ class SqlDelightGameStateRepository(
                 queries.deleteAllRevealedContactsForSlot(slotId)
                 queries.deleteAllMissionsForSlot(slotId)
                 queries.deleteAllReputationForSlot(slotId)
+                queries.deleteAllStationMarketForSlot(slotId)
                 queries.deleteAllOwnedStationsForSlot(slotId)
                 queries.deleteAllStationModulesForSlot(slotId)
             }
@@ -618,6 +643,24 @@ class SqlDelightGameStateRepository(
             if (value != 0) standings[faction] = value
         }
         return Reputation(standings)
+    }
+
+    /**
+     * Reconstruct a slot's dynamic station-market pressure from the `station_market` table (UC46). Each
+     * row is a net signed pressure for one (station, resource); a row whose resource slug no longer
+     * resolves is **skipped with a WARN** ([parseResource]), and a zero pressure is dropped (canonical:
+     * only non-zero pressure is meaningful). Empty for a fresh / migrated pre-UC46 save (no rows) → every
+     * station reads back at its authored base price.
+     */
+    private fun loadStationMarketState(slotId: Long): StationMarketState {
+        val byStation = LinkedHashMap<PoiId, LinkedHashMap<ResourceType, Int>>()
+        for (row in queries.selectStationMarketForSlot(slotId).executeAsList()) {
+            val resource = parseResource(row.resource) ?: continue
+            val pressure = row.pressure.toInt()
+            if (pressure == 0) continue
+            byStation.getOrPut(PoiId(row.station_id)) { LinkedHashMap() }[resource] = pressure
+        }
+        return if (byStation.isEmpty()) StationMarketState.EMPTY else StationMarketState(byStation)
     }
 
     /**
