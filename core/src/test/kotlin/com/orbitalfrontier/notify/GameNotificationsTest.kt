@@ -198,6 +198,22 @@ class GameNotificationsTest {
         assertEquals(NotificationKind.REPUTATION_CHANGED, GameNotifications.reputationChanged("INDEPENDENTS", -5).coalesceKey)
     }
 
+    // --- UC50 AC#2: the unpaid-wages builder surfaces a WARNING/coalescable upkeep-shortfall toast ------
+
+    @Test
+    fun `unpaidWages is a WARNING toast carrying a clear non-empty message`() {
+        val n = GameNotifications.unpaidWages()
+        assertEquals("an unpaid wage period is the UNPAID-WAGES cue", NotificationKind.UNPAID_WAGES, n.kind)
+        assertEquals("it is styled at the WARNING tier", NotificationSeverity.WARNING, n.severity)
+        assertTrue("the message is a clear, non-empty styled line", n.message.isNotBlank())
+    }
+
+    @Test
+    fun `unpaidWages coalesces on its kind`() {
+        // The new kind is coalescable, so a run of broke wage periods collapses into one live toast.
+        assertEquals(NotificationKind.UNPAID_WAGES, GameNotifications.unpaidWages().coalesceKey)
+    }
+
     // --- AC#1/AC#2: severity classification lives with the model, per kind ------------------------------
 
     @Test
@@ -211,6 +227,9 @@ class GameNotificationsTest {
                 // UC43: a faction-standing change (e.g. souring a faction by destroying its ship) is a
                 // WARNING cue — the renderer colours by *severity*, so no renderer change was needed.
                 NotificationKind.REPUTATION_CHANGED,
+                // UC50 AC#2: an unpaid crew wage period (the wallet went short, balance clamped at 0) is a
+                // WARNING cue — the same severity-coloured renderer, no renderer change needed.
+                NotificationKind.UNPAID_WAGES,
             )
         // UC40 AC#3: a refused/failed economy action is a step beyond WARNING — the ERROR tier — so an
         // unaffordable buy or an otherwise-invalid action reads as a distinct refusal, not a routine caution.
@@ -253,6 +272,9 @@ class GameNotificationsTest {
                 // UC43: several faction kills in quick succession collapse into one standing toast rather
                 // than flooding the feed, so the new kind is coalescable too.
                 NotificationKind.REPUTATION_CHANGED,
+                // UC50 AC#2: repeated unpaid-wage periods (a chronically broke player) collapse into one
+                // toast rather than flooding the feed every wage tick, so the new kind is coalescable too.
+                NotificationKind.UNPAID_WAGES,
             )
         for (kind in NotificationKind.entries) {
             assertEquals("$kind coalescable flag", kind in coalescable, kind.coalescable)

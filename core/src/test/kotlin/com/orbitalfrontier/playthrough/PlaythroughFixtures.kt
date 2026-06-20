@@ -4,6 +4,7 @@ import com.orbitalfrontier.combat.CombatParams
 import com.orbitalfrontier.combat.FireAction
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.WageParams
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -183,6 +184,9 @@ object PlaythroughFixtures {
      */
     const val UC49_POWER_BROWNOUT: String = "uc49-power-brownout"
 
+    /** The UC50 crew-wage fixture name — a docked, crewed ship draining upkeep at a non-zero wage rate. */
+    const val UC50_WAGES: String = "uc50-wages"
+
     /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
@@ -270,6 +274,7 @@ object PlaythroughFixtures {
             UC46_DYNAMIC_PRICING to ::uc46DynamicPricing,
             UC47_BUY_USED to ::uc47BuyUsedPart,
             UC49_POWER_BROWNOUT to ::uc49PowerBrownout,
+            UC50_WAGES to ::uc50Wages,
         )
 
     /**
@@ -1079,6 +1084,61 @@ object PlaythroughFixtures {
             recorder.recordScanAction(tick, ScanAction.SCAN)
         }
         return recorder.build()
+    }
+
+    /** Starting credit balance the UC50 wage fixture seeds — covers two full wage periods with a known remainder. */
+    const val UC50_STARTING_CREDITS: Long = 500L
+
+    /** Crew aboard the UC50 wage fixture's ship (the starter's full capacity) — the wage drain's base count. */
+    const val UC50_CREW: Int = 2
+
+    /**
+     * Crew-wage tuning **pinned for the UC50 wage fixture only** — a non-zero per-crew rate over a short
+     * 2-tick period so a compact held-docked run actually fires the drain (the production default rate is 0,
+     * a no-op that keeps every other fixture byte-identical). Owed per period = 50 × [UC50_CREW] = 100.
+     * Pinning per artifact (the UC02 config-pin rationale) means a later wage retune can't silently
+     * invalidate this replay — [Uc50WagesReplayTest] asserts the exact drained credits it reproduces.
+     */
+    val UC50_WAGE_PARAMS: WageParams = WageParams(creditsPerCrewPerPeriod = 50L, periodTicks = 2)
+
+    /**
+     * UC50 crew-wage scenario (AC#2): the ship starts **docked at Alpha Station** (a held, frozen dock so the
+     * run isolates the wage drain — no movement, no fuel burn, no trade) with the starter ship crewed to its
+     * full [UC50_CREW] and a [UC50_STARTING_CREDITS] wallet, replayed under a non-zero [UC50_WAGE_PARAMS].
+     *
+     * The drain keys on the integer tick (`tick % periodTicks == 0`, never tick 0 — the same cadence the
+     * device's PlayScreen mirrors, challenger #2), so over the 5-tick run it fires at tick 2 and tick 4: each
+     * period drains 50 × 2 = 100 credits, leaving 500 → 400 → 300. The non-wage ticks (1, 3) thread credits
+     * through untouched, proving the cadence. Because the wage config is pinned in the artifact and the crew
+     * COUNT (not the identity roster, which never enters the simulation snapshot) is what the drain reads,
+     * [Uc50WagesReplayTest] asserts the exact credit parity across record→replay.
+     *
+     * The wage tuning is set on the built [Playthrough] (the recorder predates the wage config, like the
+     * pricing/used-part configs); a default (rate-0) run would omit it entirely, so adding this fixture leaves
+     * every pre-UC50 artifact byte-identical.
+     */
+    fun uc50Wages(): Playthrough {
+        val crewedFleet = singleShipFleet().let { f -> f.withActive(f.active.withCrew(UC50_CREW)) }
+        val recorder =
+            PlaythroughRecorder(
+                name = UC50_WAGES,
+                seed = 50L,
+                dtSeconds = DT_SECONDS,
+                initialState =
+                    SimulationState(
+                        // Docked at Alpha Station (default start sector), a single starter ship crewed to 2,
+                        // and a wallet that covers two wage periods with a known non-zero remainder.
+                        fleet = crewedFleet,
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC50_STARTING_CREDITS,
+                    ),
+            )
+        // No input events: a held-docked run. Span 5 ticks (0..4) so the 2-tick wage cadence fires twice
+        // (at ticks 2 and 4); the trailing odd ticks (1, 3) prove a non-wage tick leaves credits untouched.
+        recorder.extendToTick(4)
+        // The recorder has no wage-config knob (it predates UC50, like pricing/used-part); pin the tuning on
+        // the built artifact so the replay reproduces the drain. A default (rate-0) config would be omitted.
+        return recorder.build().copy(wageConfig = WageParamsDto.from(UC50_WAGE_PARAMS))
     }
 
     /** The canonical bounty offer id Alpha Station posts (UC41) — `"bounty:<targetZoneId>"`. */

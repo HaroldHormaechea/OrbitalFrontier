@@ -8,6 +8,12 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.CrewAssignment
+import com.orbitalfrontier.crew.CrewId
+import com.orbitalfrontier.crew.CrewMember
+import com.orbitalfrontier.crew.CrewOrder
+import com.orbitalfrontier.crew.CrewRole
+import com.orbitalfrontier.crew.CrewRoster
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -324,10 +330,21 @@ class SqlDelightGameStateRepositoryTest {
 
         val reloaded = newRepository().loadGameState()
 
-        // EXACT equality covers each ship's crew count alongside its kinematics/type/cargo/fuel/loadout.
-        assertEquals(state, reloaded)
+        // UC50: this state carries an EMPTY crew roster (count-only), so on load the repository reconciles it
+        // up to the per-ship counts — synthesizing 2 + 1 = 3 generic members. The reload GAINS those
+        // identities (intended for migrated/count-only saves), so the expectation is reconciled to match.
+        // EXACT equality then covers each ship's crew count alongside its kinematics/type/cargo/fuel/loadout.
+        val expected = state.copy(crewRoster = state.crewRoster.reconciledToCounts(state.fleet))
+        assertEquals(expected, reloaded)
         assertEquals("ship0's full crew survives", 2, reloaded!!.fleet.ship(ShipId(0))!!.crew)
         assertEquals("ship1's partial crew survives", 1, reloaded.fleet.ship(ShipId(1))!!.crew)
+        assertEquals(
+            "the migrated counts synthesize 3 identities (2 on ship0, 1 on ship1)",
+            3,
+            reloaded.crewRoster.members.size,
+        )
+        assertEquals("ship0 gets 2 synthesized members", 2, reloaded.crewRoster.forShip(ShipId(0)).size)
+        assertEquals("ship1 gets 1 synthesized member", 1, reloaded.crewRoster.forShip(ShipId(1)).size)
     }
 
     @Test
@@ -340,6 +357,85 @@ class SqlDelightGameStateRepositoryTest {
 
         assertEquals(state, reloaded)
         assertEquals("an uncrewed ship reloads with zero crew", 0, reloaded!!.fleet.active.crew)
+    }
+
+    // --- UC50 AC#1/AC#4: crew IDENTITIES (name + role) round-trip via the crew_member table ---
+
+    @Test
+    fun `a crew roster of named, roled members round-trips exactly through the crew_member table`() {
+        // Ship 0 (starter, cap 2) crewed to 2; ship 1 (Swift, cap 2) crewed to 1 — counts that exactly
+        // match the roster below, so the load-time reconcile is a no-op and the REAL names/roles survive.
+        val ship0 = OwnedShip.fresh(ShipId(0), ShipRoster.STARTER, Vec2(1f, 2f)).withCrew(2)
+        val ship1 = OwnedShip.fresh(ShipId(1), ShipRoster.SWIFT, Vec2(3f, 4f)).withCrew(1)
+        val roster =
+            CrewRoster(
+                listOf(
+                    CrewMember(CrewId(0), "Ada", CrewRole.PILOT, ShipId(0)),
+                    CrewMember(CrewId(1), "Ben", CrewRole.GUNNER, ShipId(0)),
+                    CrewMember(CrewId(2), "Cy", CrewRole.ENGINEER, ShipId(1)),
+                ),
+            )
+        // Precondition: the roster already satisfies the per-ship-count invariant, so it survives verbatim.
+        assertEquals("precondition: roster matches ship0 count", 2, roster.forShip(ShipId(0)).size)
+        assertEquals("precondition: roster matches ship1 count", 1, roster.forShip(ShipId(1)).size)
+
+        val state =
+            WorldState(
+                currentSector = SectorId("beta"),
+                fleet = Fleet(listOf(ship0, ship1), ShipId(0)),
+                credits = 100L,
+                crewRoster = roster,
+            )
+        newRepository().saveGameState(state)
+        val reloaded = newRepository().loadGameState()
+
+        // EXACT equality — the named, roled identities survive the round-trip (no synthesis, no reconcile).
+        assertEquals(state, reloaded)
+        assertEquals("the full roster survives verbatim", roster, reloaded!!.crewRoster)
+        assertEquals(
+            "Ada keeps her PILOT role on ship0",
+            CrewRole.PILOT,
+            reloaded.crewRoster.member(CrewId(0))!!.role,
+        )
+        assertEquals("Cy keeps his name across the round-trip", "Cy", reloaded.crewRoster.member(CrewId(2))!!.name)
+    }
+
+    @Test
+    fun `a crew reassignment persists across save and reload`() {
+        // Ship 0 (starter, cap 2) crewed to 2; ship 1 (Swift, cap 2) crewed to 1 (one free berth).
+        val ship0 = OwnedShip.fresh(ShipId(0), ShipRoster.STARTER, Vec2(1f, 2f)).withCrew(2)
+        val ship1 = OwnedShip.fresh(ShipId(1), ShipRoster.SWIFT, Vec2(3f, 4f)).withCrew(1)
+        val roster =
+            CrewRoster(
+                listOf(
+                    CrewMember(CrewId(0), "Ada", CrewRole.PILOT, ShipId(0)),
+                    CrewMember(CrewId(1), "Ben", CrewRole.GUNNER, ShipId(0)),
+                    CrewMember(CrewId(2), "Cy", CrewRole.ENGINEER, ShipId(1)),
+                ),
+            )
+        val fleet = Fleet(listOf(ship0, ship1), ShipId(0))
+
+        // Move Ben (id 1) from ship0 to ship1 via the pure resolver — count + identity move together.
+        val result = CrewAssignment.resolve(fleet, roster, CrewOrder.Reassign(CrewId(1), ShipId(1)))
+        assertTrue("precondition: the reassignment is applied", result.changed)
+        assertEquals("ship0 drops to 1 crew", 1, result.fleet.ship(ShipId(0))!!.crew)
+        assertEquals("ship1 rises to 2 crew", 2, result.fleet.ship(ShipId(1))!!.crew)
+
+        val state =
+            WorldState(
+                currentSector = SectorId("beta"),
+                fleet = result.fleet,
+                credits = 100L,
+                crewRoster = result.roster,
+            )
+        newRepository().saveGameState(state)
+        val reloaded = newRepository().loadGameState()
+
+        // EXACT equality — the post-reassignment counts AND the moved identity survive the round-trip.
+        assertEquals(state, reloaded)
+        assertEquals("Ben is now assigned to ship1", ShipId(1), reloaded!!.crewRoster.member(CrewId(1))!!.assignedShipId)
+        assertEquals("Ben keeps his GUNNER role through the move", CrewRole.GUNNER, reloaded.crewRoster.member(CrewId(1))!!.role)
+        assertEquals("ship1 now carries 2 roster members", 2, reloaded.crewRoster.forShip(ShipId(1)).size)
     }
 
     // --- UC15 AC#1/#3/#4: owned stations + their modules persist and round-trip (additive) ---

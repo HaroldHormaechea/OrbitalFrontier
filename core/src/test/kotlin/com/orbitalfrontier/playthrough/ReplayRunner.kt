@@ -72,6 +72,9 @@ class ReplayRunner {
                 bountyParams = playthrough.bountyConfig.toBountyParams(),
                 pricingParams = playthrough.pricingConfig.toPricingParams(),
                 usedPartParams = playthrough.usedPartConfig.toUsedPartParams(),
+                // UC50: pin the crew-wage tuning the artifact was recorded under so the replayed drain
+                // reproduces exactly. Default (rate 0) ⇒ a no-op, so every pre-UC50 fixture is unchanged.
+                wageParams = playthrough.wageConfig.toWageParams(),
             )
 
         var state = playthrough.initialState?.toSimulationState() ?: SimulationState()

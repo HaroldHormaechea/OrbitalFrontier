@@ -79,8 +79,13 @@ class Uc13CombatSaveReloadReplayTest {
         val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
         assertNotNull("the combat-damaged save must reload", reloaded)
+        // UC50: the saved world carries an EMPTY crew roster (count-only shape), so on load the repository
+        // reconciles it up to the ship counts — the UC13 fixture flies with one crew aboard, so the reload
+        // GAINS one synthesized identity (intended for migrated/count-only saves). Reconcile the expectation
+        // to match the round-trip; the crew COUNT and the combat state are untouched.
+        val expected = replayedWorld.copy(crewRoster = replayedWorld.crewRoster.reconciledToCounts(replayedWorld.fleet))
         // EXACT equality — section damage + lastDockedStation survive alongside the fleet + sector (AC#5).
-        assertEquals(replayedWorld, reloaded)
+        assertEquals(expected, reloaded)
         assertEquals(
             "the per-section damage survives the round-trip",
             finalState.fleet.active.sectionDamage,

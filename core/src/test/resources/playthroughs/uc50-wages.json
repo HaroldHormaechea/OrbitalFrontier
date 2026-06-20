@@ -1,0 +1,105 @@
+{
+  "formatVersion": 1,
+  "name": "uc50-wages",
+  "seed": 50,
+  "dtSeconds": 0.016666668,
+  "tickCount": 5,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.013888889,
+    "thrustDraw": 0.041666668
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "missionConfig": {
+    "boardMiningQuotaMin": 8,
+    "boardMiningQuotaMax": 20,
+    "radioMiningQuotaMin": 6,
+    "radioMiningQuotaMax": 14,
+    "miningRewardBase": 200,
+    "miningRewardPerUnit": 25,
+    "courierRewardBase": 400,
+    "courierRewardSpan": 400,
+    "courierTickLimitMin": 60,
+    "courierTickLimitMax": 240,
+    "courierFailurePenalty": 150,
+    "radioRange": 700.0
+  },
+  "combatConfig": {
+    "hitRadius": 28.0,
+    "sectionHitWeights": {
+      "HULL": 5,
+      "ENGINE": 2,
+      "TURRET": 2,
+      "WEAPON": 2
+    },
+    "minEngineSpeedFactor": 0.35,
+    "respawnCargoLossFraction": 0.25,
+    "muzzleOffset": 24.0,
+    "spawnDistance": 360.0
+  },
+  "wageConfig": {
+    "creditsPerCrewPerPeriod": 50,
+    "periodTicks": 2
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 0.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": 0.0,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": "alpha-station",
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 500,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 0.0,
+        "posY": 0.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": 0.0,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {},
+        "crew": 2,
+        "sectionDamage": {}
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": [],
+    "missions": {
+      "available": [],
+      "accepted": []
+    },
+    "lastDockedStation": null
+  },
+  "inputEvents": []
+}

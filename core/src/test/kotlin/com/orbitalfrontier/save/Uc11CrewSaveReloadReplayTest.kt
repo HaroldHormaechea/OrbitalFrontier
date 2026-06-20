@@ -67,8 +67,20 @@ class Uc11CrewSaveReloadReplayTest {
         // Fresh repository over the same DB == app restart; the reload goes back through SQL.
         val reloaded = SqlDelightGameStateRepository(database, NoOpLogger, com.orbitalfrontier.platform.FixedClock).loadGameState()
 
-        // EXACT equality — the crew count survives the round-trip alongside the fleet + sector (AC#4).
-        assertEquals(replayedWorld, reloaded)
+        // UC50: this saved world carries an EMPTY crew roster (the count-only pre-UC50 shape), so on load the
+        // repository reconciles it up to the ship counts — synthesizing one generic member for the lone crew.
+        // The reload therefore GAINS a crew identity (intended: migrated/count-only saves get synthesized
+        // members), so the expectation must be reconciled to match the round-trip. The crew COUNT is untouched.
+        val expected = replayedWorld.copy(crewRoster = replayedWorld.crewRoster.reconciledToCounts(replayedWorld.fleet))
+
+        // EXACT equality — the crew count survives the round-trip alongside the fleet + sector (AC#4), and the
+        // reloaded roster is the reconciled (synthesized) one.
+        assertEquals(expected, reloaded)
         assertEquals("the hired crew survives the round-trip", 1, reloaded!!.fleet.active.crew)
+        assertEquals(
+            "the reloaded roster synthesizes one identity for the single crew member",
+            1,
+            reloaded.crewRoster.forShip(reloaded.fleet.activeShipId).size,
+        )
     }
 }

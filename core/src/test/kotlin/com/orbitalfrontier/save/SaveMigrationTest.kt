@@ -2526,15 +2526,11 @@ class SaveMigrationTest {
             ).value
         assertEquals("the pre-UC47 station_market pressure survives the migration", 6L, pressure)
 
-        // The stored save-format version is bumped to exactly 21 by this single v20 -> v21 step, and 21 is
-        // the current generated schema version (UC47 is the latest migration in the chain — this step sits
-        // at the TOP of the chain, so it may own the moving "== Schema.version" cross-check alongside 21L).
+        // The stored save-format version is bumped to exactly 21 by this single v20 -> v21 step. UC50's
+        // v21 -> v22 is now the TOP of the chain, so this step deliberately lands BELOW Schema.version (22);
+        // asserting 21L literally keeps this a step test rather than a moving "== Schema.version" target
+        // that breaks on every future bump (the v21 -> v22 step test owns the top-of-chain cross-check now).
         assertEquals(21L, queries.selectSaveVersion().executeAsOne())
-        assertEquals(
-            "the v20 -> v21 step lands on the current generated schema version",
-            OrbitalFrontier.Schema.version,
-            queries.selectSaveVersion().executeAsOne(),
-        )
 
         // The new table is writable, not just present: a purchased row inserts + reads back through SQL.
         driver.execute(
@@ -2556,5 +2552,110 @@ class SaveMigrationTest {
                 binders = null,
             ).value
         assertEquals("a junkyard_stock purchased row round-trips on the migrated DB", 2L, purchased)
+    }
+
+    // --- UC50 AC#4: v21 -> v22 adds the crew_member table additively (no breaking change) ---
+
+    /**
+     * Build a minimal but **data-bearing** v21-shaped DB for the v21 -> v22 step: the `meta` row at
+     * save_version 21 (which 21.sqm bumps), plus a `junkyard_stock` table (added at v21) carrying a real
+     * purchased row that stands in for "prior data that must survive". The v21 -> v22 migration (21.sqm) is
+     * a purely additive `CREATE TABLE crew_member` + a `meta` version bump — it references no other table —
+     * so this minimal shape exercises the step honestly while staying independent of the unrelated
+     * mission/settings-column chains the other step tests build.
+     */
+    private fun buildRealV21MetaWithJunkyardStock() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE junkyard_stock (slot_id INTEGER NOT NULL, station_id TEXT NOT NULL, upgrade_id TEXT NOT NULL, " +
+                "purchased INTEGER NOT NULL, PRIMARY KEY (slot_id, station_id, upgrade_id))",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 21)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO junkyard_stock(slot_id, station_id, upgrade_id, purchased) VALUES (0, 'gamma-junkyard', 'engine-tune-i', 2)",
+            0,
+        )
+    }
+
+    @Test
+    fun `migrating a real v21 database to v22 adds the crew_member table, preserves prior data, and bumps the version`() {
+        buildRealV21MetaWithJunkyardStock()
+
+        // Apply the sequential v21 -> v22 migration (runs migrations/21.sqm — purely additive CREATE TABLE).
+        OrbitalFrontier.Schema.migrate(driver, 21L, 22L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new (empty) crew_member table exists — a migrated save holds no crew identities, so on load the
+        // repository SYNTHESIZES generic members up to each ship's persisted crew count (the reconcile path),
+        // byte-identical in behaviour to a pre-UC50 game (AC#4; additive, NO backfill SQL in the migration).
+        assertTrue("crew_member table must exist after migration", tableExists("crew_member"))
+        assertEquals(
+            "a migrated v21 save has no crew_member rows",
+            0L,
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM crew_member",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0) ?: 0L)
+                },
+                parameters = 0,
+                binders = null,
+            ).value,
+        )
+
+        // Data survival: the pre-UC50 junkyard_stock purchased row is untouched by the additive migration.
+        val purchased =
+            driver.executeQuery(
+                identifier = null,
+                sql =
+                    "SELECT purchased FROM junkyard_stock " +
+                        "WHERE slot_id = 0 AND station_id = 'gamma-junkyard' AND upgrade_id = 'engine-tune-i'",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("the pre-UC50 junkyard_stock purchased row survives the migration", 2L, purchased)
+
+        // The stored save-format version is bumped to exactly 22 by this single v21 -> v22 STEP, and 22 is
+        // the current generated schema version (UC50 is the latest migration in the chain — this step sits
+        // at the TOP of the chain, so it owns the moving "== Schema.version" cross-check alongside 22L).
+        assertEquals(22L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the v21 -> v22 step lands on the current generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new table is writable, not just present: a crew row inserts + reads back through SQL.
+        driver.execute(
+            null,
+            "INSERT INTO crew_member(slot_id, ship_id, crew_id, name, role) VALUES (0, 0, 0, 'Crewmember 0', 'DECKHAND')",
+            0,
+        )
+        val role =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT role FROM crew_member WHERE slot_id = 0 AND ship_id = 0 AND crew_id = 0",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getString(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a crew_member row round-trips on the migrated DB", "DECKHAND", role)
     }
 }
