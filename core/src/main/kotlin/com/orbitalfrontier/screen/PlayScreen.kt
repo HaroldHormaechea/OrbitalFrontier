@@ -98,6 +98,7 @@ import com.orbitalfrontier.power.BrownoutResult
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.power.PowerSystem
 import com.orbitalfrontier.render.AsteroidFieldRenderer
+import com.orbitalfrontier.render.AutosaveIndicatorState
 import com.orbitalfrontier.render.CombatFeedback
 import com.orbitalfrontier.render.CombatHudRenderer
 import com.orbitalfrontier.render.CombatHudState
@@ -122,6 +123,7 @@ import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.render.WorldObjectRenderer
 import com.orbitalfrontier.render.applyUiScale
+import com.orbitalfrontier.save.AutosaveActivitySignal
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
@@ -239,6 +241,11 @@ class PlayScreen(
     // is open surfaces on that desk (the queue is pure and only one screen renders at a time, preserving
     // single-render-thread ownership). Defaults to a fresh queue so headless/JVM tests need not wire it.
     private val notifications: NotificationQueue = NotificationQueue(),
+    // UC52 AC#2: the cross-thread autosave-activity signal, shared with the AutosaveController so the
+    // off-thread save writer can drive the on-screen "Saving"/"Saved" indicator. Polled once per frame on
+    // this (render) thread; never reads/writes world state. Defaults to a fresh signal so headless/JVM
+    // tests that don't show the indicator need not wire it.
+    private val autosaveSignal: AutosaveActivitySignal = AutosaveActivitySignal(),
 ) : ScreenAdapter() {
     private val worldCamera = OrthographicCamera()
     private val model = ShipMovementModel()
@@ -256,6 +263,11 @@ class PlayScreen(
     private val starfield = StarfieldRenderer()
     private val shipRenderer = ShipRenderer(gameAssets)
     private val hudRenderer = HudRenderer()
+
+    // UC52 AC#2: render-only autosave indicator state machine, fed each frame from [autosaveSignal] and
+    // drawn by [hudRenderer]. NOT part of the deterministic simulation (lives in the frame loop, off
+    // SimulationState), so replay fixtures stay byte-identical.
+    private val autosaveIndicator = AutosaveIndicatorState()
 
     // UC35: the transient notification feed. [notifications] is the pure, libGDX-free queue (event-driven,
     // JVM-testable — it holds/coalesces/auto-dismisses the toasts); [notificationRenderer] is its GL-bound
@@ -1202,6 +1214,14 @@ class PlayScreen(
         combatFeedback.update(combatEventsThisFrame, dt, MotionPreference.reduced)
         combatEventsThisFrame.clear()
 
+        // UC52 AC#2: poll the cross-thread autosave signal and drive the render-only indicator. Done every
+        // frame (independent of the pause gate) so a save that starts/finishes off-thread is reflected;
+        // [autosaveIndicator] is NOT simulation state, so this never affects determinism.
+        val autosaveActivity = autosaveSignal.poll()
+        if (autosaveActivity.started) autosaveIndicator.onSaveStarted()
+        if (autosaveActivity.finished) autosaveIndicator.onSaveFinished()
+        autosaveIndicator.update(dt)
+
         // Camera follows the ship so it stays centred on the unbounded map (AC#1/#7). UC44 PIN #2: the
         // camera-follow position is rebuilt from the ship EACH frame, then a tiny, capped screen-shake
         // offset is ADDED to that fresh position — never accumulated onto last frame's camera — so the
@@ -1285,6 +1305,9 @@ class PlayScreen(
             viewportWidth,
             viewportHeight,
         )
+        // UC52 AC#2: the subtle autosave indicator, bottom-right. Drawn before the scene2d stage / map +
+        // pause overlays (below) so those modals naturally cover it; a no-op while idle.
+        hudRenderer.renderAutosaveIndicator(autosaveIndicator, viewportWidth, viewportHeight)
         // The minimap renders every transponder POI (gates + stations, incl. UC51 owned-station
         // projections — a built outpost broadcasts a transponder, so it shows unconditionally on both the
         // minimap and the overlay, challenger #4) plus any revealed hidden contacts (UC10), keyed by

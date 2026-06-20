@@ -19,9 +19,15 @@ import com.orbitalfrontier.world.WorldState
  * @param saveUsable whether a usable save is present (a corrupt/partial save is treated as "no usable
  *   save" by the caller — see [fromLoadedState] — so Continue is disabled and Start needs no warnings,
  *   matching the UC21 corrupt-save pitfall).
+ * @param requireNewGameConfirm whether **Start** must pass the double confirmation before wiping. Defaults
+ *   to [saveUsable] (warn iff a usable save would be lost). UC52 sets it true *independently* when a save
+ *   is present on disk but could not be opened (a NEWER schema, or unreadable/corrupt): Continue stays
+ *   disabled ([saveUsable] false) yet New Game still double-confirms, so a newer save is never silently
+ *   clobbered — only an explicit, confirmed New Game discards it.
  */
 class MainMenuModel(
     val saveUsable: Boolean,
+    private val requireNewGameConfirm: Boolean = saveUsable,
 ) {
     /** Where the menu currently is: the menu itself, or one of the two Start confirmation steps. */
     enum class Phase { MENU, CONFIRM_FIRST, CONFIRM_SECOND }
@@ -41,8 +47,8 @@ class MainMenuModel(
      * otherwise enters the first of two warning confirmations (AC#3) and waits for [onConfirm].
      */
     fun onStart(): MenuAction =
-        if (!saveUsable) {
-            // No save to lose -> straight to a new game; the phase stays on the menu.
+        if (!requireNewGameConfirm) {
+            // Nothing that needs protecting -> straight to a new game; the phase stays on the menu.
             MenuAction.BEGIN_NEW_GAME
         } else {
             phase = Phase.CONFIRM_FIRST

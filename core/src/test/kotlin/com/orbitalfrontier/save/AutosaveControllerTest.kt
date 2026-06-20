@@ -4,6 +4,8 @@ import com.orbitalfrontier.platform.NoOpLogger
 import com.orbitalfrontier.platform.SaveExecutor
 import com.orbitalfrontier.world.WorldState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -144,6 +146,99 @@ class AutosaveControllerTest {
             listOf(SlotId.LEGACY, SlotId(2)),
             repo.savedSlots,
         )
+    }
+
+    // --- UC52 AC#2: the activity signal pulses markSaving at enqueue and markSaved after the write ---
+
+    @Test
+    fun `an enqueue pulses markSaving immediately, markSaved only after the write completes`() {
+        val repo = FakeGameStateRepository()
+        val executor = DeferredSaveExecutor()
+        val signal = AutosaveActivitySignal()
+        val controller =
+            AutosaveController(
+                repository = repo,
+                saveExecutor = executor,
+                logger = NoOpLogger,
+                snapshotSupplier = { WorldState() },
+                activitySignal = signal,
+                intervalSeconds = interval,
+            )
+
+        controller.onEvent("jump")
+
+        // At enqueue: "saving" has started but the deferred write has not run, so "saved" is not yet seen.
+        val atEnqueue = signal.poll()
+        assertEquals("markSaving must fire at enqueue (render thread)", true, atEnqueue.started)
+        assertEquals("markSaved must NOT fire before the write runs", false, atEnqueue.finished)
+
+        // Run the queued write (executor thread): now the save has completed.
+        executor.runNext()
+        val afterWrite = signal.poll()
+        assertEquals("markSaved must fire after the write completes", true, afterWrite.finished)
+        assertEquals("no new save started this frame", false, afterWrite.started)
+    }
+
+    @Test
+    fun `markSaved fires only once the repository write has actually run`() {
+        val repo = FakeGameStateRepository()
+        val executor = DeferredSaveExecutor()
+        val signal = AutosaveActivitySignal()
+        val controller =
+            AutosaveController(
+                repository = repo,
+                saveExecutor = executor,
+                logger = NoOpLogger,
+                snapshotSupplier = { WorldState() },
+                activitySignal = signal,
+                intervalSeconds = interval,
+            )
+
+        controller.onEvent("jump")
+        assertEquals("the write is deferred, so nothing is persisted yet", 0, repo.saved.size)
+        assertFalse("markSaved must not precede the write", signal.poll().finished)
+
+        executor.runNext()
+        assertEquals("the write ran", 1, repo.saved.size)
+        assertTrue("markSaved is observed after the write", signal.poll().finished)
+    }
+
+    // --- UC52 AC#1: the periodic interval is sourced from AutosaveParams (data-driven) ---
+
+    @Test
+    fun `the periodic interval defaults to the AutosaveParams value`() {
+        val repo = FakeGameStateRepository()
+        val controller =
+            AutosaveController(
+                repository = repo,
+                saveExecutor = InlineSaveExecutor(),
+                logger = NoOpLogger,
+                snapshotSupplier = { WorldState() },
+                params = AutosaveParams(periodicIntervalSeconds = 12f),
+            )
+
+        controller.update(11f)
+        assertEquals("no save before the params-sourced interval elapses", 0, repo.saved.size)
+        controller.update(1f) // reaches 12s == AutosaveParams interval
+        assertEquals("the periodic save fires at the data-driven interval", 1, repo.saved.size)
+    }
+
+    /** [SaveExecutor] that captures tasks so the test can run the write at a chosen moment (off-thread stand-in). */
+    private class DeferredSaveExecutor : SaveExecutor {
+        private val tasks = ArrayDeque<() -> Unit>()
+
+        override fun execute(task: () -> Unit) {
+            tasks.addLast(task)
+        }
+
+        override fun flush() {
+            while (tasks.isNotEmpty()) tasks.removeFirst()()
+        }
+
+        /** Run the next queued write (simulates the executor thread completing one task). */
+        fun runNext() {
+            if (tasks.isNotEmpty()) tasks.removeFirst()()
+        }
     }
 
     /**

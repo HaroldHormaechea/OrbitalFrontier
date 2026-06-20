@@ -18,8 +18,12 @@ import com.orbitalfrontier.world.WorldState
  * state or GL is touched off-thread. There is **no per-frame INFO logging** — [update] runs every
  * frame but only logs (once) when it actually enqueues a save, protecting the 60 FPS budget.
  *
- * The periodic interval defaults to [DEFAULT_INTERVAL_SECONDS] (20s) — within the ~15–30s range the
- * use case calls for, frequent enough to bound lost progress without churning the DB during flight.
+ * The periodic interval is data-driven (UC52 AC#1): it defaults to [AutosaveParams.periodicIntervalSeconds]
+ * (20s) — within the ~15–30s range the use case calls for, frequent enough to bound lost progress without
+ * churning the DB during flight.
+ *
+ * UC52 AC#2: an [AutosaveActivitySignal] is pulsed on each enqueue (markSaving, render thread) and after
+ * each write (markSaved, executor thread) so the play screen can show a subtle "Saving"/"Saved" indicator.
  */
 class AutosaveController(
     private val repository: GameStateRepository,
@@ -31,7 +35,14 @@ class AutosaveController(
     // very next autosave targets the new slot. Defaults to the legacy slot so existing call sites / tests
     // that predate save slots keep writing the single autosave (slot 0) unchanged.
     private val slotSupplier: () -> SlotId = { SlotId.LEGACY },
-    private val intervalSeconds: Float = DEFAULT_INTERVAL_SECONDS,
+    // UC52: cross-thread bridge to the on-screen autosave indicator (AC#2). markSaving() fires on this
+    // (render) thread at enqueue; markSaved() fires on the executor thread after the write. Defaults to a
+    // private, un-polled instance so call sites / tests that don't show the indicator are unaffected.
+    private val activitySignal: AutosaveActivitySignal = AutosaveActivitySignal(),
+    // UC52: data-driven autosave tuning (AC#1). The periodic interval is sourced from here rather than a
+    // hard-coded constant; [intervalSeconds] defaults to it but stays overridable for tests.
+    private val params: AutosaveParams = AutosaveParams(),
+    private val intervalSeconds: Float = params.periodicIntervalSeconds,
 ) {
     /** Seconds of flight accumulated since the last periodic save; render-thread only. */
     private var secondsSincePeriodicSave = 0f
@@ -84,13 +95,16 @@ class AutosaveController(
         // slot that was active at enqueue time even if the active slot changes before the write runs.
         val slot = slotSupplier()
         logger.info(TAG, "Autosave enqueued (reason=$reason): slot=${slot.value}, sector=${snapshot.currentSector.value}")
-        saveExecutor.execute { repository.saveGameState(slot, snapshot) }
+        // UC52 AC#2: signal "saving" now (render thread) and "saved" after the write (executor thread), so
+        // the render-thread indicator can show progress without touching world state across threads.
+        activitySignal.markSaving()
+        saveExecutor.execute {
+            repository.saveGameState(slot, snapshot)
+            activitySignal.markSaved()
+        }
     }
 
     private companion object {
         const val TAG = "Save"
-
-        /** Default periodic autosave interval (seconds); documented choice within UC04's 15–30s range. */
-        const val DEFAULT_INTERVAL_SECONDS = 20f
     }
 }

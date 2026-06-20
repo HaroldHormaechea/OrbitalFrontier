@@ -147,4 +147,9 @@ dependencies {
 
     // On-device SQLite driver (ADR 0003).
     implementation("app.cash.sqldelight:android-driver:$sqlDelightVersion")
+
+    // UC52: the framework SupportSQLiteOpenHelper factory, so AndroidSqlDriverFactory can build the
+    // open-helper itself and disable WAL (journal_mode=DELETE) before opening. It is already on the
+    // runtime classpath transitively via android-driver; declared here so it is visible at compile time.
+    implementation("androidx.sqlite:sqlite-framework:2.4.0")
 }
