@@ -33,18 +33,23 @@ class Uc23MapOverlayGuardTest {
     // --- AC#1: the minimap tap-target actor toggles the overlay open --------------------------------
 
     @Test
-    fun `the minimap tap-target is laid out from the shared panelRect geometry`() {
-        // One geometry source for both the drawn minimap and its touch target — bounds come from
-        // MinimapRenderer.panelRect, NOT a second set of hardcoded corner literals (which could drift).
+    fun `the minimap tap-target is laid out from the shared HudControlLayout minimap geometry`() {
+        // UC56: every drawn control (incl. the minimap tap target) is laid out from the single pure
+        // HudControlLayout; its minimapRect delegates to MinimapLayout.panelRect (the renderer's shared
+        // geometry), so the tap target still derives from ONE source — no duplicated corner literals.
         assertTrue(
-            "AC#1: the tap target's bounds derive from minimap.panelRect(...)",
-            PLAY_SCREEN_SOURCE.contains("minimap.panelRect("),
+            "AC#1 (UC56): the control layout is computed from the shared HudControlLayout",
+            PLAY_SCREEN_SOURCE.contains("HudControlLayout.compute(screenWidth, screenHeight, handedness)"),
         )
         assertTrue(
-            "AC#1: the tap target is sized/placed from the shared panelRect rect (no duplicated literals)",
+            "AC#1 (UC56): the tap target is sized/placed from the shared controls.minimap rect",
             PLAY_SCREEN_SOURCE.contains(
-                "minimapTapTarget.setBounds(minimapRect.x, minimapRect.y, minimapRect.width, minimapRect.height)",
+                "minimapTapTarget.setBounds(controls.minimap.x, controls.minimap.y, controls.minimap.width, controls.minimap.height)",
             ),
+        )
+        assertTrue(
+            "AC#1 (UC56): HudControlLayout's minimap rect delegates to the shared panelRect geometry",
+            HUD_CONTROL_LAYOUT_SOURCE.contains("MinimapLayout.panelRect("),
         )
     }
 
@@ -115,12 +120,17 @@ class Uc23MapOverlayGuardTest {
 
     @Test
     fun `gameplay controls are hidden while the overlay is open`() {
-        // UC32: control-visibility moved into renderFrame(...) and the settings line gained the pause-aware
-        // conditional; the running branch still hides on the map overlay (and combat).
+        // UC56: control-visibility lives in renderFrame(...). The Settings ball hides while the map overlay
+        // is open (part of `!mapOpen`); the joystick + action cluster hide via the `controlsHidden` flag,
+        // which includes `mapOpen`.
         val render = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         assertTrue(
-            "AC#2: the settings button hides while the overlay is open (and during combat) in the running branch",
-            render.contains("settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)"),
+            "AC#2 (UC56): the Settings ball hides while the map overlay is open (and combat / pause / destruction)",
+            render.contains("settingsBall.isVisible = !combat.active && !mapOpen && !paused && !destructionState.isPending"),
+        )
+        assertTrue(
+            "AC#2 (UC56): controls are hidden when the map overlay is open (controlsHidden includes mapOpen)",
+            render.contains("val controlsHidden = mapOpen || paused || destructionState.isPending"),
         )
         assertTrue(
             "AC#2: the joystick is hidden while the overlay is open",
@@ -193,6 +203,7 @@ class Uc23MapOverlayGuardTest {
 
     private companion object {
         private val PLAY_SCREEN_SOURCE: String = readSource("screen/PlayScreen.kt")
+        private val HUD_CONTROL_LAYOUT_SOURCE: String = readSource("render/HudControlLayout.kt")
         private val MAP_OVERLAY_RENDERER_SOURCE: String = readSource("render/MapOverlayRenderer.kt")
         private val MINIMAP_RENDERER_SOURCE: String = readSource("render/MinimapRenderer.kt")
 

@@ -22,7 +22,20 @@ object HudLayout {
      */
     const val BLOCK_HEIGHT = 192f
 
-    /** World-space width the readout block reserves from the left edge. */
+    /**
+     * World-space LEFT INSET of the readout block (UC56). The block no longer hugs the screen's left edge:
+     * a 72² Settings ball (UC56) sits in the top-left corner at x[24,96], so the readout block starts at
+     * this inset (x = 96) and edge-touches the ball without overlapping it.
+     *
+     * **§5 BINDING — single origin source.** This is the ONE value that both [blockRect]'s left edge AND
+     * the [HudRenderer]'s text draw x-origin read, so the reservation rect and the actually-drawn text can
+     * never diverge (if they did, an overlap guard could pass while the on-screen text still collided with
+     * the ball). The Settings-ball/readout-block clearance guard asserts against THIS constant, not a
+     * literal. [NotificationLayout] likewise reserves the band's left edge from `BLOCK_X + BLOCK_WIDTH`.
+     */
+    const val BLOCK_X = 96f
+
+    /** World-space width of the readout block, measured from [BLOCK_X] (its right edge is `BLOCK_X + this`). */
     const val BLOCK_WIDTH = 360f
 
     /** The maximum characters a variable readout line (SEC, OBJ) is ellipsized to before drawing. */
@@ -34,12 +47,13 @@ object HudLayout {
     /**
      * The HUD readout block as a top-left-anchored rectangle for the given viewport, in the same
      * coordinate space as [MinimapLayout.panelRect] so the two reserved regions can be checked for
-     * non-overlap directly. Anchored at the top-left corner: `x = 0`, top edge at `vpHeight`.
+     * non-overlap directly. Left edge inset to [BLOCK_X] (UC56 — clears the top-left Settings ball); top
+     * edge flush with `vpHeight`.
      */
     fun blockRect(
         vpWidth: Float,
         vpHeight: Float,
-    ): MinimapLayout.Rect = MinimapLayout.Rect(0f, vpHeight - BLOCK_HEIGHT, BLOCK_WIDTH, BLOCK_HEIGHT)
+    ): MinimapLayout.Rect = MinimapLayout.Rect(BLOCK_X, vpHeight - BLOCK_HEIGHT, BLOCK_WIDTH, BLOCK_HEIGHT)
 
     /**
      * Truncate [line] in place to at most [maxChars] characters, appending an ASCII [ELLIPSIS] when it

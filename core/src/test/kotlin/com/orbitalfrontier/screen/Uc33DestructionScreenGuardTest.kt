@@ -51,19 +51,22 @@ class Uc33DestructionScreenGuardTest {
     }
 
     @Test
-    fun `the flight controls, HUD pause button and settings panel hide while a destruction is pending`() {
+    fun `the flight controls, settings ball and settings modal hide while a destruction is pending`() {
         val renderFrame = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         assertTrue(
             "AC#1: the controls-hidden flag includes a pending destruction",
             renderFrame.contains("val controlsHidden = mapOpen || paused || destructionState.isPending"),
         )
+        // UC56: the on-screen PAUSE button was removed (nothing to suppress there); instead the top-left
+        // Settings ball and the settings modal each fold !destructionState.isPending into their own
+        // visibility, so neither shows under the destruction screen.
         assertTrue(
-            "AC#1: the HUD pause button is suppressed while destroyed (player must CONTINUE, not pause)",
-            renderFrame.contains("if (destructionState.isPending) pauseButton.isVisible = false"),
+            "AC#1 (UC56): the Settings ball is hidden under a pending destruction",
+            renderFrame.contains("settingsBall.isVisible = !combat.active && !mapOpen && !paused && !destructionState.isPending"),
         )
         assertTrue(
-            "AC#1: the settings panel is forced hidden under the destruction screen",
-            renderFrame.contains("if (destructionState.isPending) settingsOverlay.actor.isVisible = false"),
+            "AC#1 (UC56): the settings modal is forced hidden under a pending destruction",
+            renderFrame.contains("settingsOverlay.actor.isVisible = settingsModalShown && !destructionState.isPending"),
         )
         assertTrue(
             "AC#1: the modal destruction overlay shows exactly while one is pending",

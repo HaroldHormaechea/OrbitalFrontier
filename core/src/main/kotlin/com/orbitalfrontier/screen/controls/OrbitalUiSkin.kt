@@ -138,6 +138,15 @@ class OrbitalUiSkin(
         Label.LabelStyle(this@OrbitalUiSkin.font, Palette.AMBER_400)
 
     /**
+     * UC56: a small-caption label style for the text under a [BallButton] (e.g. the "SETTINGS" caption below
+     * the in-flight Settings ball). It shares the same body font as [labelStyle]; the smaller visual size is
+     * applied by the widget via the label's own font scale ([BallButton]), so no second font texture is
+     * baked. Same colour as [labelStyle] so captions read as ordinary HUD chrome.
+     */
+    val smallLabelStyle: Label.LabelStyle =
+        Label.LabelStyle(this@OrbitalUiSkin.font, Palette.TEXT_BODY)
+
+    /**
      * Palette-driven scroll-pane style (AC#1). No screen mounts a [ScrollPane] today, so this is a
      * **currently-unused API** kept so the finished skin covers every Scene2D widget kind the design
      * system specifies; it is ready for the first scrollable list without re-theming.
@@ -173,6 +182,19 @@ class OrbitalUiSkin(
                 imageUp = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.30f), Color(1f, 1f, 1f, 0.7f), glyph)
                 imageDown = circleWithGlyph(ACTION_SIZE, Color(0.7f, 0.75f, 0.9f, 0.6f), Color(1f, 1f, 1f, 0.95f), glyph)
             }
+        }
+
+    /**
+     * UC56: a circular [ImageButton] style for the top-left in-flight **Settings ball**. There is no atlas
+     * region for it, so it is always the generated glyph — a translucent steel disc with a "sliders" mark
+     * (three horizontal bars + knobs, the conventional settings/tune icon) painted on top. Pressed (down) is
+     * the same mark on a brighter disc so a held tap reads as active. The generated textures are owned by
+     * this skin and released in [dispose]. ASCII/art-free, so it works on every (incl. headless) path.
+     */
+    fun settingsBallStyle(): ImageButton.ImageButtonStyle =
+        ImageButton.ImageButtonStyle().apply {
+            imageUp = settingsBall(SETTINGS_BALL_PX, Color(0.62f, 0.68f, 0.82f, 0.34f), Color(0.92f, 0.95f, 1f, 0.85f))
+            imageDown = settingsBall(SETTINGS_BALL_PX, Color(0.62f, 0.68f, 0.82f, 0.62f), Color(1f, 1f, 1f, 0.98f))
         }
 
     private fun regionFor(glyph: ActionGlyph): String =
@@ -296,6 +318,39 @@ class OrbitalUiSkin(
         }
     }
 
+    /**
+     * UC56: the generated Settings-ball glyph — a translucent steel disc with a "sliders" mark on top (three
+     * horizontal bars, each with a small knob at a staggered x), the conventional settings/tune icon. Drawn
+     * with the same runtime-pixmap approach as [circleWithGlyph]; the texture is owned by this skin.
+     */
+    private fun settingsBall(
+        diameter: Int,
+        discColor: Color,
+        markColor: Color,
+    ): Drawable {
+        val pixmap = Pixmap(diameter, diameter, Pixmap.Format.RGBA8888)
+        try {
+            pixmap.setColor(discColor)
+            pixmap.fillCircle(diameter / 2, diameter / 2, diameter / 2 - 1)
+
+            pixmap.setColor(markColor)
+            val c = diameter / 2
+            val half = (diameter * 0.26f).toInt() // half-length of each slider bar
+            val bar = (diameter * 0.04f).toInt().coerceAtLeast(2) // bar half-thickness
+            val knob = (diameter * 0.07f).toInt().coerceAtLeast(2) // knob radius
+            val rowGap = (diameter * 0.18f).toInt()
+            // Three staggered slider rows (top knob right, middle knob left, bottom knob right).
+            val rows = listOf(c - rowGap to (c + half - knob), c to (c - half + knob), c + rowGap to (c + half - knob))
+            for ((y, knobX) in rows) {
+                pixmap.fillRectangle(c - half, y - bar, 2 * half, 2 * bar)
+                pixmap.fillCircle(knobX, y, knob)
+            }
+            return drawableFrom(pixmap)
+        } finally {
+            pixmap.dispose()
+        }
+    }
+
     private fun drawableFrom(pixmap: Pixmap): Drawable {
         val texture = Texture(pixmap)
         textures.add(texture)
@@ -341,6 +396,10 @@ class OrbitalUiSkin(
         const val CONTROL_SIZE = 220
         const val KNOB_SIZE = 96
         const val ACTION_SIZE = 120
+
+        // UC56: pixel resolution of the generated Settings-ball glyph texture. Sized so the disc + sliders
+        // mark stay crisp when the 72-world-unit ball is drawn through the ×2 UI viewport (ADR 0015).
+        const val SETTINGS_BALL_PX = 144
 
         // Nine-patch chrome metrics (UC29 AC#5 — pinned as named constants so QA can guard them). The
         // patch is a small generated texture; PATCH_CORNER < PATCH_SIZE / 2 leaves a 1-texel stretchable

@@ -11,8 +11,10 @@ import com.orbitalfrontier.screen.controls.ActionCluster
  *
  * The toasts occupy a **TOP-CENTRE band that stacks downward**, deliberately threaded through the clear gap
  * between the four things that own the screen edges:
- *  - the top-LEFT HUD readout block ([HudLayout.BLOCK_WIDTH]) — the band's left edge sits a [SIDE_GAP] to its
- *    right, so a toast never runs under the readouts;
+ *  - the top-LEFT HUD readout block (its right edge `HudLayout.BLOCK_X + HudLayout.BLOCK_WIDTH`) — the band's
+ *    left edge sits a [SIDE_GAP] to its right, so a toast never runs under the readouts. UC56 inset the block
+ *    by [HudLayout.BLOCK_X] (to clear the new Settings ball), so the band tracks the block's real right edge
+ *    rather than [HudLayout.BLOCK_WIDTH] alone;
  *  - the top-RIGHT minimap (UC22) — [RIGHT_RESERVED] reserves the minimap's worst-case width on the right;
  *  - the top-CENTRE UC32 pause button — [TOP_INSET] starts the first toast *below* it; and
  *  - the bottom-corner action arc (UC26) — which, at the smallest supported viewport, is tall enough
@@ -79,7 +81,7 @@ object NotificationLayout {
         val top = vpHeight - TOP_INSET - index * (TOAST_HEIGHT + TOAST_GAP)
         val y = top - TOAST_HEIGHT
 
-        val bandLeft = HudLayout.BLOCK_WIDTH + SIDE_GAP
+        val bandLeft = HudLayout.BLOCK_X + HudLayout.BLOCK_WIDTH + SIDE_GAP
         var bandRight = vpWidth - RIGHT_RESERVED - SIDE_GAP
 
         // Lower-row clearance for the bottom-corner action arc (UC26). The arc is anchored at the screen

@@ -83,28 +83,29 @@ class Uc32PauseOverlayGuardTest {
     // --- AC#1: a HUD PAUSE button + the Android BACK key open/close the overlay ---------------------
 
     @Test
-    fun `a HUD PAUSE button opens the overlay and hides while an overlay is up`() {
-        assertTrue(
-            "AC#1: a top-centre HUD PAUSE button exists",
-            PLAY_SCREEN_SOURCE.contains("pauseButton = TextButton(\"PAUSE\""),
+    fun `there is no on-screen pause button and the modal pause overlay shows while paused`() {
+        // UC56: the on-screen PAUSE button was REMOVED — pause is reached via the device Back key only
+        // (routed in keyDown, asserted below). No PAUSE TextButton and no pauseButton actor remain.
+        assertFalse(
+            "UC56: there is no on-screen PAUSE TextButton anymore",
+            PLAY_SCREEN_SOURCE.contains("TextButton(\"PAUSE\""),
         )
-        val pauseListener = between(PLAY_SCREEN_SOURCE, "pauseButton.addListener(", "pauseOverlay.onResume")
-        assertTrue("AC#1: tapping the PAUSE button opens the overlay", pauseListener.contains("openPause()"))
+        assertFalse(
+            "UC56: there is no pauseButton actor anymore",
+            PLAY_SCREEN_SOURCE.contains("pauseButton"),
+        )
         val renderFrame = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
+        // The modal pause overlay shows while paused, EXCEPT while the settings modal is up over it.
         assertTrue(
-            "AC#1: the PAUSE button is reachable while running with no overlay, hidden otherwise",
-            renderFrame.contains("pauseButton.isVisible = !mapOpen && !paused"),
-        )
-        assertTrue(
-            "AC#1: the modal pause overlay shows exactly while paused",
-            renderFrame.contains("pauseOverlay.actor.isVisible = paused"),
+            "AC#1 (UC56): the modal pause overlay shows while paused, hidden under the settings modal",
+            renderFrame.contains("pauseOverlay.actor.isVisible = paused && !settingsModalShown"),
         )
     }
 
     @Test
-    fun `the Android BACK key is caught and routed to pause-resume-back`() {
+    fun `the Android BACK key is caught and routed to settings-close-resume-pause`() {
         // AC#1 / pitfall#2: BACK maps to pause here, not the default screen-back. The catch is enabled in
-        // show() (and released in hide(), checked below).
+        // show() (and released in hide(), checked below). UC56: Back is now the ONLY pause trigger.
         val show = section(PLAY_SCREEN_SOURCE, "override fun show(")
         assertTrue(
             "AC#1: show() catches the Android BACK key",
@@ -114,10 +115,11 @@ class Uc32PauseOverlayGuardTest {
             "pitfall#2: the BACK catch is released in hide()",
             PLAY_SCREEN_SOURCE.contains("Gdx.input.setCatchKey(Input.Keys.BACK, false)"),
         )
-        // The single keyDown handler in the file routes BACK to the three pause transitions.
+        // The single keyDown handler routes BACK by precedence: an open settings modal closes FIRST
+        // (→ flight or → pause menu per its context), else while paused it resumes, else in flight it pauses.
         val keyDown = between(PLAY_SCREEN_SOURCE, "override fun keyDown(", "return true")
         assertTrue("AC#1: the handler keys on the BACK button", keyDown.contains("Input.Keys.BACK"))
-        assertTrue("AC#1: in the settings sub-view BACK steps back", keyDown.contains("exitPauseSettings()"))
+        assertTrue("AC#1 (UC56): an open settings modal closes first", keyDown.contains("closeSettings()"))
         assertTrue("AC#1: while paused BACK resumes", keyDown.contains("resumeGame()"))
         assertTrue("AC#1: in flight BACK opens pause", keyDown.contains("openPause()"))
     }
@@ -128,8 +130,8 @@ class Uc32PauseOverlayGuardTest {
     fun `the overlay wires resume, settings, quit and back`() {
         assertTrue("AC#3: Resume resumes", PLAY_SCREEN_SOURCE.contains("pauseOverlay.onResume = { resumeGame() }"))
         assertTrue(
-            "AC#3: Settings opens the settings sub-view",
-            PLAY_SCREEN_SOURCE.contains("pauseOverlay.onSettings = { enterPauseSettings() }"),
+            "AC#3 (UC56): Settings opens the shared settings modal from the pause context",
+            PLAY_SCREEN_SOURCE.contains("pauseOverlay.onSettings = { openSettingsModal(fromPause = true) }"),
         )
         assertTrue("AC#3: Quit quits to main menu", PLAY_SCREEN_SOURCE.contains("pauseOverlay.onQuit = { quitToMainMenu() }"))
         assertTrue(
@@ -140,29 +142,32 @@ class Uc32PauseOverlayGuardTest {
     }
 
     @Test
-    fun `the paused settings-visibility branch reads pauseSettingsShown and is not ANDed with combat or map`() {
+    fun `the settings modal is visible exactly while open and hidden under a destruction screen`() {
+        // UC56: the settings panel is now a MODAL gated solely on settingsModalShown (opened by the
+        // in-flight Settings ball or the pause-menu SETTINGS action) — no longer a persistent corner panel
+        // ANDed with combat/map. A pending destruction screen owns the foreground, so the modal is forced
+        // hidden under one. (Pausing mid-combat then opening Settings still surfaces it: the gate is only
+        // settingsModalShown, which the ball/pause action sets regardless of combat or map state.)
         val renderFrame = section(PLAY_SCREEN_SOURCE, "private fun renderFrame(")
         assertTrue(
-            "AC#3: the settings panel visibility branches on the paused state",
-            renderFrame.contains(
-                "settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)",
-            ),
+            "AC#3 (UC56): the settings modal shows exactly while open, hidden under a destruction screen",
+            renderFrame.contains("settingsOverlay.actor.isVisible = settingsModalShown && !destructionState.isPending"),
         )
-        // The paused branch (between `if (paused)` and `else`) is JUST pauseSettingsShown — so pausing
-        // mid-combat or over the map and then opening Settings still surfaces the panel.
-        val pausedBranch = between(renderFrame, "isVisible = if (paused)", "else")
-        assertTrue("AC#3: the paused branch reads pauseSettingsShown", pausedBranch.contains("pauseSettingsShown"))
-        assertFalse("AC#3: the paused branch is NOT ANDed with combat", pausedBranch.contains("combat"))
-        assertFalse("AC#3: the paused branch is NOT ANDed with the map overlay", pausedBranch.contains("mapOpen"))
+        val modalLine = between(renderFrame, "settingsOverlay.actor.isVisible =", "\n")
+        assertFalse("AC#3 (UC56): the settings-modal visibility is NOT ANDed with combat", modalLine.contains("combat"))
+        assertFalse("AC#3 (UC56): the settings-modal visibility is NOT ANDed with the map overlay", modalLine.contains("mapOpen"))
     }
 
     @Test
-    fun `entering the settings sub-view brings the settings panel to the front`() {
-        // z-order: the in-flight settings panel was added BEFORE the pause backdrop, so it must be
-        // re-parented to the front, else the backdrop swallows its taps.
-        val enter = section(PLAY_SCREEN_SOURCE, "private fun enterPauseSettings(")
-        assertTrue("AC#3: the settings sub-view flag is set", enter.contains("pauseSettingsShown = true"))
-        assertTrue("AC#3: the settings panel is brought to the front over the backdrop", enter.contains("settingsOverlay.actor.toFront()"))
+    fun `opening the settings modal flags it shown and brings the settings panel to the front`() {
+        // UC56: enterPauseSettings was replaced by openSettingsModal(fromPause); it sets the modal-shown
+        // flag and re-parents the settings panel to the front so the pause/HUD backdrop can't swallow taps.
+        val open = section(PLAY_SCREEN_SOURCE, "private fun openSettingsModal(")
+        assertTrue("AC#3 (UC56): the settings-modal flag is set", open.contains("settingsModalShown = true"))
+        assertTrue(
+            "AC#3 (UC56): the settings panel is brought to the front over the backdrop",
+            open.contains("settingsOverlay.actor.toFront()"),
+        )
     }
 
     // --- AC#4: Quit flushes a durable autosave BEFORE leaving --------------------------------------
@@ -199,11 +204,14 @@ class Uc32PauseOverlayGuardTest {
 
     @Test
     fun `the modal pause overlay is added last for the top z-order and swallows taps`() {
-        val pauseButtonIdx = PLAY_SCREEN_SOURCE.indexOf("stage.addActor(pauseButton)")
+        // UC56: the on-screen pause button was removed, so anchor the z-order against the top-left Settings
+        // ball (added with the HUD controls) and the map-overlay actors — the pause overlay must sit above both.
+        val settingsBallIdx = PLAY_SCREEN_SOURCE.indexOf("stage.addActor(settingsBall.actor)")
         val overlayIdx = PLAY_SCREEN_SOURCE.indexOf("stage.addActor(pauseOverlay.actor)")
         val mapDismissIdx = PLAY_SCREEN_SOURCE.indexOf("stage.addActor(mapDismissActor)")
         assertTrue("pitfall#1: the pause overlay actor is added to the stage", overlayIdx >= 0)
-        assertTrue("pitfall#1: the pause overlay is added after the HUD pause button (top z)", overlayIdx > pauseButtonIdx)
+        assertTrue("pitfall#1: the Settings ball is added to the stage (anchor)", settingsBallIdx >= 0)
+        assertTrue("pitfall#1: the pause overlay is added after the HUD controls / Settings ball (top z)", overlayIdx > settingsBallIdx)
         assertTrue("pitfall#1: the pause overlay is added after the map overlay actors (top z)", overlayIdx > mapDismissIdx)
         // The backdrop image swallows every tap so no flight control underneath fires while frozen.
         assertTrue(

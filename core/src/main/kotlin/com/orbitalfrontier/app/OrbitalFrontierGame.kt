@@ -28,6 +28,7 @@ import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.AutosaveActivitySignal
 import com.orbitalfrontier.save.AutosaveController
+import com.orbitalfrontier.save.DefaultSettingsRepository
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
 import com.orbitalfrontier.save.SaveBackupStore
@@ -249,7 +250,15 @@ class OrbitalFrontierGame(
      */
     private fun bootWithoutDatabase(reason: SaveUnavailable) {
         saveUnavailable = reason
-        logger.error(TAG, "Save unavailable ($reason); starting in degraded mode — Continue disabled, settings at defaults")
+        logger.error(TAG, "Save unavailable ($reason); starting in degraded mode — Continue disabled, settings session-only")
+
+        // UC56: wire an in-memory settings repository so the global UI/accessibility preferences are
+        // decoupled from the unopenable save DB. Without this, `settingsRepository` stays an uninitialised
+        // `lateinit` and the main menu had to leave SETTINGS inert in degraded mode (the silent-no-op bug).
+        // Settings now open and apply live; persistence is session-only here (honest limitation) until a New
+        // Game creates a fresh DB. Restore handedness from it so the play screen lays controls out correctly.
+        settingsRepository = DefaultSettingsRepository()
+        handedness = settingsRepository.loadHandedness()
 
         // Build the audio service (unconfigured — no settings DB to read), so the menu still clicks audibly.
         val audioService = LibGdxAudioService.load(logger)
@@ -375,15 +384,11 @@ class OrbitalFrontierGame(
                 }
                 newGameIntoSlot(activeSlot)
             },
-            // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu. UC52: inert in degraded
-            // mode (no settings DB) until a new game restores one.
-            onOpenSettings = {
-                if (degraded) {
-                    logger.warn(TAG, "Settings unavailable until a new game is started (save unreadable)")
-                } else {
-                    openSettings()
-                }
-            },
+            // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu. UC56: ALWAYS available,
+            // including in degraded mode — settings configure global UI/accessibility preferences, not save
+            // state, and are now backed by an in-memory `DefaultSettingsRepository` when there is no save DB
+            // (session-only persistence there). The prior degraded "Settings unavailable" silent no-op is gone.
+            onOpenSettings = { openSettings() },
             // UC38: LOAD GAME opens the save-slot screen in LOAD mode (resume / new-game-into / delete a slot).
             // UC52: inert in degraded mode (no DB to list slots from).
             onLoadGame = {
