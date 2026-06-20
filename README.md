@@ -1,18 +1,17 @@
 # Orbital Frontier
 
-An approachable 2D top-down space RPG for Android: fly a single ship, take on missions, and upgrade your way across a sector.
+A single-player 2D top-down space RPG for Android: fly a ship, take on missions, fight, trade, and upgrade your way across a sector.
 
 ## What it does
 
-Orbital Frontier is a single-player mobile game (working title). The planned MVP core loop is:
+Orbital Frontier is an offline, single-player Android game (working title). It is in **pre-alpha** (maturity target `mvp`, not a production release), but the full core loop is playable end-to-end:
 
-- Control a single ship with touch-friendly 2D top-down movement.
-- Accept and complete missions for rewards.
-- Spend rewards on an upgrade/progression tree that changes how the ship plays.
-- Roam a sector with points of interest and encounters.
-- Save and restore progress across app restarts.
+- **Roam** — fly a ship with touch-friendly 2D top-down controls through sectors connected by fixed jump gates; sectors can be procedurally generated, with points of interest including stations, asteroid fields, junkyards, derelicts, distress calls, and hazards.
+- **Earn** — take mining, courier, and combat/bounty missions from station boards and the ship radio; fight hostiles in real-time combat; mine asteroids, salvage loot from wrecks, and trade goods between stations at dynamic prices.
+- **Improve** — spend credits on ship outfitting and upgrades, buy used parts at junkyards, own and switch between multiple ships, hire and manage crew, build reputation with factions, and construct your own stations. Some acquisitions are reputation-gated.
+- **Persist** — progress is autosaved to an on-device SQLite database (via SQLDelight) with multiple save slots and slot-management UI.
 
-The first vertical slice is implemented (use-case 01): you can **fly a single ship around an empty sector** on Android. The left virtual joystick rotates the hull toward a target direction and thrusts (push opposite to reverse); momentum carries and decays to a stop on release; a parallax starfield and a follow-camera convey motion; a HUD shows speed and heading; an inert right-side action cluster is shown; and a handedness setting swaps the control sides and persists across restarts (SQLite via SQLDelight). Missions, upgrades, and the rest of the loop are not built yet — see Known limitations.
+Supporting UI is in place: main menu (Start/Continue), settings, pause overlay, game-over/ship-destruction screen, an expanded flight HUD and combat HUD, an in-game notification feed, a first-run tutorial, and accessibility options. The bottom-right action cluster is a functional control surface.
 
 ## Requirements
 
@@ -37,23 +36,39 @@ standard commands (point the SDK location at your Android SDK via `ANDROID_HOME`
 
 ```
 .
-├── core/        Platform-agnostic game logic + rendering (Kotlin/JVM, libGDX)
-├── android/     Android launcher module (manifest, resources, Activity)
-├── assets/      Sprites, tilemaps, audio, fonts
-├── docs/adr/    Architecture decision records
-├── use-cases/   Formalized use-case files
+├── core/         Platform-agnostic game logic + rendering (Kotlin/JVM, libGDX)
+├── android/      Android launcher module (manifest, resources, Activity)
+├── assets/       Sprites + texture atlas, audio, fonts
+├── docs/adr/     Architecture decision records
+├── docs/design/  Internal design notes per game system
+├── use-cases/    Formalized use-case files (and their implementation plans)
 ├── settings.gradle.kts
 ├── build.gradle.kts
 └── PROJECT_BRIEF.md   Machine-readable project contract
 ```
 
+## Documentation
+
+- `PROJECT_BRIEF.md` — the project's source-of-truth contract (stack, paths, standards).
+- `docs/design/` — internal design notes for each game system (index: `docs/design/README.md`).
+- `docs/adr/` — Architecture Decision Records, the dated log of binding technical decisions (index: `docs/adr/README.md`).
+
 ## Known limitations
 
-- Only the first slice exists: a flyable ship in an empty sector. No missions, economy, upgrades, combat, fuel, other entities, or jump gates yet.
-- The ship and on-screen controls use programmatic placeholder graphics (no art assets yet); the action cluster is a non-functional placeholder.
-- Movement parameters are placeholder `[TUNE]` defaults, to be tuned on-device.
-- Engine choice (libGDX) is confirmed — see `docs/adr/0001-engine-choice.md`. The Box2D/movement split is recorded in `docs/adr/0005-movement-integration.md`.
-- Non-goals for the MVP: no multiplayer, no monetization, no iOS/desktop/web ports, and no space-station building (a deferred stretch feature).
+- **Pre-alpha.** Not validated across a wide device matrix; balance and many tuning
+  values are provisional placeholders.
+- **Art.** A committed design-system texture atlas (`assets/orbital.png` / `orbital.atlas`)
+  serves as the current MVP art. Some newer systems and POIs reuse existing atlas regions
+  rather than bespoke sprites (see ADR 0019 and ADR 0042); a higher-fidelity, bespoke art
+  pass remains future work. The scalable game font and the UI skin are implemented.
+- **Audio.** An audio system is present (ADR 0020), but the SFX and music are placeholder
+  synthesised clips, not final assets.
+- **Deferred systems.** Recorded in the ADRs but not yet built: combat shields; a power
+  capacitor and reactor-upgrade category; crew skills, desertion, and wage debt; station
+  defense, passive income, crew staffing, teardown, and respawn; generational save-backup
+  history; and encounter/bounty content populating procedurally-generated sectors.
+- **Non-goals.** No multiplayer or online play; no monetization (ads/IAP); no iOS, desktop,
+  or web ports.
 - The working title "Orbital Frontier" may change before a store release; the name space is crowded.
 
 ## License
