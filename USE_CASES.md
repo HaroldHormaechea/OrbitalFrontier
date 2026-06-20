@@ -64,4 +64,4 @@ Statuses:
 | 52 | [use-cases/52-autosave-and-save-robustness.md](use-cases/52-autosave-and-save-robustness.md) | Periodic autosave, indicator & save robustness | done | 2026-06-20 |
 | 53 | [use-cases/53-procedural-sector-generation.md](use-cases/53-procedural-sector-generation.md) | Procedural sector generation | done | 2026-06-20 |
 | 54 | [use-cases/54-additional-poi-types.md](use-cases/54-additional-poi-types.md) | Additional POI types — derelicts, distress, hazards | done | 2026-06-20 |
-| 55 | [use-cases/55-refresh-readme-and-docs.md](use-cases/55-refresh-readme-and-docs.md) | Refresh stale README & status docs | in-progress | 2026-06-20 |
+| 55 | [use-cases/55-refresh-readme-and-docs.md](use-cases/55-refresh-readme-and-docs.md) | Refresh stale README & status docs | done | 2026-06-20 |
