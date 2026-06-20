@@ -23,7 +23,9 @@ import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
 import com.orbitalfrontier.sim.SimulationState
+import com.orbitalfrontier.station.OwnedStationPlacement
 import com.orbitalfrontier.station.StationBuildOrder
+import com.orbitalfrontier.station.StationId
 import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
@@ -108,6 +110,18 @@ object PlaythroughFixtures {
      * determinism. Loadable via `playtest -Dplaythrough.name=uc15-station`.
      */
     const val UC15_STATION: String = "uc15-station"
+
+    /**
+     * UC51 owned-station surfacing & dock-to-use playthrough name (AC#5): start docked at Alpha Station,
+     * **found** a `commerce-hub-i` personal station, undock, fly to that owned station's derived placement,
+     * **dock at it**, and **sell** a resource at its reconstructed commerce desk. End owning a single station
+     * that offers COMMERCE, docked at its synthetic projection id (`owned-station-0`), with credits up + cargo
+     * down from the sale — the end-to-end "build a module-bearing station and use one of its functions" path.
+     * [Uc51StationSurfacingReplayTest] asserts ownership, the dock-to-use sale, and bit-for-bit determinism;
+     * it is the ONLY new-path fixture (zero owned stations everywhere else ⇒ every existing replay is
+     * byte-identical). Loadable via `playtest -Dplaythrough.name=uc51-owned-station`.
+     */
+    const val UC51_OWNED_STATION: String = "uc51-owned-station"
 
     /**
      * UC41 combat-bounty playthrough name (AC#5): start in flight just south of the authored
@@ -267,6 +281,7 @@ object PlaythroughFixtures {
             UC13_COMBAT to ::uc13Combat,
             UC14_FACTION to ::uc14Faction,
             UC15_STATION to ::uc15Station,
+            UC51_OWNED_STATION to ::uc51OwnedStation,
             UC41_COMBAT_BOUNTY to ::uc41CombatBounty,
             UC42_LOOT_SALVAGE to ::uc42LootSalvage,
             UC43_COMBAT_REPUTATION to ::uc43CombatReputation,
@@ -923,6 +938,116 @@ object PlaythroughFixtures {
         // resolves as the last docked step, deducting the cost and adding the owned station (id 0, anchored
         // in Alpha, commerce hub in slot 0).
         recorder.recordStationBuild(0, StationBuildOrder.FoundStation(StationModuleCatalog.COMMERCE_HUB))
+        return recorder.build()
+    }
+
+    /** Starting credits for [uc51OwnedStation] — covers the commerce-hub (1500) with a known remainder. */
+    const val UC51_STARTING_CREDITS: Long = 2000L
+
+    /** IRON_ORE the [uc51OwnedStation] fixture starts with — enough for the build bill (15) plus a sale. */
+    const val UC51_STARTING_IRON_ORE: Int = 30
+
+    /** SILICON the [uc51OwnedStation] fixture starts with — enough for the build bill (8). */
+    const val UC51_STARTING_SILICON: Int = 12
+
+    /** Units of IRON_ORE the [uc51OwnedStation] fixture sells at its owned commerce desk (dock-to-use). */
+    const val UC51_SELL_UNITS: Int = 10
+
+    /**
+     * Flight ticks for [uc51OwnedStation]: thrust toward the owned station's derived placement. Generous so
+     * docking is guaranteed well before the sale (the derived placement is ~1242 wu from Alpha; at the
+     * pinned [UC12_FAST_FLIGHT] 600 wu/s cruise the ship reaches the r100 dock circle in ~120 ticks). DOCK is
+     * proximity-gated, so an exact arrival tick need not be computed.
+     */
+    private const val UC51_FLIGHT_TICKS: Int = 180
+
+    /**
+     * Lead-out ticks for [uc51OwnedStation] before DOCK is held: the ship must first **clear Alpha
+     * Station's own r100 dock circle** (else holding DOCK would immediately re-dock at Alpha). At
+     * [UC12_FAST_FLIGHT]'s acceleration the ship leaves the 100 wu circle within ~12 ticks; 30 is a safe
+     * margin, and the ship is still ~1000 wu from the placement, so no dock is missed.
+     */
+    private const val UC51_CLEAR_TICKS: Int = 30
+
+    /**
+     * UC51 owned-station surfacing & dock-to-use scenario (AC#5): the full "build a module-bearing station
+     * and use one of its functions" loop, end-to-end.
+     *
+     * The ship starts **docked at Alpha Station** (the one build-capable MVP station) in
+     * [MvpSectorMap.START_SECTOR] (Alpha), with [UC51_STARTING_CREDITS] credits and a hold carrying the
+     * commerce hub's resource bill (IRON_ORE 15 + SILICON 8) **plus** a surplus to sell. The script:
+     *  - **tick 0** (docked): found a `commerce-hub-i` station ([StationBuildOrder.FoundStation]) — deducts
+     *    1500 credits + {IRON_ORE 15, SILICON 8}, allocates station id 0 anchored in Alpha. Its placement is
+     *    the deterministic [OwnedStationPlacement] slot for id 0.
+     *  - **flight** (ticks 1..[UC51_FLIGHT_TICKS]): undock on the first tick, then thrust straight at the
+     *    derived placement holding DOCK — the owned station is surfaced as a synthetic, dockable Station
+     *    projection (AC#2/#3), so the proximity-gated DOCK commits to its `owned-station-0` id on arrival.
+     *  - **dock-to-use** (tick [UC51_FLIGHT_TICKS] + 1): now docked at the owned station, **sell**
+     *    [UC51_SELL_UNITS] IRON_ORE at its reconstructed commerce desk (AC#3/#5) — credits up, cargo down.
+     *
+     * Heading is seeded straight at the placement so the flight is a clean 1-D run that passes through the
+     * dock circle's centre; the brisk [UC12_FAST_FLIGHT] profile keeps the artifact compact.
+     * [Uc51StationSurfacingReplayTest] asserts ownership, the docked owned-station id, the COMMERCE sale's
+     * credit/cargo change, and bit-for-bit determinism. Loadable via `playtest -Dplaythrough.name=uc51-owned-station`.
+     */
+    fun uc51OwnedStation(): Playthrough {
+        val alphaPos = Vec2(0f, 600f)
+        // Station id 0's deterministic placement (derived, not authored) — the fly-to-and-dock target.
+        val placement = OwnedStationPlacement.positionFor(StationId(0))
+        val toPlacement = placement - alphaPos
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC51_OWNED_STATION,
+                seed = 51L,
+                dtSeconds = DT_SECONDS,
+                config = UC12_FAST_FLIGHT,
+                initialState =
+                    SimulationState(
+                        fleet =
+                            singleShipFleet(
+                                kinematics =
+                                    ShipKinematics(
+                                        position = alphaPos,
+                                        // Already facing the placement, so the flight is a clean 1-D run.
+                                        headingRadians = atan2(toPlacement.y, toPlacement.x),
+                                    ),
+                                cargo =
+                                    Cargo(
+                                        mapOf(
+                                            ResourceType.IRON_ORE to UC51_STARTING_IRON_ORE,
+                                            ResourceType.SILICON to UC51_STARTING_SILICON,
+                                        ),
+                                        Cargo.DEFAULT_CAPACITY,
+                                    ),
+                            ),
+                        dockedStation = PoiId("alpha-station"),
+                        credits = UC51_STARTING_CREDITS,
+                    ),
+            )
+
+        // Tick 0 (docked at Alpha): found the commerce-hub station (id 0, anchored in Alpha).
+        recorder.recordStationBuild(0, StationBuildOrder.FoundStation(StationModuleCatalog.COMMERCE_HUB))
+
+        // Flight: undock on tick 1, thrust straight at the derived placement. DOCK is NOT held until the
+        // ship has cleared Alpha Station's own dock circle (UC51_CLEAR_TICKS) — otherwise it would
+        // immediately re-dock at Alpha. After that, hold DOCK so the proximity-gated dock commits to the
+        // owned station's r100 circle on arrival (held movement past the dock is a frozen no-op).
+        val thrust = MovementInput(targetDirection = toPlacement, magnitude = 1f, released = false)
+        for (i in 0 until UC51_FLIGHT_TICKS) {
+            val tick = 1 + i
+            recorder.recordMovement(tick, thrust)
+            when {
+                i == 0 -> recorder.recordDockAction(tick, DockAction.UNDOCK)
+                i >= UC51_CLEAR_TICKS -> recorder.recordDockAction(tick, DockAction.DOCK)
+                // else: in flight, clearing Alpha — no dock action this tick.
+            }
+        }
+
+        // Dock-to-use (AC#3/#5): docked at the owned station now, sell IRON_ORE at its commerce desk.
+        val sellTick = 1 + UC51_FLIGHT_TICKS
+        recorder.recordTrade(sellTick, TradeKind.SELL, ResourceType.IRON_ORE, UC51_SELL_UNITS)
+        recorder.extendToTick(sellTick + 1)
         return recorder.build()
     }
 

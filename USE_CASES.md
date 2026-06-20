@@ -60,7 +60,7 @@ Statuses:
 | 48 | [use-cases/48-reputation-gated-upgrades.md](use-cases/48-reputation-gated-upgrades.md) | Reputation-gated upgrade & ship availability | done | 2026-06-20 |
 | 49 | [use-cases/49-power-brownout-and-ui.md](use-cases/49-power-brownout-and-ui.md) | Power brownout/throttle & power UI surfacing | done | 2026-06-20 |
 | 50 | [use-cases/50-crew-depth-fleet-management.md](use-cases/50-crew-depth-fleet-management.md) | Crew depth & fleet/crew management screen | done | 2026-06-20 |
-| 51 | [use-cases/51-station-building-ui-and-surfacing.md](use-cases/51-station-building-ui-and-surfacing.md) | Station-building UI & world surfacing | in-progress | 2026-06-20 |
+| 51 | [use-cases/51-station-building-ui-and-surfacing.md](use-cases/51-station-building-ui-and-surfacing.md) | Station-building UI & world surfacing | done | 2026-06-20 |
 | 52 | [use-cases/52-autosave-and-save-robustness.md](use-cases/52-autosave-and-save-robustness.md) | Periodic autosave, indicator & save robustness | pending | 2026-06-18 |
 | 53 | [use-cases/53-procedural-sector-generation.md](use-cases/53-procedural-sector-generation.md) | Procedural sector generation | pending | 2026-06-18 |
 | 54 | [use-cases/54-additional-poi-types.md](use-cases/54-additional-poi-types.md) | Additional POI types — derelicts, distress, hazards | pending | 2026-06-18 |
