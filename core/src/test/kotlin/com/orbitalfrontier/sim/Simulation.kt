@@ -55,6 +55,7 @@ import com.orbitalfrontier.ship.MovementInput
 import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.Shipyard
+import com.orbitalfrontier.station.OwnedStationProjection
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationBuilder
 import com.orbitalfrontier.world.DockAction
@@ -237,7 +238,13 @@ class Simulation(
             // PlayScreen.trade uses; an unresolvable station / no trade desk yields a null market and
             // Trading.resolve no-ops. TradeOrder.None (the default) is a no-op too — credits + cargo
             // thread through unchanged, so a held-while-docked stretch stays bit-for-bit stable.
-            val station = world.sector(state.currentSector).station(state.dockedStation)
+            // UC51 lockstep (mirrors PlayScreen.dockedMarketOrNull): resolve an OWNED-station projection
+            // too, so a docked personal station yields its reconstructed commerce/retrofit markets here as
+            // on device. For an authored docked station this returns the same station as the old
+            // `world.sector(...).station(...)` lookup, so every pre-UC51 fixture is byte-identical; a docked
+            // owned station has no shipyard / crew / build capability, so outfit/fleet/hire/mission/build all
+            // naturally no-op there (flags off).
+            val station = OwnedStationProjection.resolveDocked(world, state.currentSector, state.stations, state.dockedStation)
             // UC46: compute the EFFECTIVE market ONCE — the authored base repriced by the live
             // supply/demand pressure (decayedMarket), the seeded drift (state.tick) and the station's
             // faction standing — and use that single value for Trading.resolve (the device's
@@ -483,7 +490,12 @@ class Simulation(
         val nextShip = if (traversal == null) movedShip else movedShip.copy(position = traversal.arrivalPosition)
         // Resolve the dock action against the post-movement sector/position. DOCK with a station in
         // range docks; UNDOCK clears the dock; NONE leaves it unchanged (the common pre-UC05 path).
-        val nextDocked = Docking.resolve(world, nextSector, state.dockedStation, nextShip.position, dockAction)
+        // UC51 lockstep (mirrors PlayScreen): the player's owned stations in nextSector are surfaced as
+        // synthetic, dockable Station projections, so a DOCK can commit to a personal station. Empty when
+        // the player owns none there, so the resolution is byte-identical for a no-owned-station tick.
+        val nextOwnedStations = OwnedStationProjection.stationsIn(nextSector, state.stations)
+        val nextDocked =
+            Docking.resolve(world, nextSector, state.dockedStation, nextShip.position, dockAction, nextOwnedStations)
 
         // Mining only while in flight (not docked this tick). Operates on the post-refuel cargo so a
         // refuel + mine in the same tick composes correctly; a NONE action returns cargo + depletion

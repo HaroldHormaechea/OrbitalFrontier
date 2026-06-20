@@ -39,9 +39,24 @@ object Docking {
         world: SectorWorld,
         currentSector: SectorId,
         shipPosition: Vec2,
+    ): Station? = availableStation(world, currentSector, shipPosition, emptyList())
+
+    /**
+     * The dockable station as [availableStation], but considering the sector's authored stations
+     * **plus** [extraStations] — the player-owned station projections surfaced for this sector (UC51
+     * AC#3; [com.orbitalfrontier.station.OwnedStationProjection]). Authored stations are considered
+     * first, then the extras; the nearest in-range station overall wins. With an **empty**
+     * [extraStations] this is identical to the base overload, so a no-owned-station sector resolves
+     * byte-identically.
+     */
+    fun availableStation(
+        world: SectorWorld,
+        currentSector: SectorId,
+        shipPosition: Vec2,
+        extraStations: List<Station>,
     ): Station? {
         val sector = world.sector(currentSector)
-        return sector.stations
+        return (sector.stations + extraStations)
             .filter { (shipPosition - it.position).length <= it.dockingRadius }
             .minByOrNull { (shipPosition - it.position).length }
     }
@@ -62,11 +77,26 @@ object Docking {
         dockedStation: PoiId?,
         shipPosition: Vec2,
         action: DockAction,
+    ): PoiId? = resolve(world, currentSector, dockedStation, shipPosition, action, emptyList())
+
+    /**
+     * Resolve the next dock state as [resolve], but with the sector's owned-station projections
+     * ([extraStations]) also dockable (UC51 AC#3). A [DockAction.DOCK] may now commit to an owned
+     * station's synthetic [PoiId]; UNDOCK/NONE are unaffected. With an **empty** [extraStations] this is
+     * identical to the base overload, so a no-owned-station tick resolves byte-identically.
+     */
+    fun resolve(
+        world: SectorWorld,
+        currentSector: SectorId,
+        dockedStation: PoiId?,
+        shipPosition: Vec2,
+        action: DockAction,
+        extraStations: List<Station>,
     ): PoiId? =
         when (action) {
             DockAction.DOCK ->
                 if (dockedStation == null) {
-                    availableStation(world, currentSector, shipPosition)?.id ?: dockedStation
+                    availableStation(world, currentSector, shipPosition, extraStations)?.id ?: dockedStation
                 } else {
                     dockedStation
                 }

@@ -1,5 +1,6 @@
 package com.orbitalfrontier.station
 
+import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.ResourceType
 
 /**
@@ -39,6 +40,25 @@ data class StationBuildCost(
         require(resources.values.all { it >= 1 }) {
             "StationBuildCost resource amounts must be >= 1: $resources"
         }
+    }
+
+    /**
+     * Whether [credits] **and** every resource line in this cost are covered by [credits] + [cargo]
+     * (UC51) — the **atomic** affordability check, all-or-nothing. The single source of truth used both
+     * by [StationBuilder] before it deducts (so the wallet/hold are never partially drawn down) and by
+     * the build-screen model ([StationBuildMenu]) to show a per-option affordable flag (so the preview
+     * never disagrees with the charge). Resources are read from the active ship's hold via
+     * [Cargo.contents]; an absent key counts as 0.
+     */
+    fun canAfford(
+        credits: Long,
+        cargo: Cargo,
+    ): Boolean {
+        if (credits < this.credits) return false
+        for ((resource, units) in resources) {
+            if ((cargo.contents[resource] ?: 0) < units) return false
+        }
+        return true
     }
 }
 
