@@ -2740,18 +2740,110 @@ class SaveMigrationTest {
         assertEquals("the pre-UC53 credits survive the migration", 1234L, readGameStateLong("credits"))
         assertEquals("the pre-UC53 play_time_seconds survive the migration", 99L, readGameStateLong("play_time_seconds"))
 
-        // The stored save-format version is bumped to exactly 23 by this single v22 -> v23 STEP, and 23 is
-        // the current generated schema version (UC53 is the latest migration in the chain — this step now
-        // sits at the TOP of the chain, so it OWNS the moving "== Schema.version" cross-check alongside 23L).
+        // The stored save-format version is bumped to exactly 23 by this single v22 -> v23 STEP. This step
+        // is no longer the TOP of the chain (UC54 added a v23 -> v24 step below), so it asserts the literal 23
+        // only — the moving "== Schema.version" cross-check now belongs to the v23 -> v24 step.
         assertEquals(23L, queries.selectSaveVersion().executeAsOne())
-        assertEquals(
-            "the v22 -> v23 step lands on the current generated schema version",
-            OrbitalFrontier.Schema.version,
-            queries.selectSaveVersion().executeAsOne(),
-        )
 
         // The new column is writable, not just present: a non-zero world seed writes + reads back through SQL.
         driver.execute(null, "UPDATE game_state SET world_seed = 424242 WHERE slot_id = 0", 0)
         assertEquals("a non-zero world_seed round-trips on the migrated DB", 424242L, readGameStateLong("world_seed"))
+    }
+
+    // --- UC54 AC#4: v23 -> v24 adds the consumed_poi table additively (no breaking change) ---
+
+    /**
+     * Build a minimal but **data-bearing** v23-shaped DB for the v23 -> v24 step: the `meta` row at
+     * save_version 23 (which 23.sqm bumps to 24), plus a `game_state` table in its **v23 shape** (the v22
+     * columns plus UC53's `world_seed`) carrying a real save-header row that stands in for "prior data that
+     * must survive". The v23 -> v24 migration (23.sqm) is a purely additive `CREATE TABLE consumed_poi`
+     * + a `meta` version bump, so this minimal shape exercises the step honestly while staying independent
+     * of the unrelated mission/settings-column chains the other step tests build.
+     */
+    private fun buildRealV23MetaWithGameState() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        // The v23 game_state shape: the v22 columns plus UC53's world_seed (added by 22.sqm).
+        driver.execute(
+            null,
+            "CREATE TABLE game_state (" +
+                "slot_id INTEGER NOT NULL PRIMARY KEY, current_sector TEXT NOT NULL, active_ship_id INTEGER NOT NULL, " +
+                "docked_station_id TEXT, credits INTEGER NOT NULL DEFAULT 0, last_docked_station_id TEXT, " +
+                "name TEXT NOT NULL DEFAULT '', last_saved_epoch_millis INTEGER NOT NULL DEFAULT 0, " +
+                "play_time_seconds INTEGER NOT NULL DEFAULT 0, world_seed INTEGER NOT NULL DEFAULT 0)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 23)", 0)
+        // A real save-header row: started in Beta with 1234 credits + a non-zero world seed, so the
+        // migration's data-survival assertion is meaningful (these pre-UC54 values must be byte-untouched
+        // by the additive new-table add).
+        driver.execute(
+            null,
+            "INSERT INTO game_state(slot_id, current_sector, active_ship_id, credits, name, play_time_seconds, world_seed) " +
+                "VALUES (0, 'beta', 0, 1234, 'Captain', 99, 7777)",
+            0,
+        )
+    }
+
+    @Test
+    fun `migrating a real v23 database to v24 adds consumed_poi, preserves prior data, and bumps the version`() {
+        buildRealV23MetaWithGameState()
+
+        // Apply the sequential v23 -> v24 migration (runs migrations/23.sqm — additive CREATE TABLE).
+        OrbitalFrontier.Schema.migrate(driver, 23L, 24L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new consumed_poi table exists and starts EMPTY — a migrated pre-UC54 save has consumed nothing,
+        // so every derelict is full / every distress armed → byte-identical to a game that never scavenged.
+        assertTrue("consumed_poi table must exist after migration", tableExists("consumed_poi"))
+        val initialCount =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM consumed_poi",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0) ?: 0L)
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a migrated v23 save has no consumed POIs", 0L, initialCount)
+
+        // Data survival: the pre-UC54 save-header values (including UC53's world_seed) are untouched by the
+        // additive new-table add.
+        assertEquals("the pre-UC54 current_sector survives the migration", "beta", readGameStateText("current_sector"))
+        assertEquals("the pre-UC54 credits survive the migration", 1234L, readGameStateLong("credits"))
+        assertEquals("the pre-UC54 play_time_seconds survive the migration", 99L, readGameStateLong("play_time_seconds"))
+        assertEquals("the pre-UC54 world_seed survives the migration", 7777L, readGameStateLong("world_seed"))
+
+        // The stored save-format version is bumped to exactly 24 by this single v23 -> v24 STEP, and 24 is the
+        // current generated schema version (UC54 is the latest migration in the chain — this step now sits at
+        // the TOP of the chain, so it OWNS the moving "== Schema.version" cross-check alongside 24L).
+        assertEquals(24L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the v23 -> v24 step lands on the current generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new table is writable, not just present: a consumed-POI row INSERTs and reads back through SQL.
+        driver.execute(null, "INSERT INTO consumed_poi(slot_id, poi_id) VALUES (0, 'beta-derelict')", 0)
+        val poiId =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT poi_id FROM consumed_poi WHERE slot_id = 0",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getString(0))
+                },
+                parameters = 0,
+                binders = null,
+            ).value
+        assertEquals("a consumed_poi row round-trips on the migrated DB", "beta-derelict", poiId)
     }
 }

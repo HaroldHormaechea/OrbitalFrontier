@@ -204,4 +204,44 @@ class ScanningTest {
         assertTrue("the revealed derelict now shows", visible(pois.first { it.id == derelict }, revealed))
         assertFalse("the unrevealed ghost stays hidden", visible(pois.first { it.id == ghost }, revealed))
     }
+
+    // --- UC54: detection generalizes to the new POI types (Beta) ---
+    //
+    // The UC54 Derelict is a scan-only Contact (NOT a Transponder), so it reveals through the SAME detection
+    // path as a HiddenContact. The DistressSignal and HazardZone are Transponders, so they auto-show and are
+    // NEVER part of the scan-only set. These tests pin that split against the production Beta cluster.
+
+    private val betaSector: SectorId = SectorId("beta")
+    private val betaDerelict: Derelict = world.sector(betaSector).derelicts.single()
+    private val betaDistress: DistressSignal = world.sector(betaSector).distressSignals.single()
+    private val betaHazard: HazardZone = world.sector(betaSector).hazardZones.single()
+
+    @Test
+    fun `a UC54 derelict is a scan-only Contact, not a Transponder`() {
+        assertTrue("a derelict is a Contact (can show once revealed)", betaDerelict is Contact)
+        assertFalse("a derelict must NOT be a Transponder (else it would auto-show)", betaDerelict is Transponder)
+    }
+
+    @Test
+    fun `a scan in range of a UC54 derelict reveals it through the shared detection path`() {
+        // Scan from the derelict's own position so it is comfortably within base sensor range.
+        val revealed =
+            Scanning.resolve(world, betaSector, betaDerelict.position, baseRange, emptySet(), ScanAction.SCAN)
+
+        assertTrue("the in-range UC54 derelict is revealed by a scan", betaDerelict.id in revealed)
+    }
+
+    @Test
+    fun `distress and hazard transponders are NOT scan-gated`() {
+        // Transponders auto-show, so they must never appear in the scan-only contactsInRange set, even when a
+        // scan from on top of them would otherwise reach them.
+        assertTrue("a distress signal is a Transponder (auto-shows)", betaDistress is Transponder)
+        assertTrue("a hazard zone is a Transponder (auto-shows)", betaHazard is Transponder)
+
+        val scanReach = Scanning.contactsInRange(world, betaSector, betaDistress.position, baseRange)
+        assertFalse("a distress signal is never in the scan-only set", scanReach.any { it.id == betaDistress.id })
+        assertFalse("a hazard zone is never in the scan-only set", scanReach.any { it.id == betaHazard.id })
+        // The only scan-only contact in Beta is the derelict.
+        assertTrue("the Beta derelict IS in the scan-only set", scanReach.any { it.id == betaDerelict.id })
+    }
 }
