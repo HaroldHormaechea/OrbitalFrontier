@@ -68,6 +68,10 @@ class MinimapRenderer(
     private val contactRegion: TextureRegion = assets.region(AtlasRegions.MM_CONTACT)
     private val playerRegion: TextureRegion = assets.region(AtlasRegions.MM_PLAYER)
 
+    // UC54: the hazard-zone minimap marker reuses the asteroid marker (a debris/radiation cluster). Resolved
+    // once here (borrowed atlas), like the others — no per-frame lookup in the hot draw path.
+    private val hazardRegion: TextureRegion = assets.region(AtlasRegions.MM_ASTEROID)
+
     /**
      * The minimap panel rectangle in **world units** for the given world-unit viewport and reserved
      * bottom-control band — the single geometry source shared by this renderer's [render] draw and
@@ -153,6 +157,11 @@ class MinimapRenderer(
                     ContactKind.GATE -> gateRegion
                     ContactKind.STATION -> stationRegion
                     ContactKind.SHIP -> contactRegion
+                    // UC54: derelict (scan-only wreck) + distress beacon read as contacts; a hazard field
+                    // reuses the asteroid marker (debris/radiation cluster). No new mm-* art ships this UC.
+                    ContactKind.DERELICT -> contactRegion
+                    ContactKind.DISTRESS -> contactRegion
+                    ContactKind.HAZARD -> hazardRegion
                 }
             // UC39: in colourblind mode tint the friendly (station) / hostile (contact) markers with the
             // mode-aware Palette accessors so they carry a colourblind-safe state cue on top of their
@@ -199,6 +208,11 @@ class MinimapRenderer(
                 ContactKind.STATION -> Palette.STATION_FRIENDLY
                 ContactKind.SHIP -> Palette.CONTACT_HOSTILE
                 ContactKind.GATE -> Color.WHITE
+                // UC54: a derelict + distress beacon carry the hostile/unknown cue (vermillion) — both can lead
+                // to a fight; a hazard field is a neutral environmental marker (no state tint).
+                ContactKind.DERELICT -> Palette.CONTACT_HOSTILE
+                ContactKind.DISTRESS -> Palette.CONTACT_HOSTILE
+                ContactKind.HAZARD -> Color.WHITE
             }
         }
 

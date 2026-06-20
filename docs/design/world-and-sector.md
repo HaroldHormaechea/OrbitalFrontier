@@ -57,7 +57,18 @@ reproducible and cheaply persistable (store the seed + deltas rather than every 
 - **Stations** — docking, trade, missions, services. Some are **junkyards** (a station
   variant where used upgrades are sold/removed and ships refitted — see
   [upgrades-and-progression.md](upgrades-and-progression.md)).
-- _(Later: derelicts/wrecks, distress signals, hazards — not MVP.)_
+- **Derelicts / wrecks** (UC54) — **scan-only** hulks (no transponder; uncovered by an active
+  scan like a hidden contact) the player flies up to and **scavenges** for resources; a scavenged
+  wreck stays empty across save/reload. See ADR 0042.
+- **Distress signals** (UC54) — broadcasting beacons that, on the player flying into them, fire a
+  one-shot mini-event branching into a **reward** or an **ambush** (deterministic per signal). See
+  ADR 0042.
+- **Hazard zones** (UC54) — broadcasting debris/radiation fields that **drain fuel per tick** while
+  the ship is inside; the low-fuel speed floor guarantees the ship can always limp clear (never
+  stranded). See ADR 0042.
+- _(Implemented in the hand-authored MVP map's Beta sector, placed disjoint from every recorded
+  playthrough's path. Procedural placement in generated sectors is a documented follow-up — the
+  replay harness builds the default authored map, so a generated POI can't yet be replayed.)_
 
 **Detection — transponders & active scanning (NEW):**
 - Stations and ships broadcast **beacons/transponders** advertising their identity (and,

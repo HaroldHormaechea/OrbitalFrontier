@@ -1,0 +1,2195 @@
+{
+  "formatVersion": 1,
+  "name": "uc54-additional-poi",
+  "seed": 54,
+  "dtSeconds": 0.016666668,
+  "tickCount": 203,
+  "config": {
+    "maxSpeed": 150.0,
+    "maxAcceleration": 1500.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 50.0,
+    "maxRotationSpeed": 8.0,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.013888889,
+    "thrustDraw": 0.041666668
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "missionConfig": {
+    "boardMiningQuotaMin": 8,
+    "boardMiningQuotaMax": 20,
+    "radioMiningQuotaMin": 6,
+    "radioMiningQuotaMax": 14,
+    "miningRewardBase": 200,
+    "miningRewardPerUnit": 25,
+    "courierRewardBase": 400,
+    "courierRewardSpan": 400,
+    "courierTickLimitMin": 60,
+    "courierTickLimitMax": 240,
+    "courierFailurePenalty": 150,
+    "radioRange": 700.0
+  },
+  "combatConfig": {
+    "hitRadius": 28.0,
+    "sectionHitWeights": {
+      "HULL": 5,
+      "ENGINE": 2,
+      "TURRET": 2,
+      "WEAPON": 2
+    },
+    "minEngineSpeedFactor": 0.35,
+    "respawnCargoLossFraction": 0.25,
+    "muzzleOffset": 24.0,
+    "spawnDistance": 360.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": -750.0,
+    "posY": -700.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": -1.1071488,
+    "angularVelocity": 0.0,
+    "currentSector": "beta",
+    "dockedStation": null,
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 0,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": -750.0,
+        "posY": -700.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": -1.1071488,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {},
+        "crew": 0,
+        "sectionDamage": {}
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": [],
+    "missions": {
+      "available": [],
+      "accepted": []
+    },
+    "lastDockedStation": null
+  },
+  "inputEvents": [
+    {
+      "type": "movement",
+      "tick": 0,
+      "dirX": 150.0,
+      "dirY": -300.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 0,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": 149.81366,
+      "dirY": -299.62732,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 1,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": 149.44098,
+      "dirY": -298.88196,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 2,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": 148.88196,
+      "dirY": -297.76392,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 3,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": 148.13708,
+      "dirY": -296.27295,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 4,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": 147.2041,
+      "dirY": -294.41022,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 5,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": 146.08575,
+      "dirY": -292.17432,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 6,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": 144.96637,
+      "dirY": -289.93896,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 7,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": 143.84845,
+      "dirY": -287.70282,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 8,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": 142.7298,
+      "dirY": -285.46704,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 9,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": 141.61298,
+      "dirY": -283.23035,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 10,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": 140.49567,
+      "dirY": -280.9939,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 11,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 12,
+      "dirX": 139.37958,
+      "dirY": -278.75684,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 12,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 13,
+      "dirX": 138.26166,
+      "dirY": -276.5207,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 13,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 14,
+      "dirX": 137.1438,
+      "dirY": -274.28455,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 14,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 15,
+      "dirX": 136.0252,
+      "dirY": -272.04877,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 15,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 16,
+      "dirX": 134.90851,
+      "dirY": -269.812,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 16,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 17,
+      "dirX": 133.79156,
+      "dirY": -267.57544,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 17,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 18,
+      "dirX": 132.67517,
+      "dirY": -265.33856,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 18,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 19,
+      "dirX": 131.5567,
+      "dirY": -263.10272,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 19,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 20,
+      "dirX": 130.43835,
+      "dirY": -260.86682,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 20,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 21,
+      "dirX": 129.31934,
+      "dirY": -258.63123,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 21,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 22,
+      "dirX": 128.20227,
+      "dirY": -256.39465,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 22,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 23,
+      "dirX": 127.08496,
+      "dirY": -254.1582,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 23,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 24,
+      "dirX": 125.96832,
+      "dirY": -251.92145,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 24,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 25,
+      "dirX": 124.84967,
+      "dirY": -249.68573,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 25,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 26,
+      "dirX": 123.73108,
+      "dirY": -247.44995,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 26,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 27,
+      "dirX": 122.612305,
+      "dirY": -245.21423,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 27,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 28,
+      "dirX": 121.49487,
+      "dirY": -242.9779,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 28,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 29,
+      "dirX": 120.37555,
+      "dirY": -240.7425,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 29,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 30,
+      "dirX": 119.25598,
+      "dirY": -238.5072,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 30,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 31,
+      "dirX": 118.13812,
+      "dirY": -236.27106,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 31,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 32,
+      "dirX": 117.019104,
+      "dirY": -234.03546,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 32,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 33,
+      "dirX": 115.90094,
+      "dirY": -231.79944,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 33,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 34,
+      "dirX": 114.781006,
+      "dirY": -229.56433,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 34,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 35,
+      "dirX": 113.66144,
+      "dirY": -227.32904,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 35,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 36,
+      "dirX": 112.5412,
+      "dirY": -225.09406,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 36,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 37,
+      "dirX": 111.42322,
+      "dirY": -222.85797,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 37,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 38,
+      "dirX": 110.30548,
+      "dirY": -220.62177,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 38,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 39,
+      "dirX": 109.18646,
+      "dirY": -218.38617,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 39,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 40,
+      "dirX": 108.0694,
+      "dirY": -216.1496,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 40,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 41,
+      "dirX": 106.952576,
+      "dirY": -213.9129,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 41,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 42,
+      "dirX": 105.83417,
+      "dirY": -211.677,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 42,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 43,
+      "dirX": 104.71704,
+      "dirY": -209.44049,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 43,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 44,
+      "dirX": 103.59918,
+      "dirY": -207.20435,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 44,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 45,
+      "dirX": 102.48297,
+      "dirY": -204.96735,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 45,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 46,
+      "dirX": 101.36603,
+      "dirY": -202.73077,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 46,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 47,
+      "dirX": 100.25055,
+      "dirY": -200.49341,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 47,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 48,
+      "dirX": 99.13403,
+      "dirY": -198.25659,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 48,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 49,
+      "dirX": 98.0188,
+      "dirY": -196.0191,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 49,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 50,
+      "dirX": 96.902405,
+      "dirY": -193.78223,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 50,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 51,
+      "dirX": 95.78717,
+      "dirY": -191.5448,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 51,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 52,
+      "dirX": 94.67059,
+      "dirY": -189.30798,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 52,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 53,
+      "dirX": 93.55505,
+      "dirY": -187.07068,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 53,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 54,
+      "dirX": 92.43811,
+      "dirY": -184.83405,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 54,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 55,
+      "dirX": 91.32214,
+      "dirY": -182.59692,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 55,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 56,
+      "dirX": 90.20471,
+      "dirY": -180.36053,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 56,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 57,
+      "dirX": 89.088196,
+      "dirY": -178.12372,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 57,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 58,
+      "dirX": 87.97015,
+      "dirY": -175.88763,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 58,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 59,
+      "dirX": 86.85297,
+      "dirY": -173.65112,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 59,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 60,
+      "dirX": 85.73425,
+      "dirY": -171.4154,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 60,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 61,
+      "dirX": 84.61633,
+      "dirY": -169.17926,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 61,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 62,
+      "dirX": 83.496826,
+      "dirY": -166.94391,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 62,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 63,
+      "dirX": 82.37811,
+      "dirY": -164.70819,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 63,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 64,
+      "dirX": 81.25781,
+      "dirY": -162.47327,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 64,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 65,
+      "dirX": 80.138306,
+      "dirY": -160.23792,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 65,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 66,
+      "dirX": 79.017395,
+      "dirY": -158.0033,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 66,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 67,
+      "dirX": 77.89758,
+      "dirY": -155.76813,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 67,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 68,
+      "dirX": 76.77661,
+      "dirY": -153.53351,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 68,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 69,
+      "dirX": 75.65698,
+      "dirY": -151.29822,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 69,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 70,
+      "dirX": 74.53638,
+      "dirY": -149.06342,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 70,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 71,
+      "dirX": 73.4173,
+      "dirY": -146.82788,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 71,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 72,
+      "dirX": 72.29736,
+      "dirY": -144.59277,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 72,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 73,
+      "dirX": 71.17908,
+      "dirY": -142.35681,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 73,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 74,
+      "dirX": 70.06012,
+      "dirY": -140.12122,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 74,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 75,
+      "dirX": 68.94287,
+      "dirY": -137.88477,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 75,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 76,
+      "dirX": 67.82501,
+      "dirY": -135.64862,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 76,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 77,
+      "dirX": 66.70874,
+      "dirY": -133.41168,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 77,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 78,
+      "dirX": 65.59155,
+      "dirY": -131.17523,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 78,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 79,
+      "dirX": 64.47571,
+      "dirY": -128.93811,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 79,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 80,
+      "dirX": 63.358704,
+      "dirY": -126.70154,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 80,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 81,
+      "dirX": 62.24286,
+      "dirY": -124.464355,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 81,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 82,
+      "dirX": 61.12567,
+      "dirY": -122.227844,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 82,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 83,
+      "dirX": 60.00952,
+      "dirY": -119.990845,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 83,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 84,
+      "dirX": 58.891968,
+      "dirY": -117.75458,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 84,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 85,
+      "dirX": 57.77533,
+      "dirY": -115.51782,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 85,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 86,
+      "dirX": 56.657166,
+      "dirY": -113.2818,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 86,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 87,
+      "dirX": 55.539856,
+      "dirY": -111.04541,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 87,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 88,
+      "dirX": 54.42096,
+      "dirY": -108.80975,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 88,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 89,
+      "dirX": 53.302856,
+      "dirY": -106.57373,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 89,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 90,
+      "dirX": 52.183105,
+      "dirY": -104.3385,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 90,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 91,
+      "dirX": 51.064087,
+      "dirY": -102.102905,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 91,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 92,
+      "dirX": 49.943542,
+      "dirY": -99.8681,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 92,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 93,
+      "dirX": 48.823914,
+      "dirY": -97.63281,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 93,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 94,
+      "dirX": 47.70294,
+      "dirY": -95.39819,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 94,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 95,
+      "dirX": 46.58307,
+      "dirY": -93.163025,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 95,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 96,
+      "dirX": 45.461975,
+      "dirY": -90.92853,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "scavenge",
+      "tick": 96,
+      "action": "SCAVENGE"
+    },
+    {
+      "type": "movement",
+      "tick": 97,
+      "dirX": 344.34204,
+      "dirY": -138.69342,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 98,
+      "dirX": 343.22125,
+      "dirY": -136.45874,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 99,
+      "dirX": 342.09442,
+      "dirY": -134.22711,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 100,
+      "dirX": 340.95325,
+      "dirY": -132.00275,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 101,
+      "dirX": 339.78638,
+      "dirY": -129.79175,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 102,
+      "dirX": 338.5794,
+      "dirY": -127.60242,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 103,
+      "dirX": 337.31537,
+      "dirY": -125.445496,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 104,
+      "dirX": 335.97552,
+      "dirY": -123.33484,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 105,
+      "dirX": 334.5404,
+      "dirY": -121.28778,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 106,
+      "dirX": 332.99847,
+      "dirY": -119.31995,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 107,
+      "dirX": 331.34613,
+      "dirY": -117.44385,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 108,
+      "dirX": 329.58624,
+      "dirY": -115.66821,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 109,
+      "dirX": 327.72626,
+      "dirY": -113.99774,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 110,
+      "dirX": 325.77667,
+      "dirY": -112.4328,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 111,
+      "dirX": 323.7497,
+      "dirY": -110.96948,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 112,
+      "dirX": 321.65833,
+      "dirY": -109.59973,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 113,
+      "dirX": 319.5157,
+      "dirY": -108.31171,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 114,
+      "dirX": 317.33447,
+      "dirY": -107.09009,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 115,
+      "dirX": 315.12292,
+      "dirY": -105.92432,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 116,
+      "dirX": 312.8853,
+      "dirY": -104.80939,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 117,
+      "dirX": 310.62567,
+      "dirY": -103.739746,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 118,
+      "dirX": 308.34906,
+      "dirY": -102.706726,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 119,
+      "dirX": 306.05756,
+      "dirY": -101.707214,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 120,
+      "dirX": 303.75275,
+      "dirY": -100.73883,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 121,
+      "dirX": 301.43774,
+      "dirY": -99.79498,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 122,
+      "dirX": 299.11334,
+      "dirY": -98.87457,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 123,
+      "dirX": 296.78198,
+      "dirY": -97.971985,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 124,
+      "dirX": 294.44385,
+      "dirY": -97.087036,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 125,
+      "dirX": 292.1009,
+      "dirY": -96.214905,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 126,
+      "dirX": 289.75305,
+      "dirY": -95.35614,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 127,
+      "dirX": 287.40186,
+      "dirY": -94.50653,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 128,
+      "dirX": 285.04694,
+      "dirY": -93.66724,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 129,
+      "dirX": 282.6897,
+      "dirY": -92.83453,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 130,
+      "dirX": 280.3296,
+      "dirY": -92.01001,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 131,
+      "dirX": 277.96783,
+      "dirY": -91.19025,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 132,
+      "dirX": 275.60376,
+      "dirY": -90.377075,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 133,
+      "dirX": 273.23853,
+      "dirY": -89.56732,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 134,
+      "dirX": 270.87146,
+      "dirY": -88.76294,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 135,
+      "dirX": 268.5036,
+      "dirY": -87.961,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 136,
+      "dirX": 266.13416,
+      "dirY": -87.163635,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 137,
+      "dirX": 263.76416,
+      "dirY": -86.36792,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 138,
+      "dirX": 261.39282,
+      "dirY": -85.57617,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 139,
+      "dirX": 259.02112,
+      "dirY": -84.78552,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 140,
+      "dirX": 256.64825,
+      "dirY": -83.99835,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 141,
+      "dirX": 254.27515,
+      "dirY": -83.211914,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 142,
+      "dirX": 251.90106,
+      "dirY": -82.42853,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 143,
+      "dirX": 249.52686,
+      "dirY": -81.64545,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 144,
+      "dirX": 247.15186,
+      "dirY": -80.86487,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 145,
+      "dirX": 244.77692,
+      "dirY": -80.083984,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 146,
+      "dirX": 242.40137,
+      "dirY": -79.30505,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 147,
+      "dirX": 240.02606,
+      "dirY": -78.52533,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 148,
+      "dirX": 237.65027,
+      "dirY": -77.74713,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 149,
+      "dirX": 235.27484,
+      "dirY": -76.96777,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 150,
+      "dirX": 232.89899,
+      "dirY": -76.1897,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 151,
+      "dirX": 230.52362,
+      "dirY": -75.41022,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 152,
+      "dirX": 228.14789,
+      "dirY": -74.631775,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 153,
+      "dirX": 225.7727,
+      "dirY": -73.851746,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 154,
+      "dirX": 223.39722,
+      "dirY": -73.07257,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 155,
+      "dirX": 221.02222,
+      "dirY": -72.29205,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 156,
+      "dirX": 218.64673,
+      "dirY": -71.51294,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 157,
+      "dirX": 216.27155,
+      "dirY": -70.73297,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 158,
+      "dirX": 213.89575,
+      "dirY": -69.954834,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 159,
+      "dirX": 211.52011,
+      "dirY": -69.17615,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 160,
+      "dirX": 209.1438,
+      "dirY": -68.399536,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 161,
+      "dirX": 206.76761,
+      "dirY": -67.6225,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 162,
+      "dirX": 204.39096,
+      "dirY": -66.846924,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 163,
+      "dirX": 202.01486,
+      "dirY": -66.0697,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 164,
+      "dirX": 199.63864,
+      "dirY": -65.29285,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 165,
+      "dirX": 197.26291,
+      "dirY": -64.514465,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 166,
+      "dirX": 194.88666,
+      "dirY": -63.737732,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 167,
+      "dirX": 192.51053,
+      "dirY": -62.96057,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 168,
+      "dirX": 190.13391,
+      "dirY": -62.184875,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 169,
+      "dirX": 187.75778,
+      "dirY": -61.407654,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 170,
+      "dirX": 185.3815,
+      "dirY": -60.63098,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 171,
+      "dirX": 183.0058,
+      "dirY": -59.85254,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 172,
+      "dirX": 180.62976,
+      "dirY": -59.075073,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 173,
+      "dirX": 178.25418,
+      "dirY": -58.296204,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 174,
+      "dirX": 175.8782,
+      "dirY": -57.518555,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 175,
+      "dirX": 173.5026,
+      "dirY": -56.739807,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 176,
+      "dirX": 171.1265,
+      "dirY": -55.962524,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 177,
+      "dirX": 168.7507,
+      "dirY": -55.184326,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 178,
+      "dirX": 166.37436,
+      "dirY": -54.407776,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 179,
+      "dirX": 163.99829,
+      "dirY": -53.630432,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 180,
+      "dirX": 161.62164,
+      "dirY": -52.85486,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 181,
+      "dirX": 159.24521,
+      "dirY": -52.078613,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 182,
+      "dirX": 156.86829,
+      "dirY": -51.303894,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 183,
+      "dirX": 154.49176,
+      "dirY": -50.527893,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 184,
+      "dirX": 152.1149,
+      "dirY": -49.75293,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 185,
+      "dirX": 149.73859,
+      "dirY": -48.97632,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 186,
+      "dirX": 147.36206,
+      "dirY": -48.20038,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 187,
+      "dirX": 144.98618,
+      "dirY": -47.422485,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 188,
+      "dirX": 142.61014,
+      "dirY": -46.64502,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 189,
+      "dirX": 140.23456,
+      "dirY": -45.86615,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 190,
+      "dirX": 137.8584,
+      "dirY": -45.08905,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 191,
+      "dirX": 135.48233,
+      "dirY": -44.311707,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 192,
+      "dirX": 133.10583,
+      "dirY": -43.535645,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 193,
+      "dirX": 130.73004,
+      "dirY": -42.757446,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 194,
+      "dirX": 128.35437,
+      "dirY": -41.97888,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 195,
+      "dirX": 125.97809,
+      "dirY": -41.20221,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 196,
+      "dirX": 123.60211,
+      "dirY": -40.42456,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 197,
+      "dirX": 121.22571,
+      "dirY": -39.648193,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 198,
+      "dirX": 118.84979,
+      "dirY": -38.87036,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 199,
+      "dirX": 116.47357,
+      "dirY": -38.093445,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 200,
+      "dirX": 114.09793,
+      "dirY": -37.31476,
+      "magnitude": 1.0,
+      "released": false
+    }
+  ]
+}

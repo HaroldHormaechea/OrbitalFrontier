@@ -169,6 +169,17 @@ data class WorldState(
      * the record/replay equality the determinism harness rests on is untouched.
      */
     val worldSeed: WorldSeed = WorldSeed.MVP,
+    /**
+     * The ids of point-of-interest [PoiId]s the player has **consumed** (UC54 AC#4) — a scavenged
+     * [com.orbitalfrontier.world.Derelict] or a triggered [com.orbitalfrontier.world.DistressSignal]. Save-wide
+     * (a POI id is globally unique across the sector graph), like [revealedContacts], and **monotonic** — a POI
+     * is only ever added, never un-consumed, so a scavenged wreck stays empty across save/reload (AC#4). The
+     * pure resolvers ([com.orbitalfrontier.world.DerelictSalvage] / [com.orbitalfrontier.world.DistressEvent])
+     * grow it; persistence stores one `consumed_poi` row per id (additive v24). Defaults to empty so a fresh
+     * game, and every pre-UC54 save with no `consumed_poi` rows, reads back with nothing consumed and the
+     * snapshot stays byte-identical for a pre-UC54 playthrough.
+     */
+    val consumedPois: Set<PoiId> = emptySet(),
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

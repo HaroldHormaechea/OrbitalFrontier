@@ -1,6 +1,9 @@
 package com.orbitalfrontier.render
 
 import com.orbitalfrontier.world.AsteroidField
+import com.orbitalfrontier.world.Derelict
+import com.orbitalfrontier.world.DistressSignal
+import com.orbitalfrontier.world.HazardZone
 import com.orbitalfrontier.world.HiddenContact
 import com.orbitalfrontier.world.JumpGate
 import com.orbitalfrontier.world.Poi
@@ -38,6 +41,12 @@ object WorldGlyphs {
             is Station -> stationGlyph(poi)
             is AsteroidField -> ASTEROID_GLYPH
             is HiddenContact -> HIDDEN_CONTACT_GLYPH
+            // UC54: the three additional POI kinds. No new atlas art ships this UC, so each reuses an
+            // existing region at its own size — a derelict (scan-only wreck) reads as a contact, a distress
+            // beacon as a contact, and a hazard field as an asteroid-scale cluster (debris/radiation).
+            is Derelict -> DERELICT_GLYPH
+            is DistressSignal -> DISTRESS_GLYPH
+            is HazardZone -> HAZARD_GLYPH
         }
 
     /**
@@ -66,4 +75,13 @@ object WorldGlyphs {
      * not skipped here.
      */
     private val HIDDEN_CONTACT_GLYPH = WorldGlyph(AtlasRegions.CONTACT_HIDDEN, sizeWorldUnits = WorldSpriteSizes.HIDDEN_CONTACT)
+
+    /** Derelict/wreck (UC54): reuses the contact sprite at hidden-contact scale (a scan-only wreck reads as a contact). */
+    private val DERELICT_GLYPH = WorldGlyph(AtlasRegions.CONTACT_HIDDEN, sizeWorldUnits = WorldSpriteSizes.HIDDEN_CONTACT)
+
+    /** Distress signal (UC54): reuses the contact sprite at hidden-contact scale (a small broadcasting beacon). */
+    private val DISTRESS_GLYPH = WorldGlyph(AtlasRegions.CONTACT_HIDDEN, sizeWorldUnits = WorldSpriteSizes.HIDDEN_CONTACT)
+
+    /** Hazard zone (UC54): reuses the asteroid-field sprite at asteroid scale (a debris/radiation cluster). */
+    private val HAZARD_GLYPH = WorldGlyph(AtlasRegions.ASTEROID_FIELD, sizeWorldUnits = WorldSpriteSizes.ASTEROID_FIELD)
 }

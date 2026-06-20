@@ -660,6 +660,16 @@ data class StateSnapshotDto(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val junkyardStock: JunkyardStockDto = JunkyardStockDto.EMPTY,
+    /**
+     * The ids of POIs the player has consumed (UC54 AC#4) — a scavenged derelict / triggered distress signal,
+     * each a [PoiId.value] slug — carried on [SimulationState.consumedPois]. Stored as a **sorted** list so the
+     * on-disk form is stable and diffable (the domain side is an order-insensitive `Set`). Marked
+     * `@EncodeDefault(NEVER)` and defaulted **empty** so a never-consumed snapshot — every pre-UC54 fixture, and
+     * a fresh game — **omits** it on disk, keeping the committed fixtures byte-identical despite the codec's
+     * global `encodeDefaults = true`.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val consumedPois: List<String> = emptyList(),
 ) {
     /** Reconstruct the domain [SimulationState]. */
     fun toSimulationState(): SimulationState =
@@ -685,6 +695,8 @@ data class StateSnapshotDto(
             marketState = marketState.toMarketState(),
             // UC47: the junkyard used-part depletion (an absent / omitted field decodes to the empty state).
             junkyardStock = junkyardStock.toJunkyardStock(),
+            // UC54: the consumed POIs (an absent / omitted field decodes to the empty set).
+            consumedPois = consumedPois.map(::PoiId).toSet(),
         )
 
     /**
@@ -755,6 +767,9 @@ data class StateSnapshotDto(
                 marketState = StationMarketStateDto.from(state.marketState),
                 // UC47: the junkyard used-part depletion — empty state omits on disk (byte-identical pre-UC47).
                 junkyardStock = JunkyardStockDto.from(state.junkyardStock),
+                // UC54: the consumed POIs — empty set omits on disk (byte-identical pre-UC54). Sorted slug list:
+                // stable/diffable on disk; the domain side is an order-insensitive Set.
+                consumedPois = state.consumedPois.map { it.value }.sorted(),
             )
     }
 }

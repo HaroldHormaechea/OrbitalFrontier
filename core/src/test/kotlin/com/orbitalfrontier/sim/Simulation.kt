@@ -58,9 +58,13 @@ import com.orbitalfrontier.ship.Shipyard
 import com.orbitalfrontier.station.OwnedStationProjection
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationBuilder
+import com.orbitalfrontier.world.DerelictSalvage
+import com.orbitalfrontier.world.DistressEvent
+import com.orbitalfrontier.world.DistressParams
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
+import com.orbitalfrontier.world.HazardEffect
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.MiningResult
@@ -68,6 +72,7 @@ import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
 import com.orbitalfrontier.world.Scanning
+import com.orbitalfrontier.world.ScavengeAction
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.StationKind
@@ -120,6 +125,11 @@ class Simulation(
     // drain is a same-value no-op ⇒ every pre-UC50 fixture steps byte-identically; the UC50 wage fixture
     // constructs this with a non-zero rate to exercise the drain. Lockstep with PlayScreen.wageParams.
     private val wageParams: WageParams = WageParams(),
+    // UC54: distress-event tunables (reward credits/resources + ambush archetype/count), pinned per
+    // playthrough like every other *Params. Lockstep with PlayScreen.distressParams; the default reward/ambush
+    // is what the UC54 fixture asserts against. The reward/ambush BRANCH itself depends only on the signal id
+    // (a fresh RNG namespace), not on these numbers.
+    private val distressParams: DistressParams = DistressParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -199,6 +209,9 @@ class Simulation(
         missionOrder: MissionOrder = MissionOrder.None,
         fireAction: FireAction = FireAction.NONE,
         stationBuildOrder: StationBuildOrder = StationBuildOrder.None,
+        // UC54: the per-tick scavenge intent. NONE (the default) is a no-op, so every pre-UC54 fixture and
+        // every existing step() call site steps byte-identically; SCAVENGE near an un-consumed derelict salvages it.
+        scavengeAction: ScavengeAction = ScavengeAction.NONE,
     ): SimulationState {
         require(dt > 0f) { "dt must be positive: $dt" }
 
@@ -607,11 +620,56 @@ class Simulation(
             }
         }
 
+        // --- UC54 POI interactions (in flight only) — THE lockstep mirror of PlayScreen.runPoiInteractions,
+        // run AFTER movement/mining/scan/missions/salvage and BEFORE the combat block, in this fixed order:
+        // (1) hazard fuel drain, (2) derelict scavenge, (3) distress edge-trigger. A freshly-docked tick (handed
+        // to the hub) skips them entirely, like mining/scanning. consumedPois grows MONOTONICALLY; the fuel /
+        // cargo / credits / combat all thread forward into the fold + combat block below. Each resolver is a
+        // same-instance no-op on its idle path (no hazard / NONE scavenge / no crossing), so a pre-UC54 fixture
+        // threads the same values through and steps byte-identically.
+        var consumedPois = state.consumedPois
+        var poiFuel = burnedFuel
+        var poiCargo = collectedCargo
+        var poiCredits = collectedCredits
+        var poiCombat = state.combat
+        if (nextDocked == null) {
+            // (1) Hazard: per-tick fuel drain while inside a hazard zone (post-movement position). Same-instance
+            // no-op outside every hazard; the Fuel.speedFactor floor guarantees the ship can always limp out.
+            poiFuel = HazardEffect.resolve(world, nextSector, nextShip.position, poiFuel, dt)
+            // (2) Derelict scavenge: SCAVENGE near the nearest un-consumed derelict salvages it (shared loot +
+            // fillCargo), marking it consumed. NONE / no derelict in range is a same-instance no-op.
+            val scavenge = DerelictSalvage.resolve(world, nextSector, nextShip.position, poiCargo, consumedPois, scavengeAction)
+            poiCargo = scavenge.cargo
+            consumedPois = scavenge.consumedPois
+            // (3) Distress: edge-triggered (pre-movement position outside -> post-gate position inside) on an
+            // un-consumed signal, suppressed while combat is active; reward XOR ambush keyed by the signal id
+            // (fresh RNG namespace). An ambush spawns via EncounterSpawner.missionSpawn (NOT added to
+            // ENCOUNTER_ZONES) seeded by [state.tick] — the sim spawn-seed convention. No crossing is a no-op.
+            val distress =
+                DistressEvent.resolve(
+                    world = world,
+                    currentSector = nextSector,
+                    previousPosition = state.ship.position,
+                    newPosition = nextShip.position,
+                    consumedPois = consumedPois,
+                    combat = poiCombat,
+                    cargo = poiCargo,
+                    credits = poiCredits,
+                    spawnTick = state.tick,
+                    combatParams = combatParams,
+                    params = distressParams,
+                )
+            poiCombat = distress.combat
+            poiCargo = distress.cargo
+            poiCredits = distress.credits
+            consumedPois = distress.consumedPois
+        }
+
         // UC09: fold this tick's kinematics + cargo + fuel back onto the active ship in the fleet.
         // copy() (not withLoadout) — the loadout is unchanged in flight, so capacities stay as derived.
-        // UC12/UC42: the cargo is the post-mission, post-salvage-collect cargo (same instance unless a
-        // mission or a salvage pickup moved units — same-instance keeps it byte-identical on a no-op tick).
-        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = collectedCargo, fuel = burnedFuel)
+        // UC12/UC42: the cargo is the post-mission, post-salvage-collect cargo; UC54: post-scavenge/distress
+        // cargo + post-hazard fuel (same instances unless a POI interaction moved them — byte-identical no-op).
+        val updatedActive = state.fleet.active.copy(kinematics = nextShip, cargo = poiCargo, fuel = poiFuel)
 
         // --- UC13 combat. Runs in flight only (a freshly-docked tick skips it, like mining/scanning) —
         // the authored encounter zones sit in open space, away from stations. Edge-triggered natural spawn
@@ -620,7 +678,10 @@ class Simulation(
         // destruction — the same functions PlayScreen.runCombat runs on device, so live and replayed combat
         // match (AC#7). With combat NONE + FireAction.NONE + no crossing every call returns the SAME
         // instances, advances no RNG and emits no events, so pre-UC13 fixtures step byte-identically.
-        var combat = state.combat
+        // UC54: seed from poiCombat so a distress AMBUSH spawned above feeds this tick's combat block (the
+        // natural/bounty spawns below then no-op since a fight is already active). Same instance as state.combat
+        // when no ambush fired, so pre-UC54 fixtures are byte-identical.
+        var combat = poiCombat
         val lastDockedStation = nextDocked ?: state.lastDockedStation
         var combatFleet = state.fleet.withActive(updatedActive)
         // UC41: the mission log / wallet / standing after this tick's bounty-kill fold. Seeded from the
@@ -628,10 +689,10 @@ class Simulation(
         // a bounty completion (auto-pay) persists exactly as on device. Same instances when no bounty kill
         // landed this tick — so pre-UC41 fixtures stay byte-identical.
         var bountyLog = missionAdvance.log
-        // UC42: seed the wallet from the post-salvage-collect credits (so a bounty payout this tick stacks
-        // on top of any salvage credits just collected — distinct sources, no double-count). Same value as
-        // missionAdvance.credits when nothing was collected this tick.
-        var bountyCredits = collectedCredits
+        // UC42/UC54: seed the wallet from the post-salvage-collect, post-distress-reward credits (so a bounty
+        // payout this tick stacks on top of any salvage / distress-reward credits — distinct sources, no
+        // double-count). Same value as missionAdvance.credits when nothing was collected/rewarded this tick.
+        var bountyCredits = poiCredits
         var bountyReputation = missionAdvance.reputation
 
         if (nextDocked == null) {
@@ -803,6 +864,9 @@ class Simulation(
                         // UC47: in flight there is no junkyard, so the depletion is untouched — thread the
                         // input through (the SAME instance, byte-identical for a never-bought-used run).
                         junkyardStock = state.junkyardStock,
+                        // UC54: the POIs consumed this tick (a scavenge / distress trigger before the death
+                        // tick still persists). SAME instance as state.consumedPois when none consumed.
+                        consumedPois = consumedPois,
                     )
                 }
 
@@ -843,6 +907,9 @@ class Simulation(
             // UC47: in flight there is no junkyard, so the depletion is untouched — thread the input through
             // (the SAME instance, byte-identical for a never-bought-used run).
             junkyardStock = state.junkyardStock,
+            // UC54: the POIs consumed this tick (scavenged derelict / triggered distress). Grown monotonically;
+            // the SAME instance as state.consumedPois on a no-op tick, so pre-UC54 fixtures are byte-identical.
+            consumedPois = consumedPois,
         )
     }
 

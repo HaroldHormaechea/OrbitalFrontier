@@ -21,6 +21,7 @@ import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.ScavengeAction
 
 /**
  * Accumulates a playthrough recording — the seed, fixed timestep, pinned config, optional initial
@@ -105,6 +106,12 @@ class PlaythroughRecorder(
         tick: Int,
         action: ScanAction,
     ): PlaythroughRecorder = record(ScanEvent(tick = tick, action = action))
+
+    /** Convenience: record a [ScavengeEvent] for [action] at [tick] (UC54). */
+    fun recordScavengeAction(
+        tick: Int,
+        action: ScavengeAction,
+    ): PlaythroughRecorder = record(ScavengeEvent(tick = tick, action = action))
 
     /** Convenience: record a [FireEvent] for [action] at [tick] (UC13). */
     fun recordFireAction(

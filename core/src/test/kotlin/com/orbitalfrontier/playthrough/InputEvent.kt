@@ -21,6 +21,7 @@ import com.orbitalfrontier.station.StationModuleId
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.ScavengeAction
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -131,6 +132,25 @@ data class MineEvent(
 data class ScanEvent(
     override val tick: Int,
     val action: ScanAction,
+) : InputEvent()
+
+/**
+ * A scavenge control sample for one tick (UC54 AC#2) — the discrete [ScavengeAction] the play screen feeds
+ * in when the context SCAVENGE button is tapped near a derelict. Carried alongside [MovementEvent] in the
+ * same tick-stamped script, so a recorded session can thrust *and* scavenge;
+ * [com.orbitalfrontier.playthrough.ReplayRunner] dispatches it to [com.orbitalfrontier.sim.Simulation.step]
+ * each tick, where it is resolved against the post-movement position via [com.orbitalfrontier.world.DerelictSalvage].
+ *
+ * [ScavengeAction] is a plain (annotation-free) domain enum; kotlinx.serialization emits an enum by its
+ * constant name, so the on-disk form is the stable, diffable string `"SCAVENGE"` / `"NONE"`. A tick with no
+ * [ScavengeEvent] defaults to [ScavengeAction.NONE] in the runner, so older artifacts (which carry none)
+ * replay unchanged.
+ */
+@Serializable
+@SerialName("scavenge")
+data class ScavengeEvent(
+    override val tick: Int,
+    val action: ScavengeAction,
 ) : InputEvent()
 
 /**

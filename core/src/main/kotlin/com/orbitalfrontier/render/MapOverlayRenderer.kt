@@ -113,6 +113,17 @@ class MapOverlayRenderer(
                     val r = CONTACT_MARKER_RADIUS * uiScale
                     shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
                 }
+                // UC54: a derelict + distress beacon draw as hostile-cued triangles (each can lead to a
+                // fight); a hazard field draws as a neutral gate-blue ring (an environmental zone to avoid).
+                ContactKind.DERELICT, ContactKind.DISTRESS -> {
+                    shapeRenderer.color = Palette.CONTACT_HOSTILE
+                    val r = CONTACT_MARKER_RADIUS * uiScale
+                    shapeRenderer.triangle(x - r, y - r, x + r, y - r, x, y + r)
+                }
+                ContactKind.HAZARD -> {
+                    shapeRenderer.color = GATE_COLOR
+                    shapeRenderer.circle(x, y, GATE_MARKER_RADIUS * uiScale)
+                }
             }
         }
         shapeRenderer.color = SHIP_COLOR

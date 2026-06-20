@@ -14,6 +14,8 @@ import com.orbitalfrontier.mission.MissionId
 import com.orbitalfrontier.mission.MissionOrder
 import com.orbitalfrontier.outfit.OutfitOrder
 import com.orbitalfrontier.outfit.UpgradeCatalog
+import com.orbitalfrontier.platform.SeededRng
+import com.orbitalfrontier.platform.TickTimeSource
 import com.orbitalfrontier.power.PowerParams
 import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.MovementInput
@@ -22,6 +24,7 @@ import com.orbitalfrontier.ship.ShipKinematics
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.ship.singleShipFleet
+import com.orbitalfrontier.sim.Simulation
 import com.orbitalfrontier.sim.SimulationState
 import com.orbitalfrontier.station.OwnedStationPlacement
 import com.orbitalfrontier.station.StationBuildOrder
@@ -32,6 +35,7 @@ import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.ScavengeAction
 import com.orbitalfrontier.world.SectorId
 import kotlin.math.atan2
 
@@ -202,6 +206,14 @@ object PlaythroughFixtures {
     const val UC50_WAGES: String = "uc50-wages"
 
     /**
+     * UC54 additional-POI-types playthrough name (AC#5): the player flies through Beta's deep-south POI
+     * cluster, **scavenging** the derelict, **traversing** the hazard, and **triggering** the distress signal
+     * (which resolves to its authored AMBUSH branch). The only new-path fixture for UC54 — every other replay
+     * stays byte-identical. Loadable via `playtest -Dplaythrough.name=uc54-additional-poi`.
+     */
+    const val UC54_ADDITIONAL_POI: String = "uc54-additional-poi"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -290,6 +302,7 @@ object PlaythroughFixtures {
             UC47_BUY_USED to ::uc47BuyUsedPart,
             UC49_POWER_BROWNOUT to ::uc49PowerBrownout,
             UC50_WAGES to ::uc50Wages,
+            UC54_ADDITIONAL_POI to ::uc54AdditionalPoi,
         )
 
     /**
@@ -1624,6 +1637,107 @@ object PlaythroughFixtures {
         for (tick in UC45_THRUST_IN_TICKS until UC45_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
         }
+        return recorder.build()
+    }
+
+    /**
+     * Movement tuning **pinned for the UC54 additional-POI fixture only** — a deliberately gentle cruise
+     * (low max speed) so the two flight legs through Beta's tightly-spaced south cluster track their target
+     * lines cleanly: at the brisk default a leg's leftover momentum overshoots the next POI's small trigger
+     * circle. Pinning per artifact (the UC02 config-pin rationale) keeps this replay self-contained.
+     */
+    private val UC54_GENTLE_FLIGHT: ShipMovementParams =
+        ShipMovementParams(maxSpeed = 150f, maxAcceleration = 1500f, rotationAcceleration = 50f, maxRotationSpeed = 8f)
+
+    /** Safety tick caps for each [uc54AdditionalPoi] guidance leg — far above the ~140 ticks each leg needs. */
+    private const val UC54_LEG_TICK_CAP: Int = 400
+
+    /**
+     * UC54 additional-POI-types scenario (AC#5): a single flight that interacts with **all three** new POI
+     * types in Beta's deep-south cluster (read from the production [MvpSectorMap]), proving the wired
+     * Simulation POI path matches record→replay (the lockstep contract):
+     *  - the ship starts **in flight, at rest, inside the `beta-hazard` field** — so the per-tick hazard fuel
+     *    drain (AC#2) bites from the very first ticks (the hazard *traversal*);
+     *  - **leg A** thrusts straight at the `beta-derelict` wreck while **holding SCAVENGE** — proximity-gated
+     *    like MINE, so it scavenges the wreck (loot into the hold, wreck marked consumed, AC#2/#4) as it
+     *    passes within the salvage radius, and the early ticks of this leg are still inside the hazard;
+     *  - **leg B** thrusts at the `beta-distress` beacon, crossing **outside→inside** its trigger circle — the
+     *    edge-triggered distress mini-event fires (AC#2), resolving to its authored **AMBUSH** branch (a
+     *    hostile spawned into active combat) and marking the signal consumed (AC#4).
+     *
+     * The cluster is geometrically disjoint from every committed fixture's Beta path, so this is the ONLY
+     * fixture that touches these POIs — every existing replay stays byte-identical (the zero-fixture-regen
+     * lever). The artifact is built with a **closed-loop guidance recorder**: a [Simulation] *identical* to
+     * the one the replay reconstructs (same seed / dt / pinned [UC54_GENTLE_FLIGHT] config / initial state,
+     * reconstructed through the snapshot DTO exactly as the replay does) is stepped here while the ship is
+     * re-aimed at the active waypoint each tick, and those exact inputs are recorded — so the committed script
+     * reproduces the same trajectory on replay, but the heading self-corrects for momentum instead of
+     * overshooting the cluster's tight trigger circles. [Uc54AdditionalPoiReplayTest] asserts the concrete
+     * outcome of each interaction (scavenge cargo gain + consumed; hazard fuel drain + traversal; the ambush
+     * branch + consumed) and bit-for-bit determinism. Loadable via `playtest -Dplaythrough.name=uc54-additional-poi`.
+     */
+    fun uc54AdditionalPoi(): Playthrough {
+        val world = MvpSectorMap.build()
+        val betaId = SectorId("beta")
+        val beta = world.sector(betaId)
+        val derelict = beta.derelicts.single()
+        val distress = beta.distressSignals.single()
+        val hazard = beta.hazardZones.single()
+
+        // In flight (dockedStation null ⇒ POI interactions run), at rest INSIDE the hazard (so the per-tick
+        // drain bites from tick 0), already facing the derelict.
+        val start = hazard.position
+        val toDerelict = derelict.position - start
+        val initialState =
+            SimulationState(
+                currentSector = betaId,
+                fleet =
+                    singleShipFleet(
+                        kinematics =
+                            ShipKinematics(position = start, headingRadians = atan2(toDerelict.y, toDerelict.x)),
+                    ),
+            )
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC54_ADDITIONAL_POI,
+                seed = 54L,
+                dtSeconds = DT_SECONDS,
+                config = UC54_GENTLE_FLIGHT,
+                initialState = initialState,
+            )
+
+        // Closed-loop guidance: drive a Simulation identical to the replay's and re-aim at the active waypoint
+        // each tick. The recorded movement/scavenge inputs reproduce this exact trajectory on replay.
+        val sim = Simulation(rng = SeededRng(54L), timeSource = TickTimeSource(DT_SECONDS), params = UC54_GENTLE_FLIGHT)
+        var state = StateSnapshotDto.from(initialState).toSimulationState()
+        var tick = 0
+
+        // Leg A: fly to the derelict holding SCAVENGE until the wreck is consumed (proximity-gated). The early
+        // ticks are still inside the hazard, so the hazard fuel drain is exercised on this leg.
+        while (derelict.id !in state.consumedPois && tick < UC54_LEG_TICK_CAP) {
+            val input =
+                MovementInput(targetDirection = derelict.position - state.ship.position, magnitude = 1f, released = false)
+            recorder.recordMovement(tick, input)
+            recorder.recordScavengeAction(tick, ScavengeAction.SCAVENGE)
+            state = sim.step(state, input, DT_SECONDS, scavengeAction = ScavengeAction.SCAVENGE)
+            tick++
+        }
+        require(derelict.id in state.consumedPois) { "UC54 fixture: the derelict was not scavenged within the tick cap" }
+
+        // Leg B: fly to the distress beacon until the edge-triggered mini-event fires (the signal is consumed).
+        val legBCap = tick + UC54_LEG_TICK_CAP
+        while (distress.id !in state.consumedPois && tick < legBCap) {
+            val input =
+                MovementInput(targetDirection = distress.position - state.ship.position, magnitude = 1f, released = false)
+            recorder.recordMovement(tick, input)
+            state = sim.step(state, input, DT_SECONDS)
+            tick++
+        }
+        require(distress.id in state.consumedPois) { "UC54 fixture: the distress signal was not triggered within the tick cap" }
+
+        // A couple of trailing no-input ticks so the post-trigger (ambush) combat state is captured.
+        recorder.extendToTick(tick + 1)
         return recorder.build()
     }
 }

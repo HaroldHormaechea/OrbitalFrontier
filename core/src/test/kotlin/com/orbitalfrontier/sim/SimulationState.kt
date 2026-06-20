@@ -136,6 +136,16 @@ data class SimulationState(
      * snapshot DTO omits via `@EncodeDefault(NEVER)`.
      */
     val junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
+    /**
+     * The ids of POIs the player has **consumed** (UC54 AC#4) — a scavenged [com.orbitalfrontier.world.Derelict]
+     * or a triggered [com.orbitalfrontier.world.DistressSignal] — mirroring the production
+     * [com.orbitalfrontier.world.WorldState.consumedPois]. Save-wide (a POI id is globally unique) and
+     * **monotonic** — the pure [Simulation] only ever adds ids ([com.orbitalfrontier.world.DerelictSalvage] /
+     * [com.orbitalfrontier.world.DistressEvent]); a consumed POI never un-consumes, so a scavenged wreck stays
+     * empty across save/reload. Defaults empty and stays the SAME instance on a no-op tick, so every pre-UC54
+     * fixture constructs and **steps byte-identically** (the byte-identical contract).
+     */
+    val consumedPois: Set<PoiId> = emptySet(),
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics
