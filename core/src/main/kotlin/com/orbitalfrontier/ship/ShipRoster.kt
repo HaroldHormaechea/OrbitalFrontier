@@ -72,6 +72,9 @@ object ShipRoster {
             baseCrewCapacity = 4,
             movement = MovementProfile(maxSpeedMultiplier = 0.85f, maxAccelerationMultiplier = 0.8f),
             price = 2500,
+            // UC48 AC#1: the league-sold hull is gated behind league standing (10 ≤
+            // ReputationParams.missionCompleteDelta, so one league mission unlocks it). [TUNE]
+            unlockThreshold = 10,
         )
 
     /** A courier role: speed + cargo, fewer utility slots, intrinsically faster hull. [TUNE] */

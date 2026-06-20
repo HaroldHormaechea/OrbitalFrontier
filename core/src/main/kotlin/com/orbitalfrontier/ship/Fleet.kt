@@ -1,5 +1,11 @@
 package com.orbitalfrontier.ship
 
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.StandingGate
+
 /**
  * The ships the player owns and which one is active (UC09 AC#5).
  *
@@ -148,11 +154,17 @@ object FleetResolver {
         credits: Long,
         shipyard: Shipyard,
         order: FleetOrder,
+        // UC48: the docked station's faction + the player's standing + the pricing tunables. Neutral
+        // defaults (no faction, EMPTY standing, default params) ⇒ no gate and an exactly-1.0 price
+        // multiplier, so every pre-UC48 caller, test, and fixture stays byte-identical.
+        factionId: FactionId? = null,
+        reputation: Reputation = Reputation.EMPTY,
+        pricingParams: PricingParams = PricingParams(),
     ): FleetResult {
         val unchanged = FleetResult(fleet, credits, false)
         return when (order) {
             FleetOrder.None -> unchanged
-            is FleetOrder.BuyShip -> resolveBuyShip(fleet, credits, shipyard, order, unchanged)
+            is FleetOrder.BuyShip -> resolveBuyShip(fleet, credits, shipyard, order, factionId, reputation, pricingParams, unchanged)
             is FleetOrder.SwitchActive -> resolveSwitchActive(fleet, credits, order, unchanged)
         }
     }
@@ -162,13 +174,20 @@ object FleetResolver {
         credits: Long,
         shipyard: Shipyard,
         order: FleetOrder.BuyShip,
+        factionId: FactionId?,
+        reputation: Reputation,
+        pricingParams: PricingParams,
         unchanged: FleetResult,
     ): FleetResult {
         if (!shipyard.offers(order.typeId)) return unchanged // not sold here
         val type = ShipRoster.byId(order.typeId) ?: return unchanged // unknown type
-        if (credits < type.price) return unchanged // can't afford
+        // UC48 AC#1: reputation gate — below the hull's standing requirement at this shipyard's faction is a no-op.
+        if (!StandingGate.status(type.unlockThreshold, factionId, reputation).available) return unchanged // locked
+        // UC48 AC#2: charge the faction-adjusted effective price (the SAME helper the screen displays).
+        val price = FactionPricing.adjustedPrice(type.price, factionId, reputation, pricingParams)
+        if (credits < price) return unchanged // can't afford
         val newShip = OwnedShip.fresh(fleet.nextShipId(), type, fleet.active.kinematics.position)
-        return FleetResult(fleet.addShip(newShip), credits - type.price, true)
+        return FleetResult(fleet.addShip(newShip), credits - price, true)
     }
 
     private fun resolveSwitchActive(

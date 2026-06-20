@@ -267,6 +267,12 @@ class Simulation(
                     junkyardStock = state.junkyardStock,
                     stationId = state.dockedStation,
                     usedPartParams = usedPartParams,
+                    // UC48: mirror PlayScreen.outfit's reputation gate + faction-adjusted pricing in
+                    // lockstep (project rule #1). Neutral standing ⇒ no gate + 1.0 multiplier, so every
+                    // existing fixture stays byte-identical; live and replay stay in step.
+                    factionId = station?.factionId,
+                    reputation = state.reputation,
+                    pricingParams = pricingParams,
                 )
             // Fold cargo (trade) + fuel (refuel) onto the active ship, then — only if the fit changed —
             // re-derive capacities via withLoadout (Δ-capacity propagation, UC09 AC#2). Contents/level
@@ -277,7 +283,17 @@ class Simulation(
             val fleetAfterOutfit = state.fleet.withActive(refittedActive)
 
             val fleetResult =
-                FleetResolver.resolve(fleetAfterOutfit, outfit.credits, station?.shipyard ?: Shipyard.EMPTY, fleetOrder)
+                FleetResolver.resolve(
+                    fleetAfterOutfit,
+                    outfit.credits,
+                    station?.shipyard ?: Shipyard.EMPTY,
+                    fleetOrder,
+                    // UC48: mirror PlayScreen.fleetCommand's reputation gate + faction-adjusted pricing in
+                    // lockstep (project rule #1). Neutral standing ⇒ no gate + 1.0 multiplier ⇒ byte-identical.
+                    factionId = station?.factionId,
+                    reputation = state.reputation,
+                    pricingParams = pricingParams,
+                )
 
             // Crew hiring (UC11) is the LAST docked step: refuel -> trade -> outfit -> fleet -> hire, so a
             // hire resolves against the post-fleet wallet and the ship that is active AFTER any switch.

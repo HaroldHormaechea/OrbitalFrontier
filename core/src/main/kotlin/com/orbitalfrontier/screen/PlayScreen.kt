@@ -41,6 +41,7 @@ import com.orbitalfrontier.crew.TurretOperability
 import com.orbitalfrontier.debugnav.PointAndGo
 import com.orbitalfrontier.debugnav.PointAndGoState
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.FactionPricing
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
@@ -2096,18 +2097,29 @@ class PlayScreen(
                 junkyardStock = junkyardStock,
                 stationId = stationId,
                 usedPartParams = usedPartParams,
+                // UC48: the docked station's faction + live standing + pricing tunables drive the gate +
+                // effective price; mirrored in sim/Simulation.kt in lockstep (project rule #1).
+                factionId = station.factionId,
+                reputation = reputation,
+                pricingParams = pricingParams,
             )
         if (!result.changed) {
             logger.info(
                 ECONOMY_TAG,
-                "Outfit requested but nothing changed (not offered, unaffordable, no free slot, empty slot, or out of used stock)",
+                "Outfit requested but nothing changed (not offered, unaffordable, no free slot, empty slot, locked, or out of used stock)",
             )
-            // UC40 AC#3: a refused buy surfaces a styled error (cost = the new/used price; null for a REMOVE).
+            // UC40 AC#3: a refused buy surfaces a styled error. UC48: the cost is the faction-adjusted
+            // effective price (display==charge), composed-on-base for a used buy; null for a REMOVE.
             val cost =
                 when (order) {
-                    is OutfitOrder.BuyInstall -> UpgradeCatalog.MVP.upgrade(order.upgradeId)?.price
+                    is OutfitOrder.BuyInstall ->
+                        UpgradeCatalog.MVP.upgrade(order.upgradeId)
+                            ?.let { FactionPricing.adjustedPrice(it.price, station.factionId, reputation, pricingParams) }
                     is OutfitOrder.BuyUsed ->
-                        UpgradeCatalog.MVP.upgrade(order.upgradeId)?.let { UsedPartPricing.usedPrice(it.price, usedPartParams) }
+                        UpgradeCatalog.MVP.upgrade(order.upgradeId)?.let {
+                            val factionBase = FactionPricing.adjustedPrice(it.price, station.factionId, reputation, pricingParams)
+                            UsedPartPricing.usedPrice(factionBase, usedPartParams)
+                        }
                     else -> null
                 }
             enqueueEconomyError(cost)
@@ -2159,14 +2171,30 @@ class PlayScreen(
         // Fold the live active-ship state in so switching away from it preserves cargo/fuel/position.
         fleet = fleet.withActive(fleet.active.copy(cargo = cargo, fuel = fuel, kinematics = dockedKinematics))
 
-        val result = FleetResolver.resolve(fleet, credits, station.shipyard, order)
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits,
+                station.shipyard,
+                order,
+                // UC48: faction + live standing + pricing tunables drive the gate + effective price;
+                // mirrored in sim/Simulation.kt in lockstep (project rule #1).
+                factionId = station.factionId,
+                reputation = reputation,
+                pricingParams = pricingParams,
+            )
         if (!result.changed) {
             logger.info(
                 ECONOMY_TAG,
-                "Fleet command requested but nothing changed (not offered, unaffordable, not owned, or already active)",
+                "Fleet command requested but nothing changed (not offered, unaffordable, locked, not owned, or already active)",
             )
-            // UC40 AC#3: a refused BUY surfaces a styled error (cost = the ship's price; null for a SWITCH).
-            val cost = (order as? FleetOrder.BuyShip)?.let { ShipRoster.byId(it.typeId)?.price }
+            // UC40 AC#3: a refused BUY surfaces a styled error. UC48: the cost is the faction-adjusted
+            // effective price (display==charge); null for a SWITCH.
+            val cost =
+                (order as? FleetOrder.BuyShip)?.let { buy ->
+                    ShipRoster.byId(buy.typeId)
+                        ?.let { type -> FactionPricing.adjustedPrice(type.price, station.factionId, reputation, pricingParams) }
+                }
             enqueueEconomyError(cost)
             return
         }
@@ -2324,6 +2352,12 @@ class PlayScreen(
 
     /** The player's current per-faction reputation (UC14) — read by the board for its standings readout. */
     fun reputationSnapshot(): Reputation = reputation
+
+    /**
+     * The active pricing tunables (UC46) — read by the outfit/shipyard screens (UC48) so the price they
+     * display is computed with the SAME [PricingParams] the resolvers charge against (display==charge).
+     */
+    fun pricingConfig(): PricingParams = pricingParams
 
     /**
      * Execute one mission [order] against the docked station via the pure [Missions.resolve] (UC12

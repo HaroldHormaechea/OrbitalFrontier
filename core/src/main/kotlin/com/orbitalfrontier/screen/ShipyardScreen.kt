@@ -10,8 +10,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.PurchaseGate
 import com.orbitalfrontier.economy.SpendDecision
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.StandingGate
+import com.orbitalfrontier.faction.StandingStatus
 import com.orbitalfrontier.notify.GameNotifications
 import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.platform.Logger
@@ -49,6 +55,12 @@ class ShipyardScreen(
     // UC40: the shared transient notification queue (constructed once by the game), so a credit delta or a
     // styled error raised by a buy here surfaces on this desk. Defaults to a fresh queue for JVM/tests.
     private val notifications: NotificationQueue = NotificationQueue(),
+    // UC48: the docked station's faction, a live standing supplier, and the pricing tunables — drive the
+    // per-row availability gate (locked-with-reason) and the faction-adjusted price shown here, which is
+    // byte-identical to the resolver's deduction (display==charge). Neutral defaults keep JVM/tests ungated.
+    private val factionId: FactionId? = null,
+    private val reputationSupplier: () -> Reputation = { Reputation.EMPTY },
+    private val pricingParams: PricingParams = PricingParams(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -118,6 +130,8 @@ class ShipyardScreen(
     private fun rebuild() {
         root.clear()
         val fleet = fleetSupplier()
+        // UC48: snapshot standing once per rebuild so every gated row + price uses a consistent value.
+        val reputation = reputationSupplier()
 
         root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("SHIPYARD", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
@@ -129,11 +143,20 @@ class ShipyardScreen(
             root.add(Label("No ships for sale here.", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
         } else {
             for (type in forSale) {
-                val info = Label("${type.displayName}  ${type.price}cr  [${type.role}]", skin.labelStyle)
-                val buyButton = TextButton("BUY", skin.settingsButtonStyle)
-                buyButton.addListener(buyListener(type.displayName, type.price) { FleetOrder.BuyShip(type.id) })
+                // UC48 AC#1/#2: per-row standing gate + faction-adjusted price (the SAME helper the
+                // resolver charges, so the shown price equals the deducted price — display==charge).
+                val status = StandingGate.status(type.unlockThreshold, factionId, reputation)
+                val price = FactionPricing.adjustedPrice(type.price, factionId, reputation, pricingParams)
+                val info = Label("${type.displayName}  ${price}cr  [${type.role}]", skin.labelStyle)
                 root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
-                root.add(buyButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                if (status.locked) {
+                    // UC48 AC#4: keep the locked hull visible but disabled, showing why it's locked.
+                    root.add(Label(lockReason(status), skin.labelStyle)).left().padBottom(ROW_GAP).row()
+                } else {
+                    val buyButton = TextButton("BUY", skin.settingsButtonStyle)
+                    buyButton.addListener(buyListener(type.displayName, price) { FleetOrder.BuyShip(type.id) })
+                    root.add(buyButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                }
             }
         }
 
@@ -166,6 +189,15 @@ class ShipyardScreen(
             },
         )
         root.add(backButton).colspan(COLSPAN).size(BACK_WIDTH, BUTTON_HEIGHT).padTop(BACK_GAP).row()
+    }
+
+    /**
+     * UC48 AC#4: the "why locked" line for a gated hull — `Requires <faction> standing N (you: M)` — so a
+     * locked ship shows its standing requirement instead of silently vanishing.
+     */
+    private fun lockReason(status: StandingStatus): String {
+        val faction = status.factionId?.value ?: "faction"
+        return "Requires $faction standing ${status.requiredStanding} (you: ${status.currentStanding})"
     }
 
     /** A click listener that fires [action] then rebuilds the table from the refreshed state. */

@@ -1,5 +1,10 @@
 package com.orbitalfrontier.outfit
 
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.StandingGate
 import com.orbitalfrontier.world.PoiId
 
 /**
@@ -119,16 +124,26 @@ object Outfitting {
         junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
         stationId: PoiId? = null,
         usedPartParams: UsedPartParams = UsedPartParams(),
+        // UC48: the docked station's faction + the player's standing + the pricing tunables. Neutral
+        // defaults (no faction, EMPTY standing, default params) ⇒ no gate and an exactly-1.0 price
+        // multiplier, so every pre-UC48 caller, test, and fixture stays byte-identical.
+        factionId: FactionId? = null,
+        reputation: Reputation = Reputation.EMPTY,
+        pricingParams: PricingParams = PricingParams(),
     ): OutfitResult {
         // The unchanged result carries the INPUT junkyardStock through untouched — the anti-exploit anchor.
         val unchanged = OutfitResult(credits, loadout, false, junkyardStock)
         return when (order) {
             OutfitOrder.None -> unchanged
-            is OutfitOrder.BuyInstall -> resolveBuyInstall(credits, loadout, slotCounts, outfitMarket, order, catalog, unchanged)
+            is OutfitOrder.BuyInstall ->
+                resolveBuyInstall(
+                    credits, loadout, slotCounts, outfitMarket, order, catalog,
+                    factionId, reputation, pricingParams, unchanged,
+                )
             is OutfitOrder.BuyUsed ->
                 resolveBuyUsed(
                     credits, loadout, slotCounts, usedPartMarket, isJunkyard, order, catalog,
-                    junkyardStock, stationId, usedPartParams, unchanged,
+                    junkyardStock, stationId, usedPartParams, factionId, reputation, pricingParams, unchanged,
                 )
             is OutfitOrder.RemoveSell -> resolveRemoveSell(credits, loadout, isJunkyard, order, catalog, unchanged)
         }
@@ -141,16 +156,23 @@ object Outfitting {
         outfitMarket: OutfitMarket,
         order: OutfitOrder.BuyInstall,
         catalog: UpgradeCatalog,
+        factionId: FactionId?,
+        reputation: Reputation,
+        pricingParams: PricingParams,
         unchanged: OutfitResult,
     ): OutfitResult {
         val upgrade = catalog.upgrade(order.upgradeId) ?: return unchanged // not catalogued
         if (!outfitMarket.offers(order.upgradeId)) return unchanged // not stocked here (AC#3)
-        if (credits < upgrade.price) return unchanged // can't afford
+        // UC48 AC#1: reputation gate — below the part's standing requirement at this station's faction is a no-op.
+        if (!StandingGate.status(upgrade.unlockThreshold, factionId, reputation).available) return unchanged // locked
+        // UC48 AC#2: charge the faction-adjusted effective price (the SAME helper the screen displays).
+        val price = FactionPricing.adjustedPrice(upgrade.price, factionId, reputation, pricingParams)
+        if (credits < price) return unchanged // can't afford
 
         val slotCount = slotCounts[upgrade.category] ?: 0
         return when (val install = loadout.install(upgrade.category, slotCount, order.upgradeId)) {
             // Success carries the INPUT depletion through unchanged (this path never buys used).
-            is InstallResult.Installed -> OutfitResult(credits - upgrade.price, install.loadout, true, unchanged.junkyardStock)
+            is InstallResult.Installed -> OutfitResult(credits - price, install.loadout, true, unchanged.junkyardStock)
             InstallResult.NoFreeSlot -> unchanged // category full
         }
     }
@@ -166,19 +188,27 @@ object Outfitting {
         junkyardStock: JunkyardStock,
         stationId: PoiId?,
         usedPartParams: UsedPartParams,
+        factionId: FactionId?,
+        reputation: Reputation,
+        pricingParams: PricingParams,
         unchanged: OutfitResult,
     ): OutfitResult {
         if (!isJunkyard) return unchanged // buying used parts is junkyard-only (AC#1)
         val station = stationId ?: return unchanged // need a station key to track depletion
         val upgrade = catalog.upgrade(order.upgradeId) ?: return unchanged // not catalogued
         if (!usedPartMarket.offers(order.upgradeId)) return unchanged // this junkyard doesn't stock it used (AC#1)
+        // UC48 AC#1: reputation gate applies to used buys too — below the standing requirement is a no-op.
+        if (!StandingGate.status(upgrade.unlockThreshold, factionId, reputation).available) return unchanged // locked
 
         // AC#3: available = deterministic baseline − persisted purchases. Out of stock ⇒ no-op.
         val baseline = UsedPartPricing.baselineStock(station, order.upgradeId, usedPartParams)
         val purchased = junkyardStock.purchasedCount(station, order.upgradeId)
         if (baseline - purchased <= 0) return unchanged // depleted
 
-        val price = UsedPartPricing.usedPrice(upgrade.price, usedPartParams)
+        // UC48 AC#2: compose-on-base — faction-adjust the catalog price FIRST, then apply the used
+        // discount on top (byte-identical at neutral, where adjustedPrice == catalog price).
+        val factionBase = FactionPricing.adjustedPrice(upgrade.price, factionId, reputation, pricingParams)
+        val price = UsedPartPricing.usedPrice(factionBase, usedPartParams)
         if (credits < price) return unchanged // can't afford the used price
 
         val slotCount = slotCounts[upgrade.category] ?: 0

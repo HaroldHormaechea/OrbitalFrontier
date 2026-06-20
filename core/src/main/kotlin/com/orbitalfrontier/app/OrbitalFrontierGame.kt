@@ -6,6 +6,7 @@ import com.orbitalfrontier.audio.MusicTrack
 import com.orbitalfrontier.audio.Sfx
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.economy.Cargo
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.TradeOrder
 import com.orbitalfrontier.faction.Factions
 import com.orbitalfrontier.faction.Reputation
@@ -606,6 +607,12 @@ class OrbitalFrontierGame(
                 // computed by PlayScreen against the durable depletion). A non-junkyard station stocks none.
                 usedPartMarket = station.usedPartMarket,
                 usedStockSupplier = { upgradeId -> playScreen?.usedStockAvailable(station.id, upgradeId) ?: 0 },
+                // UC48: the docked station's faction + a live standing supplier + the pricing tunables, so the
+                // desk gates premium parts by reputation (locked-with-reason) and shows the faction-adjusted
+                // price — identical to the resolver's deduction (display==charge).
+                factionId = station.factionId,
+                reputationSupplier = { playScreen?.reputationSnapshot() ?: Reputation.EMPTY },
+                pricingParams = playScreen?.pricingConfig() ?: PricingParams(),
             )
         outfitScreen = desk
         setScreen(desk)
@@ -628,6 +635,12 @@ class OrbitalFrontierGame(
                 onBack = { returnToHub() },
                 // UC40: the shared notification queue (credit deltas + styled errors surface on this desk).
                 notifications = sharedNotifications,
+                // UC48: the docked station's faction + a live standing supplier + the pricing tunables, so the
+                // shipyard gates premium hulls by reputation (locked-with-reason) and shows the faction-adjusted
+                // price — identical to the resolver's deduction (display==charge).
+                factionId = station.factionId,
+                reputationSupplier = { playScreen?.reputationSnapshot() ?: Reputation.EMPTY },
+                pricingParams = playScreen?.pricingConfig() ?: PricingParams(),
             )
         shipyardScreen = desk
         setScreen(desk)

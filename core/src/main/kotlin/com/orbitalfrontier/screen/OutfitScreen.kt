@@ -10,8 +10,14 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
 import com.orbitalfrontier.economy.PurchaseGate
 import com.orbitalfrontier.economy.SpendDecision
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.faction.StandingGate
+import com.orbitalfrontier.faction.StandingStatus
 import com.orbitalfrontier.notify.GameNotifications
 import com.orbitalfrontier.notify.NotificationQueue
 import com.orbitalfrontier.outfit.OutfitMarket
@@ -61,6 +67,14 @@ class OutfitScreen(
     private val usedPartMarket: OutfitMarket = OutfitMarket.EMPTY,
     private val usedPartParams: UsedPartParams = UsedPartParams(),
     private val usedStockSupplier: (UpgradeId) -> Int = { 0 },
+    // UC48: the docked station's faction, a live standing supplier (reputation mutates via combat/missions),
+    // and the pricing tunables — together they drive the per-row availability gate (locked-with-reason) and
+    // the faction-adjusted price shown here, which is byte-identical to the resolver's deduction
+    // (display==charge). Neutral defaults (no faction, EMPTY standing, default params) keep the JVM/test
+    // path ungated at base prices.
+    private val factionId: FactionId? = null,
+    private val reputationSupplier: () -> Reputation = { Reputation.EMPTY },
+    private val pricingParams: PricingParams = PricingParams(),
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -132,6 +146,8 @@ class OutfitScreen(
         val fleet = fleetSupplier()
         val active = fleet.active
         val loadout = active.loadout
+        // UC48: snapshot standing once per rebuild so every gated row + price uses a consistent value.
+        val reputation = reputationSupplier()
 
         root.add(Label(stationName, skin.titleLabelStyle)).colspan(COLSPAN).padBottom(TITLE_GAP).row()
         root.add(Label("OUTFITTING — ${active.type.displayName}", skin.labelStyle)).colspan(COLSPAN).padBottom(SERVICE_GAP).row()
@@ -145,17 +161,26 @@ class OutfitScreen(
             for (upgrade in offered) {
                 val installed = loadout.installedCount(upgrade.category)
                 val slots = active.type.slotCount(upgrade.category)
+                // UC48 AC#1/#2: per-row standing gate + faction-adjusted price (the SAME helper the
+                // resolver charges, so the shown price equals the deducted price — display==charge).
+                val status = StandingGate.status(upgrade.unlockThreshold, factionId, reputation)
+                val price = FactionPricing.adjustedPrice(upgrade.price, factionId, reputation, pricingParams)
                 val info =
                     Label(
-                        "${upgrade.displayName}  ${upgrade.price}cr  [${upgrade.category} $installed/$slots]",
+                        "${upgrade.displayName}  ${price}cr  [${upgrade.category} $installed/$slots]",
                         skin.labelStyle,
                     )
-                val installButton = TextButton("INSTALL", skin.settingsButtonStyle)
-                installButton.addListener(
-                    installListener(upgrade.displayName, upgrade.price) { OutfitOrder.BuyInstall(upgrade.id) },
-                )
                 root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
-                root.add(installButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                if (status.locked) {
+                    // UC48 AC#4: keep the locked row visible but disabled, showing why it's locked.
+                    root.add(Label(lockReason(status), skin.labelStyle)).left().padBottom(ROW_GAP).row()
+                } else {
+                    val installButton = TextButton("INSTALL", skin.settingsButtonStyle)
+                    installButton.addListener(
+                        installListener(upgrade.displayName, price) { OutfitOrder.BuyInstall(upgrade.id) },
+                    )
+                    root.add(installButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                }
             }
         }
 
@@ -167,19 +192,27 @@ class OutfitScreen(
             if (usedOffered.isNotEmpty()) {
                 root.add(Label("USED PARTS (buy):", skin.labelStyle)).colspan(COLSPAN).padTop(SERVICE_GAP).padBottom(ROW_GAP).row()
                 for (upgrade in usedOffered) {
-                    val usedPrice = UsedPartPricing.usedPrice(upgrade.price, usedPartParams)
+                    // UC48 AC#1/#2: the used desk is gated too; price composes on the faction-adjusted base
+                    // (faction-adjust the catalog price, then the used discount — matches the resolver).
+                    val status = StandingGate.status(upgrade.unlockThreshold, factionId, reputation)
+                    val factionBase = FactionPricing.adjustedPrice(upgrade.price, factionId, reputation, pricingParams)
+                    val usedPrice = UsedPartPricing.usedPrice(factionBase, usedPartParams)
                     val available = usedStockSupplier(upgrade.id)
                     val info =
                         Label(
                             "${upgrade.displayName}  ${usedPrice}cr  [used, stock: $available]",
                             skin.labelStyle,
                         )
-                    val buyButton = TextButton("BUY USED", skin.settingsButtonStyle)
-                    buyButton.addListener(
-                        installListener(upgrade.displayName, usedPrice) { OutfitOrder.BuyUsed(upgrade.id) },
-                    )
                     root.add(info).left().padRight(CELL_GAP).padBottom(ROW_GAP)
-                    root.add(buyButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                    if (status.locked) {
+                        root.add(Label(lockReason(status), skin.labelStyle)).left().padBottom(ROW_GAP).row()
+                    } else {
+                        val buyButton = TextButton("BUY USED", skin.settingsButtonStyle)
+                        buyButton.addListener(
+                            installListener(upgrade.displayName, usedPrice) { OutfitOrder.BuyUsed(upgrade.id) },
+                        )
+                        root.add(buyButton).size(BUTTON_WIDTH, BUTTON_HEIGHT).padBottom(ROW_GAP).row()
+                    }
                 }
             }
         }
@@ -220,6 +253,16 @@ class OutfitScreen(
             },
         )
         root.add(backButton).colspan(COLSPAN).size(BACK_WIDTH, BUTTON_HEIGHT).padTop(BACK_GAP).row()
+    }
+
+    /**
+     * UC48 AC#4: the "why locked" line for a gated row — `Requires <faction> standing N (you: M)` — so a
+     * locked part shows its standing requirement instead of silently vanishing. A faction-less station
+     * (a positive threshold there is an authoring error) reads back as the generic "faction".
+     */
+    private fun lockReason(status: StandingStatus): String {
+        val faction = status.factionId?.value ?: "faction"
+        return "Requires $faction standing ${status.requiredStanding} (you: ${status.currentStanding})"
     }
 
     /** A click listener that fires [action] then rebuilds the table from the refreshed state. */
