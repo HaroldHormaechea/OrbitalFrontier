@@ -154,15 +154,21 @@ import com.orbitalfrontier.tutorial.TutorialHighlight
 import com.orbitalfrontier.tutorial.TutorialState
 import com.orbitalfrontier.tutorial.TutorialStep
 import com.orbitalfrontier.world.AsteroidField
+import com.orbitalfrontier.world.DerelictSalvage
+import com.orbitalfrontier.world.DistressEvent
+import com.orbitalfrontier.world.DistressOutcome
+import com.orbitalfrontier.world.DistressParams
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.Docking
 import com.orbitalfrontier.world.GateTraversal
+import com.orbitalfrontier.world.HazardEffect
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.Mining
 import com.orbitalfrontier.world.MvpSectorMap
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.ScanAction
 import com.orbitalfrontier.world.Scanning
+import com.orbitalfrontier.world.ScavengeAction
 import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
@@ -366,6 +372,17 @@ class PlayScreen(
     // contacts draw while hidden ones stay invisible. Save-wide (a contact id is globally unique).
     private var revealedContacts: Set<PoiId> = initialWorldState.revealedContacts
 
+    // Consumed POIs (UC54 AC#4): the ids of scavenged derelicts + triggered distress signals, seeded from the
+    // loaded/initial snapshot. The pure [DerelictSalvage]/[DistressEvent] resolvers grow it (union-only —
+    // monotonic, a consumed POI never un-consumes); [currentWorldState] hands the set to the autosave (which
+    // persists it like revealedContacts). Save-wide (a POI id is globally unique).
+    private var consumedPois: Set<PoiId> = initialWorldState.consumedPois
+
+    // Distress-event tunables (UC54). Authored defaults; the SAME params feed the pure [DistressEvent] here and
+    // the replay harness's Simulation (project rule #1 lockstep), so a live + replayed distress reward/ambush
+    // match. The reward/ambush BRANCH depends only on the signal id (a fresh RNG namespace), not on these.
+    private val distressParams = DistressParams()
+
     // Missions (UC12): the player's mission log, seeded from the loaded/initial snapshot. The HELD field
     // carries only the persisted ACCEPTED/terminal missions (its `available` stays empty); the available
     // BOARD/RADIO offers are recomputed on demand from the deterministic [MissionGenerator], filtered
@@ -544,6 +561,10 @@ class PlayScreen(
     //  - RADIO accept (UC12): edge-triggered — [radioAcceptRequested] accepts the in-range offer.
     private var dockRequested = false
     private var scanRequested = false
+
+    // SCAVENGE (UC54): edge-triggered — a tap latches [scavengeRequested], consumed on the next render's
+    // [runPoiInteractions] to salvage the nearest in-range derelict.
+    private var scavengeRequested = false
     private var radioAcceptRequested = false
 
     // UC26 context readout: the decision-relevant info the retired DOCK/MINE/RADIO panels showed (station
@@ -640,6 +661,8 @@ class PlayScreen(
         // byte-identical (UC26 AC#8). MINE/FIRE are held and read directly each frame (no callback).
         actionCluster.onDock = { dockRequested = true }
         actionCluster.onScan = { scanRequested = true }
+        // UC54: SCAVENGE latches a one-shot intent like SCAN, consumed in runPoiInteractions each render.
+        actionCluster.onScavenge = { scavengeRequested = true }
         actionCluster.onAcceptRadio = { radioAcceptRequested = true }
         // SCAN is persistent in flight (not proximity-gated, UC10); the render loop keeps it available.
         actionCluster.setActionAvailable(ActionCluster.Action.SCAN, true)
@@ -1181,6 +1204,12 @@ class PlayScreen(
         // tick that ends combat (and would early-return inside the combat branch) can never skip the
         // collection. This ordering is mirrored byte-for-byte by the test-set Simulation (project rule #1).
         collectSalvage(ship.position)
+
+        // UC54 POI interactions: hazard fuel drain, derelict scavenge, distress edge-trigger — run AFTER
+        // salvage collect and BEFORE combat (so a distress ambush feeds this frame's runCombat), in the SAME
+        // fixed order the test-set Simulation mirrors (project rule #1 lockstep). Uses previousShipPosition for
+        // the distress crossing, which runCombat updates just below.
+        runPoiInteractions(dt, ship.position)
 
         // UC13 combat: edge-triggered natural encounter spawn on the outside→inside zone crossing, then
         // the paced shared [Combat.step]. Hostiles/projectiles/combat-RNG are transient (regenerated, not
@@ -1892,6 +1921,90 @@ class PlayScreen(
     }
 
     /**
+     * UC54: the three additional-POI interactions — hazard fuel drain, derelict scavenge, distress edge-trigger
+     * — run once per flight tick AFTER salvage collect and BEFORE [runCombat] (so a distress ambush feeds this
+     * frame's combat), in the SAME fixed order the test-set [com.orbitalfrontier.sim.Simulation] mirrors
+     * (project rule #1, so live and replayed POI outcomes match). All three are pure resolvers; each is a
+     * same-instance no-op on its idle path. Skipped while docked (handed to the hub), like mining/scanning.
+     */
+    private fun runPoiInteractions(
+        dt: Float,
+        shipPosition: Vec2,
+    ) {
+        if (dockedStation != null) {
+            actionCluster.setActionAvailable(ActionCluster.Action.SCAVENGE, false)
+            return
+        }
+
+        // (1) Hazard: per-tick fuel drain while inside a hazard zone (post-movement position). A same-instance
+        // no-op outside every hazard; the Fuel.speedFactor floor guarantees the ship can always limp clear.
+        fuel = HazardEffect.resolve(sectorWorld, currentSector, shipPosition, fuel, dt)
+
+        // (2) Derelict scavenge: surface the SCAVENGE arc button while an un-consumed derelict is in range
+        // (proximity-gated like DOCK/MINE), then resolve an edge-triggered tap via the shared [DerelictSalvage].
+        val derelictInRange =
+            sectorWorld.sector(
+                currentSector,
+            ).derelicts.any { it.id !in consumedPois && (shipPosition - it.position).length <= it.salvageRadius }
+        actionCluster.setActionAvailable(ActionCluster.Action.SCAVENGE, derelictInRange)
+        if (scavengeRequested) {
+            scavengeRequested = false
+            val scavenge = DerelictSalvage.resolve(sectorWorld, currentSector, shipPosition, cargo, consumedPois, ScavengeAction.SCAVENGE)
+            if (scavenge.scavenged != null) {
+                cargo = scavenge.cargo
+                consumedPois = scavenge.consumedPois
+                // Reuse the UC35/40 "CARGO FULL" cue on a hold-full overflow (no new NotificationKind).
+                if (scavenge.overflow) notifications.enqueue(GameNotifications.actionRejected("CARGO FULL"))
+                autosave.onEvent("scavenge")
+                logger.info(
+                    WORLD_TAG,
+                    "Scavenged derelict ${scavenge.scavenged.value} (+${scavenge.acceptedUnits} units) in sector ${currentSector.value}",
+                )
+            }
+        }
+
+        // (3) Distress: edge-triggered (previous->current crossing of the trigger radius) reward XOR ambush on an
+        // un-consumed signal, suppressed while combat is active. Mirrors the test-set Simulation. An ambush
+        // spawns via EncounterSpawner.missionSpawn (zoneId "distress:$id"), seeded by combatSpawnTick (the device
+        // spawn-seed convention; the sim uses state.tick) — the same divergence as the natural/bounty spawners;
+        // runCombat then surfaces the entered-combat toast on the rising edge and steps the fight.
+        val distress =
+            DistressEvent.resolve(
+                sectorWorld,
+                currentSector,
+                previousShipPosition,
+                shipPosition,
+                consumedPois,
+                combat,
+                cargo,
+                credits,
+                combatSpawnTick,
+                combatParams,
+                distressParams,
+            )
+        if (distress.triggered != null) {
+            consumedPois = distress.consumedPois
+            cargo = distress.cargo
+            when (distress.outcome) {
+                DistressOutcome.REWARD -> {
+                    // Credits route through the single applyCreditChange chokepoint (surfaces the +CR delta toast).
+                    applyCreditChange(distress.credits)
+                    if (distress.overflow) notifications.enqueue(GameNotifications.actionRejected("CARGO FULL"))
+                    logger.info(WORLD_TAG, "Distress signal ${distress.triggered.value} paid a reward in sector ${currentSector.value}")
+                }
+                DistressOutcome.AMBUSH -> {
+                    combat = distress.combat
+                    combatSpawnTick++
+                    autosave.onEvent("distress-ambush")
+                    logger.info(WORLD_TAG, "Distress signal ${distress.triggered.value} sprung an ambush in sector ${currentSector.value}")
+                }
+                null -> {}
+            }
+            autosave.onEvent("distress")
+        }
+    }
+
+    /**
      * UC42 (b): collect any salvage within the pickup radius of [playerPosition] (the post-movement ship
      * position this frame) via the shared pure [Salvage.collect] — the same function the test-set
      * Simulation runs (project rule #1), so live and replayed pickup match. Credits route through the
@@ -2041,6 +2154,10 @@ class PlayScreen(
             // World seed (UC53): re-emit the session's seed so each autosave persists it (AC#3). Without
             // this the snapshot would default back to WorldSeed.MVP and silently revert the seed (ADR 0041).
             worldSeed = worldSeed,
+            // Consumed POIs (UC54 AC#4): the live set of scavenged derelicts + triggered distress signals,
+            // folded onto the snapshot so each save persists it (like revealedContacts). Empty until the
+            // player consumes one, so the snapshot stays byte-identical for a pre-UC54 playthrough.
+            consumedPois = consumedPois,
         )
     }
 

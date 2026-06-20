@@ -32,7 +32,7 @@ import com.orbitalfrontier.settings.ScreenSide
  */
 class ActionCluster(skin: OrbitalUiSkin) {
     /** The set of player actions that can live on the arc, in arc priority order after FIRE. */
-    enum class Action { FIRE, DOCK, MINE, SCAN, RADIO, POINT_AND_GO }
+    enum class Action { FIRE, DOCK, MINE, SCAVENGE, SCAN, RADIO, POINT_AND_GO }
 
     val actor: Group = Group()
 
@@ -43,6 +43,7 @@ class ActionCluster(skin: OrbitalUiSkin) {
     // Edge-triggered callbacks — defaulted to no-ops; the screen wires them to its one-shot intents.
     var onDock: () -> Unit = {}
     var onScan: () -> Unit = {}
+    var onScavenge: () -> Unit = {}
     var onAcceptRadio: () -> Unit = {}
     var onPointAndGoToggle: () -> Unit = {}
 
@@ -80,6 +81,8 @@ class ActionCluster(skin: OrbitalUiSkin) {
         // Edge-triggered taps fire their callback; FIRE/MINE are read as held state and get no listener.
         buttons.getValue(Action.DOCK).addListener(clickListener { onDock() })
         buttons.getValue(Action.SCAN).addListener(clickListener { onScan() })
+        // UC54: SCAVENGE is edge-triggered like DOCK/SCAN — a tap latches the one-shot scavenge intent.
+        buttons.getValue(Action.SCAVENGE).addListener(clickListener { onScavenge() })
         buttons.getValue(Action.RADIO).addListener(clickListener { onAcceptRadio() })
         buttons.getValue(Action.POINT_AND_GO).addListener(clickListener { onPointAndGoToggle() })
 
@@ -193,6 +196,8 @@ class ActionCluster(skin: OrbitalUiSkin) {
             Action.FIRE -> OrbitalUiSkin.ActionGlyph.FIRE
             Action.DOCK -> OrbitalUiSkin.ActionGlyph.DOCK
             Action.MINE -> OrbitalUiSkin.ActionGlyph.MINE
+            // UC54: SCAVENGE reuses the MINE glyph (resource extraction) — no new action-arc art ships this UC.
+            Action.SCAVENGE -> OrbitalUiSkin.ActionGlyph.MINE
             Action.SCAN -> OrbitalUiSkin.ActionGlyph.SCAN
             Action.RADIO -> OrbitalUiSkin.ActionGlyph.RADIO
             Action.POINT_AND_GO -> OrbitalUiSkin.ActionGlyph.POINT_AND_GO
@@ -203,6 +208,7 @@ class ActionCluster(skin: OrbitalUiSkin) {
             Action.FIRE -> "FIRE"
             Action.DOCK -> "DOCK"
             Action.MINE -> "MINE"
+            Action.SCAVENGE -> "SCAV"
             Action.SCAN -> "SCAN"
             Action.RADIO -> "ACCEPT"
             Action.POINT_AND_GO -> POINT_AND_GO_OFF_LABEL

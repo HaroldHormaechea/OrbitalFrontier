@@ -17,6 +17,7 @@ import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.world.DockAction
 import com.orbitalfrontier.world.MineAction
 import com.orbitalfrontier.world.ScanAction
+import com.orbitalfrontier.world.ScavengeAction
 
 /**
  * Executes a [Playthrough] headlessly on the JVM and returns the resulting state (UC02 AC#5/#6).
@@ -100,6 +101,7 @@ class ReplayRunner {
             val missionOrder = missionOrderFor(tickEvents)
             val fireAction = fireActionFor(tickEvents)
             val stationBuildOrder = stationBuildOrderFor(tickEvents)
+            val scavengeAction = scavengeActionFor(tickEvents)
             state =
                 simulation.step(
                     state,
@@ -116,6 +118,7 @@ class ReplayRunner {
                     missionOrder,
                     fireAction,
                     stationBuildOrder,
+                    scavengeAction,
                 )
             perTick?.add(state)
         }
@@ -158,6 +161,14 @@ class ReplayRunner {
      */
     private fun scanActionFor(events: List<InputEvent>): ScanAction =
         events.filterIsInstance<ScanEvent>().lastOrNull()?.action ?: ScanAction.NONE
+
+    /**
+     * Reduce a tick's events to the [ScavengeAction] the sim steps with (UC54). When several scavenge samples
+     * share a tick the latest wins; a tick with no [ScavengeEvent] steps with [ScavengeAction.NONE], so
+     * non-scavenging artifacts (UC01..UC53) replay exactly as before.
+     */
+    private fun scavengeActionFor(events: List<InputEvent>): ScavengeAction =
+        events.filterIsInstance<ScavengeEvent>().lastOrNull()?.action ?: ScavengeAction.NONE
 
     /**
      * Reduce a tick's events to the [FireAction] the sim steps with (UC13). When several fire samples
