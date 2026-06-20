@@ -2629,15 +2629,11 @@ class SaveMigrationTest {
             ).value
         assertEquals("the pre-UC50 junkyard_stock purchased row survives the migration", 2L, purchased)
 
-        // The stored save-format version is bumped to exactly 22 by this single v21 -> v22 STEP, and 22 is
-        // the current generated schema version (UC50 is the latest migration in the chain — this step sits
-        // at the TOP of the chain, so it owns the moving "== Schema.version" cross-check alongside 22L).
+        // The stored save-format version is bumped to exactly 22 by this single v21 -> v22 STEP. UC53 added
+        // v23 on top, so this step is no longer the TOP of the chain — it deliberately lands BELOW
+        // Schema.version (23) and asserts 22L literally, keeping it a pure STEP test (the moving
+        // "== Schema.version" cross-check now belongs to the v22 -> v23 step test).
         assertEquals(22L, queries.selectSaveVersion().executeAsOne())
-        assertEquals(
-            "the v21 -> v22 step lands on the current generated schema version",
-            OrbitalFrontier.Schema.version,
-            queries.selectSaveVersion().executeAsOne(),
-        )
 
         // The new table is writable, not just present: a crew row inserts + reads back through SQL.
         driver.execute(
@@ -2657,5 +2653,105 @@ class SaveMigrationTest {
                 binders = null,
             ).value
         assertEquals("a crew_member row round-trips on the migrated DB", "DECKHAND", role)
+    }
+
+    // --- UC53 AC#3: v22 -> v23 adds the game_state.world_seed column additively (no breaking change) ---
+
+    /**
+     * Build a minimal but **data-bearing** v22-shaped DB for the v22 -> v23 step: the `meta` row at
+     * save_version 22 (which 22.sqm bumps), plus a `game_state` table in its **v22 shape** (every column
+     * up to and including UC38's `play_time_seconds`, but WITHOUT `world_seed`, which 22.sqm adds) carrying
+     * a real save-header row that stands in for "prior data that must survive". The v22 -> v23 migration
+     * (22.sqm) is a purely additive `ALTER TABLE game_state ADD COLUMN world_seed INTEGER NOT NULL DEFAULT 0`
+     * + a `meta` version bump, so this minimal shape exercises the step honestly while staying independent of
+     * the unrelated mission/settings-column chains the other step tests build.
+     */
+    private fun buildRealV22MetaWithGameState() {
+        driver.execute(
+            null,
+            "CREATE TABLE meta (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), save_version INTEGER NOT NULL)",
+            0,
+        )
+        // The v22 game_state shape: the current schema's columns minus the v23 `world_seed` column.
+        driver.execute(
+            null,
+            "CREATE TABLE game_state (" +
+                "slot_id INTEGER NOT NULL PRIMARY KEY, current_sector TEXT NOT NULL, active_ship_id INTEGER NOT NULL, " +
+                "docked_station_id TEXT, credits INTEGER NOT NULL DEFAULT 0, last_docked_station_id TEXT, " +
+                "name TEXT NOT NULL DEFAULT '', last_saved_epoch_millis INTEGER NOT NULL DEFAULT 0, " +
+                "play_time_seconds INTEGER NOT NULL DEFAULT 0)",
+            0,
+        )
+        driver.execute(null, "INSERT INTO meta(id, save_version) VALUES (0, 22)", 0)
+        // A real save-header row: started in Beta with 1234 credits, so the migration's data-survival
+        // assertion is meaningful (these pre-UC53 values must be byte-untouched by the additive column add).
+        driver.execute(
+            null,
+            "INSERT INTO game_state(slot_id, current_sector, active_ship_id, credits, name, play_time_seconds) " +
+                "VALUES (0, 'beta', 0, 1234, 'Captain', 99)",
+            0,
+        )
+    }
+
+    /** Read the single game_state row's INTEGER [column] directly via SQL (the world_seed backfill assertion). */
+    private fun readGameStateLong(column: String): Long? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM game_state WHERE slot_id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    /** Read the single game_state row's TEXT [column] directly via SQL (the data-survival assertion). */
+    private fun readGameStateText(column: String): String? =
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT $column FROM game_state WHERE slot_id = 0",
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getString(0))
+            },
+            parameters = 0,
+            binders = null,
+        ).value
+
+    @Test
+    fun `migrating a real v22 database to v23 adds world_seed (DEFAULT 0), preserves prior data, and bumps the version`() {
+        buildRealV22MetaWithGameState()
+
+        // Apply the sequential v22 -> v23 migration (runs migrations/22.sqm — additive ALTER TABLE ADD COLUMN).
+        OrbitalFrontier.Schema.migrate(driver, 22L, 23L)
+
+        val database = OrbitalFrontier(driver)
+        val queries = database.orbitalFrontierQueries
+
+        // The new world_seed column exists and the pre-UC53 row backfills to DEFAULT 0 — the reserved
+        // WorldSeed.MVP, for which SectorGenerator.generate returns the hand-authored MvpSectorMap verbatim
+        // ⇒ a migrated save reads back the exact authored world (the zero-fixture-regen lever, ADR 0041).
+        assertTrue("game_state.world_seed column must exist after migration", columnExists("game_state", "world_seed"))
+        assertEquals("a migrated v22 save backfills world_seed to the MVP default 0", 0L, readGameStateLong("world_seed"))
+
+        // Data survival: the pre-UC53 save-header values are untouched by the additive column add.
+        assertEquals("the pre-UC53 current_sector survives the migration", "beta", readGameStateText("current_sector"))
+        assertEquals("the pre-UC53 credits survive the migration", 1234L, readGameStateLong("credits"))
+        assertEquals("the pre-UC53 play_time_seconds survive the migration", 99L, readGameStateLong("play_time_seconds"))
+
+        // The stored save-format version is bumped to exactly 23 by this single v22 -> v23 STEP, and 23 is
+        // the current generated schema version (UC53 is the latest migration in the chain — this step now
+        // sits at the TOP of the chain, so it OWNS the moving "== Schema.version" cross-check alongside 23L).
+        assertEquals(23L, queries.selectSaveVersion().executeAsOne())
+        assertEquals(
+            "the v22 -> v23 step lands on the current generated schema version",
+            OrbitalFrontier.Schema.version,
+            queries.selectSaveVersion().executeAsOne(),
+        )
+
+        // The new column is writable, not just present: a non-zero world seed writes + reads back through SQL.
+        driver.execute(null, "UPDATE game_state SET world_seed = 424242 WHERE slot_id = 0", 0)
+        assertEquals("a non-zero world_seed round-trips on the migrated DB", 424242L, readGameStateLong("world_seed"))
     }
 }

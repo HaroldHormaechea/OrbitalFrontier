@@ -35,7 +35,9 @@ import com.orbitalfrontier.station.StationId
 import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.PoiId
+import com.orbitalfrontier.world.SectorGenerator
 import com.orbitalfrontier.world.SectorId
+import com.orbitalfrontier.world.WorldSeed
 import com.orbitalfrontier.world.WorldState
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -512,6 +514,45 @@ class SqlDelightGameStateRepositoryTest {
         assertEquals(state, reloaded)
         assertTrue("a station-less save reloads as the empty registry", reloaded!!.stations.isEmpty)
         assertEquals("zero owned stations (additive, no breaking change)", 0, reloaded.stations.size)
+    }
+
+    // --- UC53 AC#3: the world seed persists across save/reload AND regenerates an identical world ---
+
+    @Test
+    fun `a non-MVP world seed round-trips and regenerates an identical world`() {
+        val seed = WorldSeed(987654321L)
+        val state = sampleState().copy(worldSeed = seed)
+        newRepository().saveGameState(state)
+
+        // Fresh repository over the same DB == app restart; the reload goes back through SQL.
+        val reloaded = newRepository().loadGameState()
+
+        // Exact value equality (worldSeed is part of WorldState) — the seed survived the new world_seed column.
+        assertEquals(state, reloaded)
+        assertEquals("the persisted world seed reloads unchanged (AC#3)", seed, reloaded!!.worldSeed)
+
+        // …and the reloaded seed regenerates a world structurally identical to the original seed's world
+        // (the design goal: store the seed, regenerate the graph). SectorWorld has no equals, so compare
+        // the data-class sector lists field-by-field.
+        val original = SectorGenerator.generate(seed)
+        val regenerated = SectorGenerator.generate(reloaded.worldSeed)
+        assertEquals(
+            "the reloaded seed must regenerate the same world (store-the-seed, regenerate-the-graph)",
+            original.sectors,
+            regenerated.sectors,
+        )
+    }
+
+    @Test
+    fun `a save with no explicit seed reads back as the MVP seed (backward-compatible)`() {
+        val state = sampleState() // worldSeed defaults to WorldSeed.MVP (the authored map)
+        assertEquals("precondition: the sample state is the MVP seed", WorldSeed.MVP, state.worldSeed)
+        newRepository().saveGameState(state)
+
+        val reloaded = newRepository().loadGameState()
+
+        assertEquals(state, reloaded)
+        assertEquals("a seed-less save reloads as WorldSeed.MVP (world_seed DEFAULT 0)", WorldSeed.MVP, reloaded!!.worldSeed)
     }
 
     // --- AC#3: transactional, corruption-safe write (graceful degradation) ---

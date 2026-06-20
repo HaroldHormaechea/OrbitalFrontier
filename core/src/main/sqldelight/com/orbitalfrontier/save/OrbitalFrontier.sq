@@ -112,7 +112,11 @@ CREATE TABLE game_state (
     last_docked_station_id TEXT,
     name TEXT NOT NULL DEFAULT '',
     last_saved_epoch_millis INTEGER NOT NULL DEFAULT 0,
-    play_time_seconds INTEGER NOT NULL DEFAULT 0
+    play_time_seconds INTEGER NOT NULL DEFAULT 0,
+    -- The world-generation seed (UC53, v23): the WorldSeed the sector graph is generated from. DEFAULT 0
+    -- is the reserved WorldSeed.MVP, so a pre-v23 save (and every new game) reads back the hand-authored
+    -- MvpSectorMap ⇒ zero fixture regen (ADR 0041). The graph itself is NOT stored — only this seed is.
+    world_seed INTEGER NOT NULL DEFAULT 0
 );
 
 -- Owned-ship kinematics + per-ship stats source (UC09; v17 adds `slot_id` to the PK). One row per owned
@@ -354,7 +358,7 @@ UPDATE settings SET reduced_motion = ? WHERE id = 0;
 -- Read one slot's save header (UC38). Returns no rows when the slot is empty (-> Empty slot / New Game).
 selectGameStateForSlot:
 SELECT current_sector, active_ship_id, docked_station_id, credits, last_docked_station_id,
-       name, last_saved_epoch_millis, play_time_seconds
+       name, last_saved_epoch_millis, play_time_seconds, world_seed
 FROM game_state
 WHERE slot_id = ?;
 
@@ -383,7 +387,7 @@ INSERT OR IGNORE INTO game_state(slot_id, current_sector, active_ship_id, name) 
 -- chosen slot name. Relies on the row already existing (insertSlotHeaderIfAbsent runs first).
 updateSlotHeader:
 UPDATE game_state SET current_sector = ?, active_ship_id = ?, docked_station_id = ?, credits = ?,
-       last_docked_station_id = ?, last_saved_epoch_millis = ?, play_time_seconds = ?
+       last_docked_station_id = ?, last_saved_epoch_millis = ?, play_time_seconds = ?, world_seed = ?
 WHERE slot_id = ?;
 
 -- Targeted slot-rename (UC38 AC#2): sets ONLY the `name` column, so renaming never touches gameplay.

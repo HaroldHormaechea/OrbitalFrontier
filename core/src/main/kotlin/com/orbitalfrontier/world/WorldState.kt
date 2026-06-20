@@ -158,6 +158,17 @@ data class WorldState(
      * save reads back with an empty roster, reconciled up to the persisted counts on load.
      */
     val crewRoster: CrewRoster = CrewRoster.EMPTY,
+    /**
+     * The seed the [SectorWorld] graph is generated from (UC53 AC#3) — the only new persisted datum this
+     * UC adds. Save-wide, like [credits] / [reputation]; [SectorGenerator.generate] turns it into the
+     * live sector graph (the graph itself is still NOT stored — store the seed, regenerate the graph).
+     * Defaults to [WorldSeed.MVP] (the reserved zero seed) so a fresh game, a pre-UC53 save (whose
+     * `game_state.world_seed` column DEFAULTs to 0), and the snapshot itself all read back as the
+     * hand-authored [MvpSectorMap] ⇒ the WorldState snapshot stays byte-identical (the zero-fixture-regen
+     * lever, ADR 0041). It is deliberately **NOT** part of [com.orbitalfrontier.sim.SimulationState], so
+     * the record/replay equality the determinism harness rests on is untouched.
+     */
+    val worldSeed: WorldSeed = WorldSeed.MVP,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics

@@ -1,7 +1,7 @@
 # Design Note — World & Sector
 
-- **Status:** in-progress (sector model & MVP scope decided; jump/scan/proc-gen detail open)
-- **Last updated:** 2026-06-07
+- **Status:** in-progress (sector model & MVP scope decided; jump + procedural generation resolved; scan-tier detail open)
+- **Last updated:** 2026-06-20
 - **Related:** PROJECT_BRIEF.md → in_scope #4, core_gameplay_loop (Roam); non_goals (no procedurally-infinite universe in MVP); [missions.md](missions.md), [economy-and-resources.md](economy-and-resources.md) (asteroids/stations), [upgrades-and-progression.md](upgrades-and-progression.md) (scanner/sensor tech), [save-and-persistence.md](save-and-persistence.md) (world state)
 
 ## Summary
@@ -202,8 +202,18 @@ Persist aggressively (the design goal is minimal regeneration):
 
 - ~~Jump mechanic~~ — **RESOLVED: fixed jump gates, no MVP fuel cost (ADR 0004).** Remaining
   detail: gate visuals and the jump transition (loading/animation).
-- **Procedural generation:** how is content density and placement determined? Seed source
-  and what parameters vary per sector?
+- ~~Procedural generation~~ — **RESOLVED (UC53, ADR 0041): seed-based, templates + jitter,
+  additive over the authored map.** `SectorGenerator.generate(seed)` returns the hand-authored
+  `MvpSectorMap` verbatim for the reserved `WorldSeed.MVP` (0) and generates procedurally for any
+  non-zero seed, deriving every choice from `DeterministicRng` (fnv1a→LCG) only. **Seed source:** the
+  save-wide `WorldState.worldSeed` (persisted as `game_state.world_seed`, DEFAULT 0 ⇒ the authored
+  map, so every existing save/fixture is byte-identical). **Per-sector variety** (`[TUNE]`): N ∈ [3, 5]
+  sectors wired into a connected **ring** of reciprocal jump gates (+ optional seed-decided chord for
+  N≥4 — connectivity is a generator invariant, not a `SectorWorld` backstop), each templated with
+  1 station (markets only) + 1 asteroid field + 0–1 hidden contacts at seeded angle/radius positions.
+  **Out of scope (deferred):** density/parameter tuning, encounter/bounty/curated-market generation
+  for non-MVP worlds (those still key on the literal `alpha`/`beta`/`gamma` ids), and any
+  new-random-world entry point.
 - **Scanning:** scan range/time, what qualifies as "hidden," and scanner upgrade tiers.
 - ~~Unboundedness~~ — **RESOLVED (UC03): a soft content extent, not a hard wall.** Each MVP
   sector carries an authored `contentExtent` (~1800 wu radius); the ship may fly past it into
