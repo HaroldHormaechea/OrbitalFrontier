@@ -13,7 +13,6 @@ import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
-import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.orbitalfrontier.audio.Sfx
@@ -106,6 +105,7 @@ import com.orbitalfrontier.render.DestructionState
 import com.orbitalfrontier.render.GameAssets
 import com.orbitalfrontier.render.GateRenderer
 import com.orbitalfrontier.render.HostileRenderer
+import com.orbitalfrontier.render.HudControlLayout
 import com.orbitalfrontier.render.HudLayout
 import com.orbitalfrontier.render.HudRenderer
 import com.orbitalfrontier.render.HudViewModel
@@ -127,6 +127,7 @@ import com.orbitalfrontier.save.AutosaveActivitySignal
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.screen.controls.ActionCluster
+import com.orbitalfrontier.screen.controls.BallButton
 import com.orbitalfrontier.screen.controls.DestructionOverlay
 import com.orbitalfrontier.screen.controls.MovementJoystick
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
@@ -135,7 +136,6 @@ import com.orbitalfrontier.screen.controls.TutorialOverlay
 import com.orbitalfrontier.settings.ControlsLayout
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
-import com.orbitalfrontier.settings.ScreenSide
 import com.orbitalfrontier.ship.Fleet
 import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.FleetResolver
@@ -532,15 +532,21 @@ class PlayScreen(
 
     // UC32: the in-flight pause overlay. [pauseState] is the pure paused/running gate (libGDX-free,
     // JVM-testable, the deliberate inverse of [mapOverlayState] — it FREEZES the sim, ADR 0021); read once
-    // per frame to gate the entire per-frame state-advance below (AC#2). [pauseSettingsShown] tracks the
-    // Settings sub-view (the in-flight settings panel surfaced over the pause backdrop, AC#3). [pauseOverlay]
-    // is the modal Scene2D widget (dim backdrop + Resume/Settings/Quit), added to the stage LAST (top z), and
-    // [pauseButton] is the top-centre HUD control that opens it (reachable in combat, hidden while an overlay
-    // is open). The Android back key also drives pause/resume (AC#1) via an input processor wired in [init].
+    // per frame to gate the entire per-frame state-advance below (AC#2). [pauseOverlay] is the modal Scene2D
+    // widget (dim backdrop + Resume/Save/Settings/Quit), added to the stage near the top z-order.
+    // UC56: there is NO on-screen pause button — pause is reached via the device Back key (caught in [show]).
+    // [settingsModalShown] tracks the in-flight settings MODAL (opened by the top-left Settings ball, or by
+    // the pause-menu SETTINGS action); [settingsFromPause] records which context opened it so Back routes
+    // correctly (→ pause menu, or → flight + resume). The Android back key drives pause/resume + closes the
+    // settings modal first (AC#1) via the input processor wired in [init].
     private var pauseState = PauseState()
-    private var pauseSettingsShown = false
+    private var settingsModalShown = false
+    private var settingsFromPause = false
     private val pauseOverlay = PauseOverlay(skin)
-    private val pauseButton = TextButton("PAUSE", skin.settingsButtonStyle)
+
+    // UC56: the in-flight top-left Settings ball — a circular icon + "SETTINGS" caption; tapping it freezes
+    // the sim and opens the settings modal. Hidden in combat / map / pause / destruction (see renderFrame).
+    private val settingsBall = BallButton(skin, SETTINGS_BALL_CAPTION) { openSettingsModal(fromPause = false) }
 
     // UC33: the destruction / game-over gate + overlay. [destructionState] is the pure gate (libGDX-free,
     // JVM-testable) raised by the SIMULATION on a hull-destroying hit (not a player tap); like the pause
@@ -698,25 +704,16 @@ class PlayScreen(
             },
         )
 
-        // UC32: open the pause overlay from the top-centre HUD button (AC#1). Resume/Quit transitions and
-        // the Settings sub-view are wired to the overlay's callbacks; Settings shows the existing in-flight
-        // settings panel on top of the backdrop (and Back returns to the pause menu, AC#3).
-        pauseButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    openPause()
-                }
-            },
-        )
+        // UC32/UC56: the pause overlay's callbacks. There is no on-screen pause button anymore — pause is
+        // opened via the device Back key (wired below). Resume/Save/Quit transition the pause state;
+        // SETTINGS opens the shared settings MODAL over the pause backdrop (Back there → back to the pause
+        // menu, see [openSettingsModal]/[closeSettings]).
         pauseOverlay.onResume = { resumeGame() }
         pauseOverlay.onSave = { onOpenSaveSlots() } // UC38: manual save (AC#2); game stays paused.
-        pauseOverlay.onSettings = { enterPauseSettings() }
-        pauseOverlay.onBack = { exitPauseSettings() }
+        pauseOverlay.onSettings = { openSettingsModal(fromPause = true) }
         pauseOverlay.onQuit = { quitToMainMenu() }
+        // UC56: the settings modal's BACK button routes through [closeSettings] (→ flight, or → pause menu).
+        settingsOverlay.onBack = { closeSettings() }
         // UC33: the destruction overlay's single CONTINUE button acknowledges the consequence screen and
         // resumes control at the respawn point (the respawn was already applied + persisted, AC#3).
         destructionOverlay.onContinue = { continueAfterDestruction() }
@@ -724,34 +721,37 @@ class PlayScreen(
         stage.addActor(joystick.actor)
         stage.addActor(actionCluster.actor)
         stage.addActor(contextReadout)
-        stage.addActor(settingsOverlay.actor)
+        // UC56: the in-flight Settings ball sits with the HUD controls (hidden in combat/map/pause/destruction).
+        stage.addActor(settingsBall.actor)
         // UC23: the minimap tap target, then the full-screen dismiss actor so it catches taps over
         // everything (including the minimap) while the map overlay is open.
         stage.addActor(minimapTapTarget)
         stage.addActor(mapDismissActor)
         // UC36: the tutorial hint band — above the HUD/controls (so its copy reads over the playfield and
-        // its SKIP buttons are tappable) but BELOW the pause button and the pause/destruction backdrops, so
-        // a pause/destruction frame covers it and its SKIP taps are suppressed while paused (it is hidden
-        // whenever a full-screen overlay is up, see renderFrame).
+        // its SKIP buttons are tappable) but BELOW the pause/settings/destruction backdrops, so a full-screen
+        // overlay covers it and its SKIP taps are suppressed while one is up (hidden in renderFrame too).
         stage.addActor(tutorialOverlay.actor)
-        // UC32: the HUD pause button, then the modal pause overlay LAST so its backdrop holds the top
-        // z-order over the HUD, the minimap and the map dismiss actor while the game is paused.
-        stage.addActor(pauseButton)
+        // UC32: the modal pause overlay, so its backdrop holds the top z-order over the HUD, the minimap and
+        // the map dismiss actor while the game is paused.
         stage.addActor(pauseOverlay.actor)
+        // UC56: the settings modal sits ABOVE the pause overlay — when opened from the pause menu it covers
+        // the pause column; when opened from the in-flight Settings ball it covers the (hidden) pause overlay.
+        stage.addActor(settingsOverlay.actor)
         // UC33: the modal destruction overlay LAST of all, so its backdrop holds the very top z-order
-        // (above the HUD, the map/pause overlays and every tap target) while a destruction is pending.
+        // (above the HUD, the map/pause/settings overlays and every tap target) while a destruction is pending.
         stage.addActor(destructionOverlay.actor)
 
-        // UC32: Android back key drives pause (AC#1, pitfall#2). Appended AFTER the stage (never
+        // UC32/UC56: Android back key drives pause (AC#1, pitfall#2). Appended AFTER the stage (never
         // setProcessors) so on-screen controls keep first crack at touches; this only handles the BACK key.
-        // In the settings sub-view BACK steps back to the pause menu; while paused it resumes; in flight it
-        // opens pause. Scoped to this screen — the catch is enabled in [show] and released in [hide].
+        // Precedence: the in-flight settings MODAL closes FIRST (→ flight or → pause menu per its context);
+        // else while paused it resumes; else in flight it opens pause. Back is now the ONLY pause trigger.
+        // Scoped to this screen — the catch is enabled in [show] and released in [hide].
         inputMultiplexer.addProcessor(
             object : InputAdapter() {
                 override fun keyDown(keycode: Int): Boolean {
                     if (keycode != Input.Keys.BACK) return false
                     when {
-                        pauseSettingsShown -> exitPauseSettings()
+                        settingsModalShown -> closeSettings()
                         pauseState.isPaused -> resumeGame()
                         else -> openPause()
                     }
@@ -804,8 +804,8 @@ class PlayScreen(
     private fun openPause() {
         if (pauseState.isPaused) return
         pauseState = pauseState.paused()
-        pauseSettingsShown = false
-        pauseOverlay.showSettingsSubView(false)
+        settingsModalShown = false
+        settingsFromPause = false
         mapOverlayState = mapOverlayState.dismissed()
         stage.cancelTouchFocus()
         if (previousThrusting) {
@@ -815,30 +815,53 @@ class PlayScreen(
         logger.info(TAG, "Game paused")
     }
 
-    /** Resume from pause (UC32 AC#4): unfreeze the sim and leave the Settings sub-view. No-op when running. */
+    /** Resume from pause (UC32 AC#4): unfreeze the sim and close any open settings modal. No-op when running. */
     private fun resumeGame() {
         if (!pauseState.isPaused) return
         pauseState = pauseState.resumed()
-        pauseSettingsShown = false
-        pauseOverlay.showSettingsSubView(false)
+        settingsModalShown = false
+        settingsFromPause = false
         logger.info(TAG, "Game resumed")
     }
 
     /**
-     * Enter the pause Settings sub-view (UC32 AC#3): hide the pause button column and surface the existing
-     * in-flight settings panel. The panel was added to the stage BEFORE the pause backdrop, so bring it to
-     * the front — otherwise the backdrop swallows its taps and the controls are dead.
+     * UC56: open the shared settings MODAL. From the in-flight Settings ball ([fromPause] = false) it first
+     * freezes the sim (reusing the pause/freeze primitive — rendering-only, no ADR 0006 impact) and
+     * neutralises held inputs exactly like [openPause]; from the pause menu ([fromPause] = true) the sim is
+     * already frozen, so it just surfaces the modal over the pause backdrop. The modal is added above the
+     * pause overlay, but [Actor.toFront] guarantees it regardless of future z-order tweaks.
      */
-    private fun enterPauseSettings() {
-        pauseSettingsShown = true
-        pauseOverlay.showSettingsSubView(true)
+    private fun openSettingsModal(fromPause: Boolean) {
+        settingsFromPause = fromPause
+        if (!fromPause && !pauseState.isPaused) {
+            pauseState = pauseState.paused()
+            mapOverlayState = mapOverlayState.dismissed()
+            stage.cancelTouchFocus()
+            if (previousThrusting) {
+                audio.stopSfx(Sfx.THRUST)
+                previousThrusting = false
+            }
+        }
+        settingsModalShown = true
         settingsOverlay.actor.toFront()
+        logger.info(TAG, "Settings modal opened (fromPause=$fromPause)")
     }
 
-    /** Leave the Settings sub-view back to the pause menu (UC32 AC#3). */
-    private fun exitPauseSettings() {
-        pauseSettingsShown = false
-        pauseOverlay.showSettingsSubView(false)
+    /**
+     * UC56: close the settings modal (its BACK button, or the device Back key). Routes by the context that
+     * opened it: from the pause menu it returns to the pause menu (the sim STAYS frozen, the pause overlay
+     * reappears); from the in-flight Settings ball it returns to flight (unfreezes the sim). No-op when the
+     * modal is not open.
+     */
+    private fun closeSettings() {
+        if (!settingsModalShown) return
+        settingsModalShown = false
+        if (settingsFromPause) {
+            settingsFromPause = false
+        } else if (pauseState.isPaused) {
+            pauseState = pauseState.resumed()
+        }
+        logger.info(TAG, "Settings modal closed")
     }
 
     /**
@@ -1360,21 +1383,16 @@ class PlayScreen(
             viewportHeight,
             reservedBottom = bottomControlBand(),
         )
-        // UC22: the relocated top-left settings/handedness button shares its band with the combat-only
-        // ship schematic below, so hide it for the duration of an encounter — handedness isn't changed
-        // mid-combat — keyed on the same combat-active flag that gates the schematic. It reappears when
-        // combat ends. An invisible Scene2D actor also stops receiving touch, so nothing under it leaks.
-        // UC23: also hide it — and every gameplay control — while the zoomed map overlay is open, so
-        // nothing shows through / under the 80%-opaque backdrop and no stray tap reaches a flight control
-        // (an invisible actor receives no touch; the full-screen dismiss actor on top catches taps). Only
-        // the controls hide — the simulation keeps running (the overlay is LIVE).
-        // UC32: while paused the settings panel is the Settings sub-view of the pause overlay — visible
-        // only when the player taps Settings ([pauseSettingsShown]), and NOT ANDed with combat/map (so
-        // pausing mid-combat then opening Settings works). While running it keeps the pre-UC32 rule.
-        settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)
-        // UC33: a pending destruction screen owns the foreground — force the settings panel hidden under it
-        // (the destruction overlay offers only CONTINUE, no settings sub-view), regardless of the above.
-        if (destructionState.isPending) settingsOverlay.actor.isVisible = false
+        // UC56: the top-left Settings ball shares its band with the combat-only ship schematic below, so
+        // hide it for the duration of an encounter (handedness isn't changed mid-combat). It also hides
+        // while the zoomed map overlay is open, while paused / a settings modal is up (the sim is frozen
+        // then), and under a destruction screen — so no stray tap reaches it and nothing shows under a
+        // full-screen backdrop. An invisible Scene2D actor also receives no touch.
+        settingsBall.isVisible = !combat.active && !mapOpen && !paused && !destructionState.isPending
+        // UC56: the settings panel is now a MODAL shown only while explicitly open (the in-flight Settings
+        // ball, or the pause-menu SETTINGS action) — never persistently during flight. A pending
+        // destruction screen owns the foreground, so force it hidden under one.
+        settingsOverlay.actor.isVisible = settingsModalShown && !destructionState.isPending
         // UC26: the whole action arc (FIRE + every contextual button) and the context readout hide with
         // the rest of the controls only while the map overlay is open — NOT during combat, so FIRE stays
         // visible and enabled throughout an encounter (UC26 AC#3/#6). UC32: they also hide while paused, so
@@ -1401,14 +1419,11 @@ class PlayScreen(
         if (showTutorial) tutorialOverlay.setStep(tutorialStep)
         actionCluster.setHighlightedAction(if (showTutorial) arcHighlightFor(tutorialStep) else null)
         joystick.setHighlighted(showTutorial && tutorialStep?.highlight == TutorialHighlight.JOYSTICK)
-        // UC32: the HUD pause button is reachable any time the game is running and no overlay is open —
-        // including mid-combat (AC#1); it hides while either overlay is up. The modal pause overlay (dim
-        // backdrop + buttons) shows exactly while paused.
-        pauseButton.isVisible = !mapOpen && !paused
-        // UC33: the destruction screen also suppresses the HUD pause button (the player must CONTINUE, not
-        // open pause, while destroyed) and shows the modal destruction overlay exactly while one is pending.
-        if (destructionState.isPending) pauseButton.isVisible = false
-        pauseOverlay.actor.isVisible = paused
+        // UC56: there is NO on-screen pause button — pause is reached via the device Back key. The modal
+        // pause overlay (dim backdrop + Resume/Save/Settings/Quit) shows while paused EXCEPT while the
+        // settings modal is up over it (so the pause column doesn't show through the settings backdrop);
+        // closing the settings modal from the pause context re-reveals it (still paused).
+        pauseOverlay.actor.isVisible = paused && !settingsModalShown
         destructionOverlay.actor.isVisible = destructionState.isPending
         // UC13: the per-section ship schematic (HUD) — only while a combat encounter is live. Reuses the
         // [active] ship resolved once above for the UC44 combat-HUD overlay.
@@ -1482,7 +1497,7 @@ class PlayScreen(
      */
     private fun applyTextScaleLive() {
         skin.applyTextScale()
-        settingsOverlay.actor.invalidateHierarchy()
+        settingsOverlay.reflow()
     }
 
     /** Position the controls for the current handedness (AC#7/#8). Idempotent. */
@@ -1491,56 +1506,37 @@ class PlayScreen(
         val screenWidth = stage.viewport.worldWidth
         val screenHeight = stage.viewport.worldHeight
 
+        // UC56: every DRAWN on-screen control is positioned from the single pure source [HudControlLayout],
+        // the SAME geometry the overlap guard asserts against — so the actors and the guard can never drift.
+        val controls = HudControlLayout.compute(screenWidth, screenHeight, handedness)
+
         joystick.actor.setSize(JOYSTICK_SIZE, JOYSTICK_SIZE)
-        joystick.actor.setPosition(sideX(layout.movementStickSide, screenWidth, JOYSTICK_SIZE), MARGIN)
+        joystick.actor.setPosition(controls.joystick.x, controls.joystick.y)
 
         // UC26: anchor the fixed-footprint action arc in its corner and pivot it on that corner. The
         // footprint is constant (independent of the visible button count), so this position and the
         // minimap reservation never drift as contextual buttons appear/disappear.
         actionCluster.actor.setSize(actionCluster.prefWidth, actionCluster.prefHeight)
-        actionCluster.actor.setPosition(sideX(layout.actionClusterSide, screenWidth, actionCluster.prefWidth), MARGIN)
+        actionCluster.actor.setPosition(controls.actionArc.x, controls.actionArc.y)
         actionCluster.setSide(layout.actionClusterSide)
         actionCluster.relayout()
 
-        // UC22: the minimap now owns the top-right corner, so the settings/handedness button moves to
-        // the top-LEFT band — the clear vertical gap between the HUD readout block at the top
-        // (HUD_BLOCK_HEIGHT) and the worst-case left-edge control cluster at the bottom
-        // (bottomControlBand()). It is centred in that band so the clearance is symmetric on both sides
-        // (≥ 16 world units at supported sizes), and the worst-case band is handedness-agnostic, so the
-        // button stays put when the player flips handedness.
-        settingsOverlay.actor.setSize(SETTINGS_WIDTH, SETTINGS_HEIGHT)
-        val leftBandBottom = bottomControlBand()
-        val leftBandTop = screenHeight - HUD_BLOCK_HEIGHT
-        settingsOverlay.actor.setPosition(
-            MARGIN,
-            (leftBandBottom + leftBandTop) / 2f - SETTINGS_HEIGHT / 2f,
-        )
+        // UC56: the top-left Settings ball sits in the corner at x[24,96] y[444,516] (540 floor), left of
+        // (edge-touching) the inset HUD readout block — see [HudControlLayout.settingsBallRect].
+        settingsBall.actor.setPosition(controls.settingsBall.x, controls.settingsBall.y)
 
         positionContextReadout()
 
-        // UC23: place the invisible minimap tap target exactly on the drawn minimap panel — same
-        // geometry source (MinimapRenderer.panelRect) called with the SAME world-unit args the per-frame
-        // draw uses (stage world size == pixel viewport / UiScale.factor) — so tapping the visible
+        // UC23: place the invisible minimap tap target exactly on the drawn minimap panel — the SAME pure
+        // geometry the per-frame draw uses (via [HudControlLayout.minimapRect]) — so tapping the visible
         // minimap opens the overlay. The dismiss actor covers the whole stage so any tap dismisses it.
-        val minimapRect =
-            minimap.panelRect(
-                vpWidth = screenWidth,
-                vpHeight = screenHeight,
-                reservedBottom = bottomControlBand(),
-            )
-        minimapTapTarget.setBounds(minimapRect.x, minimapRect.y, minimapRect.width, minimapRect.height)
+        minimapTapTarget.setBounds(controls.minimap.x, controls.minimap.y, controls.minimap.width, controls.minimap.height)
         mapDismissActor.setBounds(0f, 0f, screenWidth, screenHeight)
 
-        // UC32: the pause button sits centred along the TOP edge — clear of the top-left HUD readout /
-        // settings band, the top-right minimap, and the combat ship-schematic — so it stays reachable
-        // (including mid-combat) without overlapping another HUD element at the 960×540 floor.
-        pauseButton.setSize(PAUSE_BUTTON_WIDTH, PAUSE_BUTTON_HEIGHT)
-        pauseButton.setPosition(
-            (screenWidth - PAUSE_BUTTON_WIDTH) / 2f,
-            screenHeight - MARGIN - PAUSE_BUTTON_HEIGHT,
-        )
         // UC32: the modal pause overlay fills the stage and re-centres its button column.
         pauseOverlay.resize(screenWidth, screenHeight)
+        // UC56: the settings modal fills the stage and re-centres its panel column.
+        settingsOverlay.resize(screenWidth, screenHeight)
         // UC33: the modal destruction overlay fills the stage and re-centres its consequence column.
         destructionOverlay.resize(screenWidth, screenHeight)
         // UC36: place the tutorial hint band in the bottom-centre clear strip above the corner controls.
@@ -1590,17 +1586,11 @@ class PlayScreen(
         }
     }
 
-    private fun sideX(
-        side: ScreenSide,
-        screenWidth: Float,
-        widgetWidth: Float,
-    ): Float = if (side == ScreenSide.LEFT) MARGIN else screenWidth - MARGIN - widgetWidth
-
     /**
      * The world-space top of the bottom control band (UC22): the higher of the joystick and the action
      * cluster, sitting at [MARGIN] above the screen floor. Handedness-agnostic — it always uses the
      * worst-case (tallest) of the two controls, so it bounds whichever control ends up on a given side.
-     * Used both to reserve the minimap's bottom clearance and to anchor the top-left settings band.
+     * Used to reserve the minimap's bottom clearance (mirrors [HudControlLayout.bottomControlBand]).
      */
     private fun bottomControlBand(): Float = MARGIN + maxOf(JOYSTICK_SIZE, ActionCluster.LAYOUT_HEIGHT)
 
@@ -2764,6 +2754,7 @@ class PlayScreen(
     override fun dispose() {
         stage.dispose()
         pauseOverlay.dispose()
+        settingsOverlay.dispose()
         destructionOverlay.dispose()
         skin.dispose()
         starfield.dispose()
@@ -2794,31 +2785,22 @@ class PlayScreen(
         const val ECONOMY_TAG = "Economy"
         const val MIN_DT = 1e-4f
         const val MAX_DT = 1f / 30f
-        const val MARGIN = 24f
-        const val JOYSTICK_SIZE = 220f
+
+        // UC56: the screen-edge margin + joystick footprint are SOURCED from [HudControlLayout] (the single
+        // layout source) so the actor positions, the minimap reservation and the overlap guard never drift.
+        // Kept as PlayScreen consts (aliases) so the existing HUD guard and the many use sites still read them.
+        const val MARGIN = HudControlLayout.MARGIN
+        const val JOYSTICK_SIZE = HudControlLayout.JOYSTICK_SIZE
 
         // UC31: minimum seconds between MINING_TICK cues while mining is held (≈8 pulses/sec).
         const val MINING_SFX_INTERVAL = 0.12f
 
-        // UC32: the top-centre HUD pause button footprint (world units; the ×2 UI viewport magnifies it).
-        const val PAUSE_BUTTON_WIDTH = 140f
-        const val PAUSE_BUTTON_HEIGHT = 56f
-
-        // UC37: the in-flight settings panel is now the shared grouped [SettingsPanel] wrapped in a
-        // ScrollPane. Slightly wider than the pre-UC37 single-column overlay (200) to seat the grouped
-        // 210-wide rows + the vertical scrollbar without horizontal clipping; still left-banded.
-        const val SETTINGS_WIDTH = 240f
-
-        // UC37: the grouped content is far taller than this fixed footprint, so the ScrollPane scrolls it
-        // vertically — the panel stays a fixed-size box centred in the top-left band, hidden in combat /
-        // when the map overlay is open (and surfaced as the UC32 pause Settings sub-view).
-        const val SETTINGS_HEIGHT = 250f
+        // UC56: caption under the in-flight Settings ball ([BallButton]). ASCII-only (the UC28 game font).
+        const val SETTINGS_BALL_CAPTION = "SETTINGS"
 
         // UC22/UC34: world-space height of the top-left HUD readout block, measured down from the top.
-        // The settings/handedness button is centred in the band below this and above the bottom controls,
-        // so it clears the HUD even during a combat encounter. UC34 expanded the block from 3–4 lines to a
-        // worst-case seven (SPEED, HDG, FUEL, CR+CRG, SEC, OBJ, IN COMBAT), so the reservation now tracks
-        // HudLayout.BLOCK_HEIGHT — the single source the pure HUD geometry and this band reservation share.
+        // Tracks HudLayout.BLOCK_HEIGHT — the single source the pure HUD geometry and any band reservation
+        // share. UC56: the block is also inset from the left edge (HudLayout.BLOCK_X) to clear the Settings ball.
         const val HUD_BLOCK_HEIGHT = HudLayout.BLOCK_HEIGHT
 
         // Real seconds per courier model tick on the device (UC12). The model timer is tick-based; the

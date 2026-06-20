@@ -57,9 +57,12 @@ class Uc34ExpandedHudGuardTest {
     }
 
     @Test
-    fun `the HUD block is anchored flush into the top-left corner`() {
+    fun `the HUD block is inset from the left to clear the settings ball, flush with the top`() {
         val block = HudLayout.blockRect(MIN_VP_WIDTH, MIN_VP_HEIGHT)
-        assertEquals("AC#3: left edge at x = 0", 0f, block.x, EPS)
+        // UC56: the block no longer hugs x=0 — it is inset by HudLayout.BLOCK_X so the new top-left
+        // Settings ball (x[24,96]) sits to its left, edge-touching it without overlap.
+        assertEquals("AC#3 (UC56): left edge inset to HudLayout.BLOCK_X", HudLayout.BLOCK_X, block.x, EPS)
+        assertTrue("AC#3 (UC56): the inset is positive (the block does not hug the left edge)", HudLayout.BLOCK_X > 0f)
         assertEquals("AC#3: top edge flush with the viewport top", MIN_VP_HEIGHT, block.y + block.height, EPS)
         assertEquals("AC#3: block uses the promoted BLOCK_WIDTH", HudLayout.BLOCK_WIDTH, block.width, EPS)
         assertEquals("AC#3: block uses the promoted BLOCK_HEIGHT", HudLayout.BLOCK_HEIGHT, block.height, EPS)

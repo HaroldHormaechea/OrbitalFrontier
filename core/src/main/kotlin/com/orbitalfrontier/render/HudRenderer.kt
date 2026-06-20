@@ -51,7 +51,12 @@ class HudRenderer(
         viewportHeight: Float,
     ) {
         // Base layout constants scaled at the use site — UiScale.factor stays the single knob.
+        // `margin` is the TOP inset; `textX` is the LEFT draw origin. UC56 §5 BINDING: the text x-origin is
+        // the SAME shared source as the reservation rect's left edge ([HudLayout.BLOCK_X]) — not the bare
+        // MARGIN — so the drawn readouts start exactly at the reserved block's left edge (x = BLOCK_X) and
+        // can never visually collide with the top-left Settings ball while an overlap guard reads green.
         val margin = MARGIN * uiScale
+        val textX = HudLayout.BLOCK_X * uiScale
         val lineHeight = LINE_HEIGHT * uiScale
 
         projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
@@ -64,12 +69,12 @@ class HudRenderer(
 
         line.setLength(0)
         line.append("SPEED ").append(model.speed.roundToInt())
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         row++
 
         line.setLength(0)
         line.append("HDG ").append(model.headingDegrees).append(DEGREE)
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         row++
 
         line.setLength(0)
@@ -78,7 +83,7 @@ class HudRenderer(
         // UC27: design-system tokens — amber "warning" caution while low, reset to the steel readout text
         // colour afterwards so other lines stay neutral next frame (AC#8).
         font.color = if (model.lowFuel) Palette.WARNING else TEXT_COLOR
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         font.color = TEXT_COLOR
         row++
 
@@ -96,7 +101,7 @@ class HudRenderer(
         }
         HudLayout.ellipsize(line)
         font.color = if (model.brownout) Palette.WARNING else TEXT_COLOR
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         font.color = TEXT_COLOR
         row++
 
@@ -104,7 +109,7 @@ class HudRenderer(
         // worst-case block to seven lines so it stays within the reserved HudLayout.BLOCK_HEIGHT.
         line.setLength(0)
         line.append("CR ").append(model.credits).append("  CRG ").append(model.cargoUsed).append('/').append(model.cargoCapacity)
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         row++
 
         // UC34: current sector name; ellipsized in place so a long authored name can't run under the
@@ -112,7 +117,7 @@ class HudRenderer(
         line.setLength(0)
         line.append("SEC ").append(model.sectorName)
         HudLayout.ellipsize(line)
-        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
         row++
 
         // UC34: the active-mission objective (target + progress); hidden entirely when no mission is
@@ -122,7 +127,7 @@ class HudRenderer(
             line.setLength(0)
             line.append("OBJ ").append(objective)
             HudLayout.ellipsize(line)
-            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+            font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
             row++
         }
 
@@ -133,7 +138,7 @@ class HudRenderer(
             line.setLength(0)
             line.append("IN COMBAT")
             font.color = Palette.DANGER
-            font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+            font.draw(batch, line, textX, viewportHeight - margin - lineHeight * row)
             font.color = TEXT_COLOR
             row++
         }

@@ -101,32 +101,31 @@ class Uc22MinimapTopRightGuardTest {
     // --- AC#2: the displaced settings button moves to the top-left band and hides in combat --------
 
     @Test
-    fun `the settings button is relocated to the top-left band, not the top-right corner`() {
+    fun `the settings control is relocated to the top-left, not the top-right corner`() {
         val layout = section(PLAY_SCREEN_SOURCE, "private fun layoutControls()")
-        // Placed at the LEFT margin (the minimap now owns the top-right corner).
+        // UC56: the displaced settings control is now the top-left Settings BALL, positioned from the
+        // single pure HudControlLayout (the minimap owns the top-right corner). Its rect is top-left
+        // anchored (HudControlLayout.settingsBallRect → x = SETTINGS_BALL_MARGIN), so it is never placed
+        // in the minimap's top-right corner.
         assertTrue(
-            "AC#2: the settings button is positioned at the LEFT margin",
-            layout.contains("settingsOverlay.actor.setPosition("),
+            "AC#2 (UC56): the whole control layout is computed from the shared HudControlLayout",
+            layout.contains("HudControlLayout.compute(screenWidth, screenHeight, handedness)"),
         )
-        // Centred in the clear band between the HUD readout block (top) and the bottom control band.
-        assertTrue("AC#2: the band's top is below the HUD block", layout.contains("screenHeight - HUD_BLOCK_HEIGHT"))
-        assertTrue("AC#2: the band's bottom is the reserved control band", layout.contains("bottomControlBand()"))
         assertTrue(
-            "AC#2: the settings button is centred in the top-left band",
-            layout.contains("leftBandBottom") && layout.contains("leftBandTop"),
+            "AC#2 (UC56): the Settings ball is positioned from HudControlLayout's top-left settingsBall rect",
+            layout.contains("settingsBall.actor.setPosition(controls.settingsBall.x, controls.settingsBall.y)"),
         )
     }
 
     @Test
-    fun `the relocated settings button is hidden during combat`() {
-        // Its band overlaps the combat-only ship schematic, so it must hide while an encounter is live —
-        // keyed on the same combat.active flag as the schematic (an invisible scene2d actor also stops
-        // receiving touch, so nothing leaks through it). UC32 wrapped this in the pause-aware conditional
-        // (paused -> the Settings sub-view governs it), but the running branch still hides on combat.active.
+    fun `the relocated settings ball is hidden during combat`() {
+        // UC56: the settings control is the top-left ball; it shares its band with the combat-only ship
+        // schematic, so it must hide while an encounter is live — keyed on the same combat.active flag (an
+        // invisible scene2d actor also stops receiving touch). It also hides under map / pause / destruction.
         assertTrue(
-            "AC#2: while running, the settings button hides on combat.active (and the map overlay)",
+            "AC#2 (UC56): the Settings ball hides on combat.active (and map / pause / destruction)",
             PLAY_SCREEN_SOURCE.contains(
-                "settingsOverlay.actor.isVisible = if (paused) pauseSettingsShown else (!combat.active && !mapOpen)",
+                "settingsBall.isVisible = !combat.active && !mapOpen && !paused && !destructionState.isPending",
             ),
         )
     }
