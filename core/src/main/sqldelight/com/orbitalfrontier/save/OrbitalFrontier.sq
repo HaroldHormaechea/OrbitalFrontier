@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 22 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034 / ADR 0035 / ADR 0038).
+-- Orbital Frontier save schema, version 24 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034 / ADR 0035 / ADR 0038 / ADR 0041 / ADR 0042).
 --
--- This .sq file is ALWAYS the latest schema (currently v22). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v24). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
 -- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19;
--- 19.sqm: v19 -> v20; 20.sqm: v20 -> v21; 21.sqm: v21 -> v22).
+-- 19.sqm: v19 -> v20; 20.sqm: v20 -> v21; 21.sqm: v21 -> v22; 22.sqm: v22 -> v23; 23.sqm: v23 -> v24).
 -- Never edit this baseline destructively to make a schema change — bump the version and add a migration.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
@@ -189,6 +189,16 @@ CREATE TABLE revealed_contact (
     slot_id INTEGER NOT NULL,
     contact_id TEXT NOT NULL,
     PRIMARY KEY (slot_id, contact_id)
+);
+
+-- Consumed POIs (UC54, ADR 0042; v24). One row per (slot, POI) the player has consumed — a scavenged
+-- derelict or a triggered distress signal. Consumption is monotonic (INSERT OR IGNORE, never deleted except
+-- on a slot wipe), per slot — exactly mirroring `revealed_contact`. Absent = un-consumed (a full derelict /
+-- an armed beacon), so a pre-UC54 save reads back with nothing consumed.
+CREATE TABLE consumed_poi (
+    slot_id INTEGER NOT NULL,
+    poi_id TEXT NOT NULL,
+    PRIMARY KEY (slot_id, poi_id)
 );
 
 -- Accepted / terminal missions (UC12; v17 adds `slot_id` to the PK). One row per (slot, mission). AVAILABLE
@@ -468,6 +478,16 @@ insertRevealedContact:
 INSERT OR IGNORE INTO revealed_contact(slot_id, contact_id) VALUES (?, ?);
 
 -- ============================================================================================
+-- consumed_poi — per slot (UC54)
+-- ============================================================================================
+
+selectConsumedPoisForSlot:
+SELECT poi_id FROM consumed_poi WHERE slot_id = ?;
+
+insertConsumedPoi:
+INSERT OR IGNORE INTO consumed_poi(slot_id, poi_id) VALUES (?, ?);
+
+-- ============================================================================================
 -- mission — per slot
 -- ============================================================================================
 
@@ -591,6 +611,9 @@ DELETE FROM field_deposit WHERE slot_id = ?;
 
 deleteAllRevealedContactsForSlot:
 DELETE FROM revealed_contact WHERE slot_id = ?;
+
+deleteAllConsumedPoisForSlot:
+DELETE FROM consumed_poi WHERE slot_id = ?;
 
 deleteAllOwnedStationsForSlot:
 DELETE FROM owned_station WHERE slot_id = ?;

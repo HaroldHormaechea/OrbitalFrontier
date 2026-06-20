@@ -11,7 +11,7 @@ package com.orbitalfrontier.save
  */
 internal object SaveVersion {
     /** Current save-format/schema version; mirrors the SQLDelight schema and `meta.save_version`. */
-    const val CURRENT: Long = 23L
+    const val CURRENT: Long = 24L
 
     init {
         check(CURRENT == OrbitalFrontier.Schema.version) {

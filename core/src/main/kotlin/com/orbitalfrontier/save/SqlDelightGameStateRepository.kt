@@ -188,6 +188,10 @@ class SqlDelightGameStateRepository(
                 // World seed (UC53): the seed the sector graph regenerates from; 0 (a fresh / migrated
                 // pre-UC53 save) is the reserved WorldSeed.MVP ⇒ the hand-authored MvpSectorMap (ADR 0041).
                 worldSeed = WorldSeed(header.world_seed),
+                // Consumed POIs (UC54): scavenged derelicts + triggered distress signals; absent = un-consumed.
+                // Empty for a fresh / migrated pre-UC54 save (no consumed_poi rows), so every POI reads back
+                // full/armed and the snapshot is byte-identical until the player consumes one (ADR 0042).
+                consumedPois = loadConsumedPois(slotId),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load slot ${slot.value}; treating as no save (New Game)", e)
@@ -306,6 +310,12 @@ class SqlDelightGameStateRepository(
                 // only ever add rows and never delete — an already-revealed contact stays revealed.
                 for (contactId in state.revealedContacts) {
                     queries.insertRevealedContact(slot_id = slotId, contact_id = contactId.value)
+                }
+
+                // Consumed POIs (UC54): insert-or-ignore each id. Consumption is monotonic, like revealed
+                // contacts — we only ever add rows, so a scavenged derelict / triggered distress stays consumed.
+                for (poiId in state.consumedPois) {
+                    queries.insertConsumedPoi(slot_id = slotId, poi_id = poiId.value)
                 }
 
                 // Missions (UC12): full-snapshot rewrite of the accepted / terminal missions for this slot
@@ -522,6 +532,7 @@ class SqlDelightGameStateRepository(
                 queries.deleteAllShipSectionDamageForSlot(slotId)
                 queries.deleteAllFieldDepositsForSlot(slotId)
                 queries.deleteAllRevealedContactsForSlot(slotId)
+                queries.deleteAllConsumedPoisForSlot(slotId)
                 queries.deleteAllMissionsForSlot(slotId)
                 queries.deleteAllReputationForSlot(slotId)
                 queries.deleteAllStationMarketForSlot(slotId)
@@ -626,6 +637,19 @@ class SqlDelightGameStateRepository(
         val ids = LinkedHashSet<PoiId>()
         for (contactId in queries.selectRevealedContactsForSlot(slotId).executeAsList()) {
             ids.add(PoiId(contactId))
+        }
+        return ids
+    }
+
+    /**
+     * Reconstruct a slot's consumed-POI set from `consumed_poi` (UC54). Each row's id is a [PoiId]; an id
+     * whose POI the authored map no longer contains is kept harmlessly (it simply matches no live POI).
+     * Empty when nothing has been consumed.
+     */
+    private fun loadConsumedPois(slotId: Long): Set<PoiId> {
+        val ids = LinkedHashSet<PoiId>()
+        for (poiId in queries.selectConsumedPoisForSlot(slotId).executeAsList()) {
+            ids.add(PoiId(poiId))
         }
         return ids
     }

@@ -1,0 +1,25 @@
+-- Migration v23 -> v24 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v24 (UC54, ADR 0042) adds the **consumed point-of-interest** delta. The three additional POI types —
+-- scavengeable derelicts and one-shot distress signals — are one-time-consumable: a scavenged wreck stays
+-- empty and a triggered beacon never fires again, deterministically and across save/reload (UC54 AC#4). Like
+-- `revealed_contact` (UC10) the only persisted datum is the SET of consumed POI ids; the POIs themselves are
+-- authored map data, regenerated on load. It lands as a new per-slot `consumed_poi` table:
+--
+--  * `slot_id`  — the save slot (v17 partitioned every game-state table by slot).
+--  * `poi_id`   — the PoiId slug of a consumed POI (stable across map reordering).
+--
+-- Consumption is monotonic (INSERT OR IGNORE, never deleted except on a slot wipe), exactly like
+-- `revealed_contact`. A pre-UC54 save had no consumed_poi rows, so its migrated save reads this table back
+-- EMPTY → every derelict full / every distress armed → byte-identical to a game that never scavenged. CREATE
+-- TABLE is supported by the bundled SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe
+-- — the same rationale as every prior additive migration (precedent: 20.sqm). No table is rebuilt; all prior
+-- data is untouched. There is NO UPSERT / NO `ON CONFLICT` — INSERT OR IGNORE alone gives the monotonic set.
+
+CREATE TABLE consumed_poi (
+    slot_id INTEGER NOT NULL,
+    poi_id TEXT NOT NULL,
+    PRIMARY KEY (slot_id, poi_id)
+);
+
+UPDATE meta SET save_version = 24 WHERE id = 0;
