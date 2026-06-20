@@ -1,6 +1,7 @@
 package com.orbitalfrontier.render
 
 import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
@@ -39,6 +40,10 @@ class HudRenderer(
         }
     private val line = StringBuilder(32)
     private val projection = Matrix4()
+
+    // UC52: reused layout for measuring the autosave indicator so it can be right-aligned without
+    // per-frame allocation (setText reuses the layout's internal arrays).
+    private val autosaveLayout = GlyphLayout()
 
     fun render(
         model: HudViewModel,
@@ -136,6 +141,35 @@ class HudRenderer(
         batch.end()
     }
 
+    /**
+     * UC52 AC#2: draw the subtle autosave indicator ("Saving" / "Saved") in the bottom-right corner, right-
+     * aligned and faded by the [state]'s alpha (over the already-muted [INDICATOR_BASE_ALPHA]). A no-op
+     * while the indicator is idle. Bottom-right keeps it clear of the top-left HUD block and the top-right
+     * minimap; it is drawn before the scene2d stage / overlays, so a pause / map backdrop naturally covers
+     * it. Label is ASCII-only ([AutosaveIndicatorState.SAVING_LABEL]/[AutosaveIndicatorState.SAVED_LABEL]),
+     * within [GameFont.REQUIRED_GLYPHS].
+     */
+    fun renderAutosaveIndicator(
+        state: AutosaveIndicatorState,
+        viewportWidth: Float,
+        viewportHeight: Float,
+    ) {
+        if (!state.visible) return
+        val alpha = (INDICATOR_BASE_ALPHA * state.alpha).coerceIn(0f, 1f)
+        if (alpha <= 0f) return
+
+        val margin = MARGIN * uiScale
+        projection.setToOrtho2D(0f, 0f, viewportWidth, viewportHeight)
+        batch.projectionMatrix = projection
+        batch.begin()
+        autosaveLayout.setText(font, state.label)
+        font.setColor(INDICATOR_COLOR.r, INDICATOR_COLOR.g, INDICATOR_COLOR.b, alpha)
+        font.draw(batch, autosaveLayout, viewportWidth - margin - autosaveLayout.width, margin + autosaveLayout.height)
+        // Reset to the resting readout colour (opaque) so the next HUD frame starts neutral.
+        font.color = TEXT_COLOR
+        batch.end()
+    }
+
     override fun dispose() {
         batch.dispose()
         font.dispose()
@@ -159,5 +193,10 @@ class HudRenderer(
         // UC27: high-emphasis steel readout colour for normal HUD text (AC#8); status lines override
         // with the amber "warning" / red "danger" signal tokens at their use site.
         val TEXT_COLOR = Palette.STEEL_050
+
+        // UC52: the autosave indicator is deliberately subtle — a muted steel tone at a low base opacity,
+        // further scaled by the indicator state's own fade so it never competes with the flight readouts.
+        val INDICATOR_COLOR = Palette.STEEL_050
+        const val INDICATOR_BASE_ALPHA = 0.7f
     }
 }

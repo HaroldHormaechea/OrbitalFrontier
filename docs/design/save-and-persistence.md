@@ -1,8 +1,8 @@
 # Design Note — Save & Persistence
 
-- **Status:** in-progress (storage, save model & **multi-slot management (UC38)** decided; some hardening items open)
+- **Status:** in-progress (storage, save model, **multi-slot management (UC38)** & **save-robustness hardening (UC52 / ADR 0040)** decided; only the per-version migration-fixture practice remains open)
 - **Last updated:** 2026-06-19
-- **Related:** PROJECT_BRIEF.md → in_scope #5, data_stores, Development → migrations; ADR 0001 (core stays JVM-testable), **ADR 0002 (SQLite + migrations)**, **ADR 0003 (SQLDelight access layer)**, **ADR 0026 (save slots)**; every stateful system note (this is cross-cutting)
+- **Related:** PROJECT_BRIEF.md → in_scope #5, data_stores, Development → migrations; ADR 0001 (core stays JVM-testable), **ADR 0002 (SQLite + migrations)**, **ADR 0003 (SQLDelight access layer)**, **ADR 0026 (save slots)**, **ADR 0040 (autosave cadence, indicator & save robustness)**; every stateful system note (this is cross-cutting)
 
 ## Summary
 
@@ -95,11 +95,13 @@ without stalling the frame.
 - ~~Access layer vs. JVM-testability~~ — **RESOLVED: SQLDelight (ADR 0003)** — driver
   injected per platform; `core` depends only on SQLDelight's runtime, tests use the JDBC/
   in-memory driver.
-- **Periodic autosave interval** during flight.
-- **Corruption handling:** writes MUST be **atomic/transactional** so a failed save rolls
-  back and never corrupts the last good save (now a **binding rule** — see
-  `docs/coding-guidelines.md` → Error handling). Remaining: backup-before-migrate for schema
-  upgrades, and behavior on an unsupported/unreadable save.
+- ~~**Periodic autosave interval** during flight.~~ — **RESOLVED (UC52 / ADR 0040):** 20s,
+  data-driven via `AutosaveParams.periodicIntervalSeconds` (within the 15–30s range).
+- ~~**Corruption handling** remainder: backup-before-migrate for schema upgrades, and behavior on
+  an unsupported/unreadable save.~~ — **RESOLVED (UC52 / ADR 0040):** see Decided. (Writes were
+  already atomic/transactional — a binding rule, `docs/coding-guidelines.md` → Error handling.)
+- ~~**Autosave indicator.**~~ — **RESOLVED (UC52 / ADR 0040):** a subtle render-only "Saving"/"Saved"
+  cue, off the simulation (replay byte-identical).
 - **Migration testing:** keep a fixture DB per version to test the full upgrade chain.
 
 ## Decided
@@ -115,6 +117,21 @@ without stalling the frame.
   per platform, `.sqm` versioned migrations.
 - **Saves are atomic/transactional** — a failed write rolls back, never corrupts the last
   good save (binding rule, `docs/coding-guidelines.md` → Error handling).
+- **Periodic autosave interval = 20s, data-driven** (UC52 / ADR 0040): `AutosaveParams
+  .periodicIntervalSeconds`, within the 15–30s range; off-thread via the single-writer executor.
+- **Autosave indicator** (UC52 / ADR 0040): a subtle render-only "Saving"/"Saved" cue, bridged from
+  the off-thread writer by an `AutosaveActivitySignal` (atomic counters) and drawn by `HudRenderer`;
+  it lives in the frame loop **off `SimulationState`**, so replay fixtures stay byte-identical.
+- **Backup-before-migrate + rollback** (UC52 / ADR 0040): the last-good `.db` is copied to a rolling
+  sibling `.bak` (atomic temp-then-rename) **before** any migration; a failed migration restores it.
+  The migration is forced to run inside the open guard (injectable `forceOpen`) so Android's lazy
+  migration throws where the rollback can catch it.
+- **Unsupported / unreadable-save policy** (UC52 / ADR 0040): a NEWER schema (`v > current`) is
+  **never opened/downgraded**; an unreadable/corrupt save restores from `.bak` if present, else the
+  main menu shows with **Continue disabled + an explanatory notice**. New Game keeps its double-confirm
+  so a newer save is never silently clobbered. The header is read directly (no DB open) by
+  `SaveSchemaProbe`; **`journal_mode=DELETE`** keeps the single `.db` authoritative so the probe +
+  single-file backup are correct. **No schema bump — save mechanics, not shape (stays v22).**
 
 ## References
 

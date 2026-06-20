@@ -26,6 +26,7 @@ import com.orbitalfrontier.render.MotionPreference
 import com.orbitalfrontier.render.Palette
 import com.orbitalfrontier.render.TextScale
 import com.orbitalfrontier.render.UiScale
+import com.orbitalfrontier.save.AutosaveActivitySignal
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
@@ -553,6 +554,10 @@ class OrbitalFrontierGame(
                 worldState
             }
 
+        // UC52 AC#2: one autosave-activity signal shared by the controller (which pulses it on enqueue +
+        // after the off-thread write) and the play screen (which polls it each frame to drive the indicator).
+        val autosaveSignal = AutosaveActivitySignal()
+
         // The controller snapshots the *live* screen state on the render thread; bind the supplier to
         // the screen built just below (assigned before any render/autosave trigger fires).
         val controller =
@@ -563,6 +568,8 @@ class OrbitalFrontierGame(
                 snapshotSupplier = { playScreen?.currentWorldState() ?: initialWorldState },
                 // UC38: the autosave follows the live active slot, so a save-as to another slot re-targets it.
                 slotSupplier = { activeSlot },
+                // UC52: feed the shared indicator signal.
+                activitySignal = autosaveSignal,
             )
         autosave = controller
 
@@ -595,6 +602,8 @@ class OrbitalFrontierGame(
                 debug = debug,
                 // UC40: the shared notification queue (credit deltas + styled errors travel with the player).
                 notifications = sharedNotifications,
+                // UC52: the same signal the controller pulses, so the play screen's indicator reflects saves.
+                autosaveSignal = autosaveSignal,
             )
         playScreen = screen
 
