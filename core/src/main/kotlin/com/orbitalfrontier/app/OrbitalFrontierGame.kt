@@ -64,6 +64,7 @@ import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.walkaround.StationInterior
 import com.orbitalfrontier.world.MvpSectorMap
+import com.orbitalfrontier.world.SectorGenerator
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
@@ -166,9 +167,11 @@ class OrbitalFrontierGame(
     // hub, disposed in returnToHub() alongside the other desks.
     private var stationBuildScreen: StationBuildScreen? = null
 
-    // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
-    // resolution agrees across the game and the screen.
-    private val sectorWorld: SectorWorld = MvpSectorMap.build()
+    // The sector graph is generated per game-entry from the loaded/new save's WorldSeed (UC53, ADR 0041):
+    // enterGame() builds it once via SectorGenerator.generate(worldSeed) and shares THAT instance with
+    // both resolveDockedStation and the play screen, so dock-state resolution agrees across the game and
+    // the screen. WorldSeed.MVP (the default for a fresh / pre-UC53 save) regenerates the hand-authored
+    // MvpSectorMap verbatim (ADR 0004), so production behaviour is unchanged.
 
     // UC40: the SINGLE shared transient notification queue (pure, libGDX-free). Constructed once here and
     // injected into the play screen AND every economy screen + the hub, so a credit delta or styled error
@@ -541,7 +544,10 @@ class OrbitalFrontierGame(
         // and a later save-as updates it. The active-slot pointer was already persisted by the caller
         // (newGameIntoSlot / loadSlot / Continue's create()-read), so this just tracks it in memory.
         activeSlot = slot
-        val resumedStation = resolveDockedStation(worldState)
+        // UC53: generate the sector graph from this save's seed (WorldSeed.MVP ⇒ the authored map, ADR
+        // 0041). Built once and shared with both dock-state resolution and the play screen so they agree.
+        val sectorWorld = SectorGenerator.generate(worldState.worldSeed)
+        val resumedStation = resolveDockedStation(sectorWorld, worldState)
         val initialWorldState =
             if (worldState.dockedStation != null && resumedStation == null) {
                 logger.warn(
@@ -624,7 +630,10 @@ class OrbitalFrontierGame(
      * left docked at a personal station resumes on its hub — via the single pure
      * [OwnedStationProjection.resolveDocked] the play screen + sim also use (lockstep).
      */
-    private fun resolveDockedStation(worldState: WorldState): Station? =
+    private fun resolveDockedStation(
+        sectorWorld: SectorWorld,
+        worldState: WorldState,
+    ): Station? =
         OwnedStationProjection.resolveDocked(
             world = sectorWorld,
             currentSector = worldState.currentSector,

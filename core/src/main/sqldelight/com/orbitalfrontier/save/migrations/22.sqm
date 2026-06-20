@@ -1,0 +1,22 @@
+-- Migration v22 -> v23 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v23 (UC53, ADR 0041) adds **seed-based procedural sector generation**. The world graph itself is NOT
+-- persisted (the design goal is "store the seed + deltas, regenerate the graph"); the only new persisted
+-- datum is the scalar **world seed** the graph is generated from. It lands as a single additive column on
+-- the per-slot save header:
+--
+--  * `game_state.world_seed` — the WorldSeed the SectorWorld is generated from, DEFAULT 0. 0 is the
+--    reserved WorldSeed.MVP, for which SectorGenerator.generate returns the hand-authored MvpSectorMap
+--    **verbatim**. So a pre-UC53 save (which has no world_seed) backfills to 0 ⇒ regenerates the exact
+--    authored map ⇒ behaviourally identical to today, and every existing replay fixture (which carries no
+--    world graph, only the combat/mission RNG seed + SimulationState) stays byte-identical — the
+--    zero-fixture-regen constraint, by construction (ADR 0041).
+--
+-- The new column's DEFAULT backfills the existing row(s); every other column is untouched. ALTER TABLE
+-- ADD COLUMN is supported by the bundled SQLite on minSdk-24 devices (it long predates 24), so this is
+-- minSdk-safe — the same rationale as every prior additive migration (precedent: 17.sqm). No table is
+-- rebuilt; all prior data is untouched. There is NO UPSERT / NO `ON CONFLICT`.
+
+ALTER TABLE game_state ADD COLUMN world_seed INTEGER NOT NULL DEFAULT 0;
+
+UPDATE meta SET save_version = 23 WHERE id = 0;

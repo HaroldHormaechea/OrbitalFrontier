@@ -44,6 +44,7 @@ import com.orbitalfrontier.station.StationModuleId
 import com.orbitalfrontier.station.StationRegistry
 import com.orbitalfrontier.world.PoiId
 import com.orbitalfrontier.world.SectorId
+import com.orbitalfrontier.world.WorldSeed
 import com.orbitalfrontier.world.WorldState
 
 /**
@@ -184,6 +185,9 @@ class SqlDelightGameStateRepository(
                 crewRoster = loadCrewRoster(slotId, fleet),
                 // Play time (UC38): the accumulated wall-of-play seconds shown per slot; coerced >= 0.
                 playTimeSeconds = header.play_time_seconds.coerceAtLeast(0),
+                // World seed (UC53): the seed the sector graph regenerates from; 0 (a fresh / migrated
+                // pre-UC53 save) is the reserved WorldSeed.MVP ⇒ the hand-authored MvpSectorMap (ADR 0041).
+                worldSeed = WorldSeed(header.world_seed),
             )
         } catch (e: Exception) {
             logger.error(TAG, "Failed to load slot ${slot.value}; treating as no save (New Game)", e)
@@ -219,6 +223,8 @@ class SqlDelightGameStateRepository(
                     last_docked_station_id = state.lastDockedStation?.value,
                     last_saved_epoch_millis = clock.nowEpochMillis(),
                     play_time_seconds = state.playTimeSeconds.coerceAtLeast(0),
+                    // World seed (UC53): the scalar the sector graph regenerates from (ADR 0041).
+                    world_seed = state.worldSeed.value,
                     slot_id = slotId,
                 )
 

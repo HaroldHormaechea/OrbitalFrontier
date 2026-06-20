@@ -167,6 +167,7 @@ import com.orbitalfrontier.world.SectorId
 import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
+import com.orbitalfrontier.world.WorldSeed
 import com.orbitalfrontier.world.WorldState
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -350,6 +351,13 @@ class PlayScreen(
     // SimulationState, so it adds no bytes to the deterministic record/replay artifacts (ADR 0038).
     // [currentWorldState] hands it to the autosave.
     private var crewRoster: CrewRoster = initialWorldState.crewRoster.reconciledToCounts(initialWorldState.fleet)
+
+    // World seed (UC53): the seed [sectorWorld] was generated from, held so every autosave snapshot
+    // re-emits it (see [currentWorldState]). Immutable for the session — the seed never changes mid-game
+    // (there is no in-game re-seed in this UC). WITHOUT this, [currentWorldState] would rebuild a
+    // WorldState that defaults worldSeed back to MVP, silently reverting the seed on the next autosave and
+    // making AC#3 (the seed persists across save/reload) vacuous (ADR 0041).
+    private val worldSeed: WorldSeed = initialWorldState.worldSeed
 
     // Revealed hidden contacts (UC10): the ids of no-transponder contacts the player has uncovered by
     // active scanning, seeded from the loaded/initial snapshot. A SCAN tap folds the pure
@@ -2030,6 +2038,9 @@ class PlayScreen(
             // Crew roster (UC50): the live identity overlay, folded onto the snapshot for the autosave (the
             // count itself rides on the fleet's ships). Production-only — never enters the deterministic sim.
             crewRoster = crewRoster,
+            // World seed (UC53): re-emit the session's seed so each autosave persists it (AC#3). Without
+            // this the snapshot would default back to WorldSeed.MVP and silently revert the seed (ADR 0041).
+            worldSeed = worldSeed,
         )
     }
 
