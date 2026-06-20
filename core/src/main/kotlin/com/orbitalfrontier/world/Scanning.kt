@@ -60,6 +60,9 @@ object Scanning {
      * a reference (`!==`) check and skip the autosave. It never removes an id (monotonic, UC10 AC#4).
      *
      * @param revealed the ids of hidden contacts already known to the player.
+     * @param scannerPowered UC49 — false when the power-budget [com.orbitalfrontier.power.Brownout] has
+     *   shed the SCANNER this tick; the scan is then suppressed (treated like [ScanAction.NONE], the same
+     *   instance returned). Defaults true, so every pre-UC49 caller and full-power play is byte-identical.
      * @return the revealed set after the action — the same instance when nothing new was revealed.
      */
     fun resolve(
@@ -69,8 +72,9 @@ object Scanning {
         scanRange: Float,
         revealed: Set<PoiId>,
         action: ScanAction,
+        scannerPowered: Boolean = true,
     ): Set<PoiId> {
-        if (action == ScanAction.NONE) return revealed
+        if (action == ScanAction.NONE || !scannerPowered) return revealed
         val newlyRevealed =
             contactsInRange(world, currentSector, shipPosition, scanRange)
                 .asSequence()

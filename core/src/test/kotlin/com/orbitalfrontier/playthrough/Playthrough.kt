@@ -217,18 +217,29 @@ data class MiningParamsDto(
 }
 
 /**
- * Serializable mirror of [PowerParams] (UC07 config snapshot).
+ * Serializable mirror of [PowerParams] (UC07 config snapshot; UC49 sheddable draws).
  *
  * [PowerParams] is a pure domain type and stays annotation-free; this DTO carries the same fields
  * for persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers
  * live in exactly one place. Pinning the power tuning per artifact means a later balancing change to
  * the reactor output / draw rates cannot silently invalidate an old recorded playthrough.
+ *
+ * UC49 adds the budget-only [PowerParams.weaponsDraw] / [PowerParams.scannerDraw]. Both are
+ * `@EncodeDefault(NEVER)` with a default derived from [PowerParams], so a run under the default (0)
+ * draws OMITS the keys entirely — every pre-UC49 power fixture serializes the same three-field
+ * `powerConfig` block byte-for-byte (no fixture regen), despite the codec's global `encodeDefaults`.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class PowerParamsDto(
     val reactorOutput: Float,
     val baseModuleDraw: Float,
     val thrustDraw: Float,
+    // UC49: budget-only sheddable draws — omitted by default so existing fixtures stay byte-identical.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val weaponsDraw: Float = PowerParams().weaponsDraw,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val scannerDraw: Float = PowerParams().scannerDraw,
 ) {
     /** Reconstruct the domain [PowerParams] (its `init` re-validates the values). */
     fun toPowerParams(): PowerParams =
@@ -236,6 +247,8 @@ data class PowerParamsDto(
             reactorOutput = reactorOutput,
             baseModuleDraw = baseModuleDraw,
             thrustDraw = thrustDraw,
+            weaponsDraw = weaponsDraw,
+            scannerDraw = scannerDraw,
         )
 
     companion object {
@@ -245,6 +258,8 @@ data class PowerParamsDto(
                 reactorOutput = params.reactorOutput,
                 baseModuleDraw = params.baseModuleDraw,
                 thrustDraw = params.thrustDraw,
+                weaponsDraw = params.weaponsDraw,
+                scannerDraw = params.scannerDraw,
             )
 
         /** The serialized default tuning, derived from the domain default (single source of truth). */

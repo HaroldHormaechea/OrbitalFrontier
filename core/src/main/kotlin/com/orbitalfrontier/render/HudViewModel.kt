@@ -4,6 +4,8 @@ import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.mission.Mission
 import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.mission.MissionType
+import com.orbitalfrontier.power.BrownoutResult
+import com.orbitalfrontier.power.PowerSystem
 import kotlin.math.PI
 import kotlin.math.roundToInt
 
@@ -30,6 +32,18 @@ data class HudViewModel(
     val sectorName: String,
     /** The active mission's objective content (no label/ellipsis), or null when no mission is active. */
     val objective: String?,
+    /**
+     * UC07/UC49 power readout (AC#3): reactor energy output (units/s) — the budget ceiling shown on the
+     * power line. This and the three fields below are pure render data derived from the transient
+     * [BrownoutResult]; they never enter the recorded simulation.
+     */
+    val reactorOutput: Float,
+    /** Budget power demand (units/s): base+thrust plus the sheddable weapons/scanner draws. */
+    val powerDraw: Float,
+    /** True while demand exceeds output this tick (the renderer flags it as a caution). */
+    val brownout: Boolean,
+    /** The sheddable systems dropped during brownout (empty otherwise); surfaced as per-system cues. */
+    val shedSystems: Set<PowerSystem>,
 ) {
     companion object {
         /** The rightwards arrow used in the courier route (in [GameFont.REQUIRED_GLYPHS], so it renders). */
@@ -51,6 +65,9 @@ data class HudViewModel(
             cargo: Cargo,
             sectorName: String,
             missionLog: MissionLog,
+            // UC49: the tick's brownout snapshot drives the power readout. Defaulted to the full-power
+            // snapshot so pre-UC49 call sites/tests still compile and render a no-brownout power line.
+            brownout: BrownoutResult = BrownoutResult.FULL_POWER,
         ): HudViewModel =
             HudViewModel(
                 speed = speed,
@@ -64,6 +81,10 @@ data class HudViewModel(
                 cargoCapacity = cargo.capacity,
                 sectorName = sectorName,
                 objective = objectiveLine(missionLog.activeMissions.firstOrNull(), cargo),
+                reactorOutput = brownout.reactorOutput,
+                powerDraw = brownout.totalDemand,
+                brownout = brownout.isBrownout,
+                shedSystems = brownout.shedSystems,
             )
 
         /**

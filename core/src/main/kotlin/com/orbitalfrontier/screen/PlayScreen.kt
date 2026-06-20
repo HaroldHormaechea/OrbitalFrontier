@@ -88,7 +88,10 @@ import com.orbitalfrontier.platform.AudioService
 import com.orbitalfrontier.platform.Logger
 import com.orbitalfrontier.platform.NoOpAudioService
 import com.orbitalfrontier.platform.SaveExecutor
+import com.orbitalfrontier.power.Brownout
+import com.orbitalfrontier.power.BrownoutResult
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.power.PowerSystem
 import com.orbitalfrontier.render.AsteroidFieldRenderer
 import com.orbitalfrontier.render.CombatFeedback
 import com.orbitalfrontier.render.CombatHudRenderer
@@ -422,6 +425,12 @@ class PlayScreen(
     // not-thrusting -> thrusting rising edge ([audio].play) and stops on the falling edge ([audio].stopSfx),
     // so it plays continuously while the stick is held and exactly once per ignition (AC#1).
     private var previousThrusting = false
+
+    // UC49: the current tick's power-budget brownout snapshot, recomputed once per advance from the SAME
+    // `thrusting` bool fed to fuel burn (the lockstep mirror lives in the test-set Simulation). Read by the
+    // paced combat step (WEAPONS shed → fire suppressed), the scan resolve (SCANNER shed → scan suppressed)
+    // and the HUD power readout. Transient + render-only — never persisted, never in SimulationState.
+    private var brownout: BrownoutResult = BrownoutResult.FULL_POWER
 
     // UC31: cooldown that paces the MINING_TICK cue. Mining resolves EVERY held frame (60/s), so the cue
     // is throttled to one play per MINING_SFX_INTERVAL of productive mining — a pleasant pulse, not a
@@ -851,6 +860,12 @@ class PlayScreen(
         val thrusting = !input.released && input.magnitude > params.inputDeadzone
         fuel = FuelBurn.step(fuel, thrusting, powerParams, dt)
 
+        // UC49: resolve this tick's power budget from the SAME `thrusting` bool just used for fuel burn
+        // (lockstep with the test-set Simulation). Pure + transient: it gates fire/scan below and feeds the
+        // HUD power readout, but burns no fuel (sheddable draws are budget-only) and is never recorded. At
+        // full power (default sheddable draws 0) demand ≈ base+thrust → no brownout → fire/scan untouched.
+        brownout = Brownout.resolve(thrusting, powerParams)
+
         // UC31: drive the looping engine cue off the thrust transition (edge-triggered, AC#1) — start it
         // when thrust begins, stop it when thrust ends, so it plays only while the stick is held.
         if (thrusting != previousThrusting) {
@@ -991,7 +1006,16 @@ class PlayScreen(
             if (dockedStation == null) {
                 val scanRange = ShipStats.scanRange(active.type, active.loadout)
                 val updated =
-                    Scanning.resolve(sectorWorld, currentSector, ship.position, scanRange, revealedContacts, ScanAction.SCAN)
+                    Scanning.resolve(
+                        sectorWorld,
+                        currentSector,
+                        ship.position,
+                        scanRange,
+                        revealedContacts,
+                        ScanAction.SCAN,
+                        // UC49: a power-shed SCANNER suppresses the scan (resolve returns the same set).
+                        scannerPowered = brownout.isPowered(PowerSystem.SCANNER),
+                    )
                 if (updated !== revealedContacts) {
                     val newlyRevealed = updated.size - revealedContacts.size
                     revealedContacts = updated
@@ -1200,6 +1224,8 @@ class PlayScreen(
                 cargo = cargo,
                 sectorName = sector.displayName,
                 missionLog = missionLog,
+                // UC49: the tick's transient power-budget snapshot drives the PWR readout + brownout cue.
+                brownout = brownout,
             ),
             viewportWidth,
             viewportHeight,
@@ -1675,7 +1701,17 @@ class PlayScreen(
         // the id, and the kill culls the hostile from the post-step state, so the kill position +
         // archetype (the salvage spawn inputs) must be read from this pre-step list.
         val preStepHostiles = combat.hostiles
-        val result = Combat.step(combat, playerInput, fireAction, combatParams, COMBAT_DT)
+        // UC49: a power-shed WEAPONS system suppresses player fire (both fixed + turret) this tick — the
+        // frame's brownout snapshot applies to every paced combat sub-tick (lockstep with Simulation).
+        val result =
+            Combat.step(
+                combat,
+                playerInput,
+                fireAction,
+                combatParams,
+                COMBAT_DT,
+                weaponsPowered = brownout.isPowered(PowerSystem.WEAPONS),
+            )
         combat = result.combat
 
         // UC31: play SFX for this tick's combat events (weapon fire, hostile hit, hostile destroyed) from

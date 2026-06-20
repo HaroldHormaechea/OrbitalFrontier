@@ -11,13 +11,16 @@ package com.orbitalfrontier.render
  *
  * The block is top-left anchored — the conventional flight-readout location — opposite the top-right
  * minimap (UC22) and clear of the bottom action arc (UC26), so the expanded HUD never overlaps either
- * reserved region at the supported sizes. [BLOCK_HEIGHT] is the worst-case height (seven readout lines:
- * SPEED, HDG, FUEL, CR+CRG, SEC, OBJ, IN COMBAT); [PlayScreen]'s `HUD_BLOCK_HEIGHT` references it so the
- * settings/handedness band below the HUD tracks the real reservation from a single source.
+ * reserved region at the supported sizes. [BLOCK_HEIGHT] is the worst-case height (eight readout lines:
+ * SPEED, HDG, FUEL, PWR, CR+CRG, SEC, OBJ, IN COMBAT); [PlayScreen]'s `HUD_BLOCK_HEIGHT` references it so
+ * the settings/handedness band below the HUD tracks the real reservation from a single source.
  */
 object HudLayout {
-    /** Worst-case world-space height of the readout block, measured down from the top edge. */
-    const val BLOCK_HEIGHT = 170f
+    /**
+     * Worst-case world-space height of the readout block, measured down from the top edge.
+     * UC49: bumped from 170f to 192f (= one extra 22f line) for the added PWR power readout line.
+     */
+    const val BLOCK_HEIGHT = 192f
 
     /** World-space width the readout block reserves from the left edge. */
     const val BLOCK_WIDTH = 360f
