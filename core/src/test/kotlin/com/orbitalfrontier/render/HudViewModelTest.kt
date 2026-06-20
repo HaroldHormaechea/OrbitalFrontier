@@ -8,8 +8,12 @@ import com.orbitalfrontier.mission.MissionLog
 import com.orbitalfrontier.mission.MissionSource
 import com.orbitalfrontier.mission.MissionStatus
 import com.orbitalfrontier.mission.MissionType
+import com.orbitalfrontier.power.BrownoutResult
+import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.power.PowerSystem
 import com.orbitalfrontier.world.PoiId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -183,6 +187,38 @@ class HudViewModelTest {
         assertEquals("Sector B", second.sectorName)
     }
 
+    // --- UC49 AC#3: the transient power-budget snapshot drives the HUD power readout ---------------
+
+    @Test
+    fun `build defaults the power readout to the full-power snapshot when no brownout is supplied`() {
+        // Pre-UC49 call sites omit the brownout arg; the model then renders a no-brownout power line off
+        // BrownoutResult.FULL_POWER (reactor output shown, zero draw, not browned out, nothing shed).
+        val model = model()
+        assertEquals(PowerParams.DEFAULT_REACTOR_OUTPUT, model.reactorOutput, 1e-4f)
+        assertEquals("no load at the default full-power snapshot", 0f, model.powerDraw, 1e-4f)
+        assertFalse("the default snapshot is not a brownout", model.brownout)
+        assertTrue("nothing is shed at full power", model.shedSystems.isEmpty())
+    }
+
+    @Test
+    fun `build surfaces the supplied brownout snapshot's power fields`() {
+        val snapshot =
+            BrownoutResult(
+                totalDemand = 4.5f,
+                reactorOutput = 2.0f,
+                poweredSystems = setOf(PowerSystem.HELM, PowerSystem.WEAPONS),
+                shedSystems = setOf(PowerSystem.SCANNER),
+                isBrownout = true,
+            )
+        val model = model(brownout = snapshot)
+        // reactorOutput is the budget ceiling; powerDraw is the snapshot's total demand; brownout + the
+        // shed set surface the per-system caution cues — all pure render data, never recorded.
+        assertEquals(2.0f, model.reactorOutput, 1e-4f)
+        assertEquals(4.5f, model.powerDraw, 1e-4f)
+        assertTrue("the brownout flag propagates", model.brownout)
+        assertEquals("the shed systems propagate", setOf(PowerSystem.SCANNER), model.shedSystems)
+    }
+
     // --- small-screen pitfall: a long variable line is capped to MAX_LINE_CHARS via ellipsize ------
 
     @Test
@@ -281,6 +317,7 @@ class HudViewModelTest {
             cargo: Cargo = Cargo.empty(),
             sectorName: String = "Sector",
             missionLog: MissionLog = MissionLog.EMPTY,
+            brownout: BrownoutResult = BrownoutResult.FULL_POWER,
         ): HudViewModel =
             HudViewModel.build(
                 speed = speed,
@@ -293,6 +330,7 @@ class HudViewModelTest {
                 cargo = cargo,
                 sectorName = sectorName,
                 missionLog = missionLog,
+                brownout = brownout,
             )
     }
 }

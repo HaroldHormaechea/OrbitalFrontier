@@ -10,19 +10,26 @@ package com.orbitalfrontier.power
  * spikes burn). Total draw = base + (thrusting ? thrust : 0), and that draw is the fuel burn rate.
  *
  * Authored **[TUNE]** placeholders (the design note flags these numbers as provisional). Pure value,
- * no engine types — JVM-testable (UC07 AC#7). Reactor output is currently **uncapped**: total draw
- * may exceed it without a brownout/throttle (deferred); [PowerModel.status] still reports both so the
- * relationship is observable and a later cap is a localized change.
+ * no engine types — JVM-testable (UC07 AC#7).
+ *
+ * [weaponsDraw] / [scannerDraw] (UC49) are **budget-only** sheddable draws: they feed the [Brownout]
+ * power-budget cap ONLY and are deliberately NOT part of [PowerModel.drawAt] / fuel burn, so adding
+ * them leaves the UC16 25/75 base:thrust fuel tuning (and every recorded fixture) untouched. Both
+ * default 0, so by default demand ≈ base+thrust and no brownout occurs.
  */
 data class PowerParams(
     val reactorOutput: Float = DEFAULT_REACTOR_OUTPUT,
     val baseModuleDraw: Float = DEFAULT_BASE_MODULE_DRAW,
     val thrustDraw: Float = DEFAULT_THRUST_DRAW,
+    val weaponsDraw: Float = DEFAULT_WEAPONS_DRAW,
+    val scannerDraw: Float = DEFAULT_SCANNER_DRAW,
 ) {
     init {
         require(reactorOutput > 0f) { "reactorOutput must be positive: $reactorOutput" }
         require(baseModuleDraw >= 0f) { "baseModuleDraw must be non-negative: $baseModuleDraw" }
         require(thrustDraw >= 0f) { "thrustDraw must be non-negative: $thrustDraw" }
+        require(weaponsDraw >= 0f) { "weaponsDraw must be non-negative: $weaponsDraw" }
+        require(scannerDraw >= 0f) { "scannerDraw must be non-negative: $scannerDraw" }
     }
 
     companion object {
@@ -53,5 +60,16 @@ data class PowerParams(
 
         /** Default extra draw while thrusting (units/s) — hard maneuvering costs more. 75% of total (UC16). ≈0.041667 */
         const val DEFAULT_THRUST_DRAW: Float = REFERENCE_TOTAL_DRAW * 0.75f
+
+        /**
+         * Default budget-only weapons draw (units/s) for the [Brownout] cap (UC49). **0** by default:
+         * the MVP starter ship carries no powered weapons load, so default play never browns out and
+         * every recorded fixture stays byte-identical. A fixture/ship that fits powered weapons pins a
+         * positive value. NOT part of fuel burn ([PowerModel.drawAt]). [TUNE]
+         */
+        const val DEFAULT_WEAPONS_DRAW: Float = 0f
+
+        /** Default budget-only scanner draw (units/s) for the [Brownout] cap (UC49). 0 by default — see [DEFAULT_WEAPONS_DRAW]. [TUNE] */
+        const val DEFAULT_SCANNER_DRAW: Float = 0f
     }
 }

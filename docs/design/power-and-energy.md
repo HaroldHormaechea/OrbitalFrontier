@@ -1,8 +1,17 @@
 # Design Note — Power & Energy
 
-- **Status:** in-progress (confirmed as a feature; mechanics to define)
-- **Last updated:** 2026-06-07
-- **Related:** [economy-and-resources.md](economy-and-resources.md) (fuel = hydrogen; consumption), [upgrades-and-progression.md](upgrades-and-progression.md) (modules, reactor/power category), [ship-and-controls.md](ship-and-controls.md) (engine/RCS draw), [combat.md](combat.md) (weapons/shields draw — later)
+- **Status:** implemented (rate-based budget + brownout shipped in UC49 — see ADR 0037; reactor-upgrade category + capacitor remain open)
+- **Last updated:** 2026-06-20
+- **Related:** [economy-and-resources.md](economy-and-resources.md) (fuel = hydrogen; consumption), [upgrades-and-progression.md](upgrades-and-progression.md) (modules, reactor/power category), [ship-and-controls.md](ship-and-controls.md) (engine/RCS draw), [combat.md](combat.md) (weapons/shields draw — later), [ADR 0037](../adr/0037-power-brownout-budget.md) (brownout budget model)
+
+> **UC49 update (2026-06-20).** The deferred **power budget cap** and **player-facing UI** are now
+> implemented (ADR 0037). The model resolved the open questions below as: **rate-based** (not a pool);
+> **automatic** priority shedding (not manual allocation); **brownout** sheds lowest-priority systems
+> (SCANNER → WEAPONS) while a **protected HELM floor is never shed** (no-deadlock). Crucially the new
+> sheddable weapons/scanner draws feed the **budget only**, not fuel burn — so the UC16 25/75 fuel
+> tuning is untouched. The reactor-upgrade category, fuel↔reactor accounting depth, and the
+> **capacitor/battery** buffer remain open/deferred. The sections below are the original pre-UC49
+> proposal, retained for context.
 
 ## Summary
 

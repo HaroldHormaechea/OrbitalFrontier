@@ -174,6 +174,16 @@ object PlaythroughFixtures {
     const val UC47_BUY_USED: String = "uc47-buy-used-part"
 
     /**
+     * UC49 power-brownout playthrough name (AC#5): start just west of the alpha-raider-picket and fly in
+     * to spawn a RAIDER under a deliberately over-drawn power budget (base+thrust UNDER reactor output, but
+     * the sheddable weapons+scanner draws push the budget over). Holding FIRE + SCAN the whole time then
+     * exercises the visible brownout effects — SCANNER shed ⇒ the in-range derelict is never revealed,
+     * WEAPONS shed ⇒ the player never emits a projectile (so the raider survives) — while the protected
+     * HELM stays powered. [Uc49PowerBrownoutReplayTest] asserts those effects against a full-power control.
+     */
+    const val UC49_POWER_BROWNOUT: String = "uc49-power-brownout"
+
+    /**
      * Starting credit balance the UC15 station fixture seeds — comfortably above the commerce-hub-i price
      * (1500) so the single FoundStation clears with a known non-zero remainder. Authored as a literal so the
      * fixture stays self-contained.
@@ -259,6 +269,7 @@ object PlaythroughFixtures {
             UC45_ENEMY_AI to ::uc45EnemyAi,
             UC46_DYNAMIC_PRICING to ::uc46DynamicPricing,
             UC47_BUY_USED to ::uc47BuyUsedPart,
+            UC49_POWER_BROWNOUT to ::uc49PowerBrownout,
         )
 
     /**
@@ -989,6 +1000,83 @@ object PlaythroughFixtures {
         // auto-aims and destroys the closing raider over the remaining ticks.
         for (tick in UC13_THRUST_IN_TICKS until UC13_TOTAL_TICKS) {
             recorder.recordFireAction(tick, FireAction.FIRE)
+        }
+        return recorder.build()
+    }
+
+    /**
+     * Power tuning **pinned for the UC49 brownout fixture only** — a deliberately over-drawn budget. The
+     * protected base+thrust draw stays comfortably UNDER the reactor output (so the ship always keeps the
+     * power to fly), but the budget-only sheddable weapons+scanner draws each exceed the output on their
+     * own, so demand blows past it and BOTH SCANNER and WEAPONS are shed (SCANNER first). The draws are
+     * budget-only ([PowerParams.weaponsDraw] / [PowerParams.scannerDraw]) — they never touch fuel burn — so
+     * movement and fuel stay identical to a default run; only the fire/scan seams react. Pinned per
+     * artifact (UC02 config-pin rationale) so a later default-tuning change can't silently invalidate this
+     * replay.
+     */
+    private val UC49_OVERDRAW_POWER: PowerParams = PowerParams(weaponsDraw = 3.0f, scannerDraw = 3.0f)
+
+    /** Thrust-in ticks for [uc49PowerBrownout] — enough to cross the picket's r260 edge from just outside. */
+    private const val UC49_THRUST_IN_TICKS: Int = 12
+
+    /** Total ticks for [uc49PowerBrownout] — short: spawn the raider, then loiter holding FIRE + SCAN. */
+    private const val UC49_TOTAL_TICKS: Int = 60
+
+    /**
+     * UC49 brownout scenario (AC#5): the player starts **in flight** just **west of** the alpha-raider-picket
+     * (the same [UC13_PICKET_CENTER] ambush UC13 uses), with **one crew aboard** (the auto-aim turret is
+     * operable) and the last-docked station at Alpha, but under the over-drawn [UC49_OVERDRAW_POWER] budget.
+     * The script mirrors UC13 — thrust east to cross the r260 edge and spawn a single RAIDER, then loiter —
+     * but holds **both** [FireAction.FIRE] and [ScanAction.SCAN] every tick.
+     *
+     * Because the over-draw sheds SCANNER and WEAPONS for the whole run, the two visible brownout effects
+     * (AC#1/#4) surface:
+     *  - the held SCAN never reveals the in-range `alpha-derelict` (at (300,0), d≈330 < the base scan range
+     *    at the western start) — a power-shed sensor is suppressed;
+     *  - the held FIRE emits no player projectile, so the spawned raider is never damaged and the encounter
+     *    stays active — a power-shed weapon can't fire; meanwhile the protected HELM stays powered.
+     *
+     * [Uc49PowerBrownoutReplayTest] asserts those effects and proves the brownout *causes* them by replaying
+     * the SAME script under a full-power control (default [PowerParams]), where the scan DOES reveal the
+     * derelict and the built-in forward gun DOES emit a player projectile. The combat tuning is the pinned
+     * [UC13_COMBAT_TUNING] (deterministic HULL-funnelled geometry); the budget never burns fuel.
+     */
+    fun uc49PowerBrownout(): Playthrough {
+        // Start just OUTSIDE the r260 picket on the -x side (dist 270), already cruising east at 120 wu/s so
+        // a few ticks of eastward thrust carry the ship across the r260 edge and trip the ambush — with the
+        // in-range alpha-derelict ((300,0), d≈330) close enough that a *powered* scan would reveal it.
+        val start = UC13_PICKET_CENTER - Vec2(270f, 0f)
+        val fleet =
+            singleShipFleet(
+                kinematics = ShipKinematics(position = start, velocity = Vec2(120f, 0f), headingRadians = 0f),
+            ).let { f -> f.withActive(f.active.withCrew(1)) }
+
+        val recorder =
+            PlaythroughRecorder(
+                name = UC49_POWER_BROWNOUT,
+                seed = 49L,
+                dtSeconds = DT_SECONDS,
+                powerConfig = UC49_OVERDRAW_POWER,
+                combatConfig = UC13_COMBAT_TUNING,
+                initialState =
+                    SimulationState(
+                        fleet = fleet,
+                        // The respawn point on destruction (persisted); mirrors the UC13 setup.
+                        lastDockedStation = PoiId("alpha-station"),
+                    ),
+            )
+
+        val east = MovementInput(targetDirection = Vec2(1f, 0f), magnitude = 1f, released = false)
+        // Thrust east to cross the picket edge and spawn the raider; hold FIRE + SCAN the whole time.
+        for (tick in 0 until UC49_THRUST_IN_TICKS) {
+            recorder.recordMovement(tick, east)
+            recorder.recordFireAction(tick, FireAction.FIRE)
+            recorder.recordScanAction(tick, ScanAction.SCAN)
+        }
+        // Loiter (released stick) but keep holding FIRE + SCAN: under the shed budget neither does anything.
+        for (tick in UC49_THRUST_IN_TICKS until UC49_TOTAL_TICKS) {
+            recorder.recordFireAction(tick, FireAction.FIRE)
+            recorder.recordScanAction(tick, ScanAction.SCAN)
         }
         return recorder.build()
     }

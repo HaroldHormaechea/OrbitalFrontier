@@ -43,7 +43,9 @@ import com.orbitalfrontier.outfit.ShipStats
 import com.orbitalfrontier.outfit.UsedPartParams
 import com.orbitalfrontier.platform.Rng
 import com.orbitalfrontier.platform.TimeSource
+import com.orbitalfrontier.power.Brownout
 import com.orbitalfrontier.power.PowerParams
+import com.orbitalfrontier.power.PowerSystem
 import com.orbitalfrontier.ship.FleetOrder
 import com.orbitalfrontier.ship.FleetResolver
 import com.orbitalfrontier.ship.FuelLimitedMovement
@@ -424,6 +426,12 @@ class Simulation(
         // "Thrusting" matches the device loop's gate exactly so live and replayed burn agree (UC07 AC#2).
         val thrusting = !input.released && input.magnitude > params.inputDeadzone
         val burnedFuel = FuelBurn.step(refuel.fuel, thrusting, powerParams, dt)
+        // UC49 lockstep (mirrors PlayScreen): resolve this tick's power budget from the SAME `thrusting`
+        // bool just used for fuel burn. Pure + transient — it gates the scan + combat below (a shed SCANNER
+        // suppresses scanning, a shed WEAPONS suppresses player fire) but burns no fuel (sheddable draws are
+        // budget-only) and never enters the recorded state. At full power (default sheddable draws 0) demand
+        // ≈ base+thrust → no brownout → scan/combat untouched, so pre-UC49 fixtures stay byte-identical.
+        val brownout = Brownout.resolve(thrusting, powerParams)
         // UC09: derive the active ship's effective movement params from its type + engine loadout FIRST
         // (ShipStats), then apply the fuel-limited scaling on top. For the starter ship with an empty
         // loadout ShipStats returns `params` unchanged (===), so the pre-UC09 fixtures stay byte-
@@ -488,6 +496,8 @@ class Simulation(
                     scanRange = scanRange,
                     revealed = state.revealedContacts,
                     action = scanAction,
+                    // UC49 lockstep: a power-shed SCANNER suppresses the scan (resolve returns the same set).
+                    scannerPowered = brownout.isPowered(PowerSystem.SCANNER),
                 )
             } else {
                 state.revealedContacts
@@ -662,7 +672,16 @@ class Simulation(
                 // id, and the cull removes the hostile, so the kill position + archetype (the salvage spawn
                 // inputs) must be read from this pre-step list. Mirrors PlayScreen.stepCombatOnce.
                 val preStepHostiles = combat.hostiles
-                val result = Combat.step(combat, playerInput, fireAction, combatParams, dt)
+                // UC49 lockstep: a power-shed WEAPONS system suppresses player fire (fixed + turret) this tick.
+                val result =
+                    Combat.step(
+                        combat,
+                        playerInput,
+                        fireAction,
+                        combatParams,
+                        dt,
+                        weaponsPowered = brownout.isPowered(PowerSystem.WEAPONS),
+                    )
                 combat = result.combat
 
                 val killsThisTick = result.events.count { it is CombatEvent.HostileDestroyed }

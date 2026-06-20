@@ -51,6 +51,10 @@ object Combat {
         fireAction: FireAction,
         params: CombatParams,
         dt: Float,
+        // UC49: when the power-budget [com.orbitalfrontier.power.Brownout] has shed WEAPONS this tick the
+        // player's offensive systems are unpowered — both fixed and turret fire are suppressed (hostiles
+        // still fire). Defaults true so every pre-UC49 caller (and full-power play) is byte-identical.
+        weaponsPowered: Boolean = true,
     ): CombatStepResult {
         // Inactive encounter: nothing ticks, firing has nothing to hit. Same instances, no RNG, no events.
         if (!combat.active) {
@@ -92,9 +96,12 @@ object Combat {
             )
         }
 
-        // --- Player fixed/forward fire (AC#1): along hull facing, gated on cooldown + WEAPON not disabled.
+        // --- Player fixed/forward fire (AC#1): along hull facing, gated on cooldown + WEAPON not disabled
+        // + WEAPONS not browned out (UC49 — a power-shed WEAPONS system can't fire).
         val weaponDisabled = SectionDamages.isDestroyed(playerDamage, ShipSection.WEAPON, player.maxHp(ShipSection.WEAPON))
-        if (fireAction == FireAction.FIRE && playerFixedCd <= 0f && player.weapons.fixed.isNotEmpty() && !weaponDisabled) {
+        if (weaponsPowered && fireAction == FireAction.FIRE && playerFixedCd <= 0f &&
+            player.weapons.fixed.isNotEmpty() && !weaponDisabled
+        ) {
             val facing = Vec2.fromAngle(player.kinematics.headingRadians)
             var maxCd = 0f
             for (w in player.weapons.fixed) {
@@ -105,10 +112,11 @@ object Combat {
             events.add(CombatEvent.PlayerFired(turret = false))
         }
 
-        // --- Player turret auto-fire (AC#2): crew-gated, auto-aim at the priority target, TURRET not disabled.
+        // --- Player turret auto-fire (AC#2): crew-gated, auto-aim at the priority target, TURRET not disabled
+        // + WEAPONS not browned out (UC49 — power-shed weapons take the turrets offline too).
         val turretDisabled = SectionDamages.isDestroyed(playerDamage, ShipSection.TURRET, player.maxHp(ShipSection.TURRET))
         val operableTurrets = player.weapons.operableTurrets(player.crew)
-        if (operableTurrets.isNotEmpty() && playerTurretCd <= 0f && !turretDisabled && hostiles.isNotEmpty()) {
+        if (weaponsPowered && operableTurrets.isNotEmpty() && playerTurretCd <= 0f && !turretDisabled && hostiles.isNotEmpty()) {
             val target = TargetingPriority.selectTarget(playerPos, hostiles)
             if (target != null) {
                 val toTarget = target.kinematics.position - playerPos

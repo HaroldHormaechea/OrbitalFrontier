@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.utils.Disposable
+import com.orbitalfrontier.power.PowerSystem
 import kotlin.math.roundToInt
 
 /**
@@ -76,6 +77,24 @@ class HudRenderer(
         font.color = TEXT_COLOR
         row++
 
+        // UC07/UC49: reactor supply vs. budget demand as a whole-percent gauge (AC#3). While browned out the
+        // line turns amber ("warning" token) and names the shed systems — the player-facing brownout cue.
+        // The brownout/shed state is render-only (never recorded), assembled in the pure HudViewModel.
+        line.setLength(0)
+        val powerPct = if (model.reactorOutput > 0f) (model.powerDraw / model.reactorOutput * 100f).roundToInt() else 0
+        line.append("PWR ").append(powerPct).append('%')
+        if (model.brownout) {
+            line.append("  BROWNOUT")
+            for (system in model.shedSystems.sortedBy { it.shedPriority }) {
+                line.append(' ').append(shedLabel(system))
+            }
+        }
+        HudLayout.ellipsize(line)
+        font.color = if (model.brownout) Palette.WARNING else TEXT_COLOR
+        font.draw(batch, line, margin, viewportHeight - margin - lineHeight * row)
+        font.color = TEXT_COLOR
+        row++
+
         // UC34: credits + cargo fill share one line — "CR <credits>  CRG <used>/<cap>" — keeping the
         // worst-case block to seven lines so it stays within the reserved HudLayout.BLOCK_HEIGHT.
         line.setLength(0)
@@ -128,6 +147,14 @@ class HudRenderer(
 
         // Degree sign (U+00B0). In GameFont.REQUIRED_GLYPHS, so the bundled font always renders it (UC28).
         const val DEGREE = '°'
+
+        // UC49: compact ASCII tags (bundled-font safe) for the brownout shed-system cue on the PWR line.
+        private fun shedLabel(system: PowerSystem): String =
+            when (system) {
+                PowerSystem.WEAPONS -> "WPN"
+                PowerSystem.SCANNER -> "SCN"
+                PowerSystem.HELM -> "HLM"
+            }
 
         // UC27: high-emphasis steel readout colour for normal HUD text (AC#8); status lines override
         // with the amber "warning" / red "danger" signal tokens at their use site.

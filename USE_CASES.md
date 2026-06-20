@@ -58,7 +58,7 @@ Statuses:
 | 46 | [use-cases/46-dynamic-station-pricing.md](use-cases/46-dynamic-station-pricing.md) | Dynamic station pricing | done | 2026-06-19 |
 | 47 | [use-cases/47-junkyard-buy-used-parts.md](use-cases/47-junkyard-buy-used-parts.md) | Buy used parts at junkyards | done | 2026-06-19 |
 | 48 | [use-cases/48-reputation-gated-upgrades.md](use-cases/48-reputation-gated-upgrades.md) | Reputation-gated upgrade & ship availability | done | 2026-06-20 |
-| 49 | [use-cases/49-power-brownout-and-ui.md](use-cases/49-power-brownout-and-ui.md) | Power brownout/throttle & power UI surfacing | pending | 2026-06-18 |
+| 49 | [use-cases/49-power-brownout-and-ui.md](use-cases/49-power-brownout-and-ui.md) | Power brownout/throttle & power UI surfacing | done | 2026-06-20 |
 | 50 | [use-cases/50-crew-depth-fleet-management.md](use-cases/50-crew-depth-fleet-management.md) | Crew depth & fleet/crew management screen | pending | 2026-06-18 |
 | 51 | [use-cases/51-station-building-ui-and-surfacing.md](use-cases/51-station-building-ui-and-surfacing.md) | Station-building UI & world surfacing | pending | 2026-06-18 |
 | 52 | [use-cases/52-autosave-and-save-robustness.md](use-cases/52-autosave-and-save-robustness.md) | Periodic autosave, indicator & save robustness | pending | 2026-06-18 |
