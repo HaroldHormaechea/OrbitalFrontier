@@ -1,0 +1,797 @@
+{
+  "formatVersion": 1,
+  "name": "uc49-power-brownout",
+  "seed": 49,
+  "dtSeconds": 0.016666668,
+  "tickCount": 60,
+  "config": {
+    "maxSpeed": 120.0,
+    "maxAcceleration": 80.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 6.0,
+    "maxRotationSpeed": 3.5,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.013888889,
+    "thrustDraw": 0.041666668,
+    "weaponsDraw": 3.0,
+    "scannerDraw": 3.0
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "missionConfig": {
+    "boardMiningQuotaMin": 8,
+    "boardMiningQuotaMax": 20,
+    "radioMiningQuotaMin": 6,
+    "radioMiningQuotaMax": 14,
+    "miningRewardBase": 200,
+    "miningRewardPerUnit": 25,
+    "courierRewardBase": 400,
+    "courierRewardSpan": 400,
+    "courierTickLimitMin": 60,
+    "courierTickLimitMax": 240,
+    "courierFailurePenalty": 150,
+    "radioRange": 700.0
+  },
+  "combatConfig": {
+    "hitRadius": 60.0,
+    "sectionHitWeights": {
+      "HULL": 1
+    },
+    "minEngineSpeedFactor": 0.35,
+    "respawnCargoLossFraction": 0.25,
+    "muzzleOffset": 24.0,
+    "spawnDistance": 360.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 630.0,
+    "posY": 0.0,
+    "velX": 120.0,
+    "velY": 0.0,
+    "headingRadians": 0.0,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": null,
+    "cargoCapacity": 50,
+    "cargo": {},
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 0,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 630.0,
+        "posY": 0.0,
+        "velX": 120.0,
+        "velY": 0.0,
+        "headingRadians": 0.0,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {},
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {},
+        "crew": 1,
+        "sectionDamage": {}
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": [],
+    "missions": {
+      "available": [],
+      "accepted": []
+    },
+    "lastDockedStation": "alpha-station"
+  },
+  "inputEvents": [
+    {
+      "type": "movement",
+      "tick": 0,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 0,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 0,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 1,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 1,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 2,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 2,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 3,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 3,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 4,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 4,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 5,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 5,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 6,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 6,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 7,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 7,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 8,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 8,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 9,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 9,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 10,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 10,
+      "action": "SCAN"
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": 1.0,
+      "dirY": 0.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "fire",
+      "tick": 11,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 11,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 12,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 12,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 13,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 13,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 14,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 14,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 15,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 15,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 16,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 16,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 17,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 17,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 18,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 18,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 19,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 19,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 20,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 20,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 21,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 21,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 22,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 22,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 23,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 23,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 24,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 24,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 25,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 25,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 26,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 26,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 27,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 27,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 28,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 28,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 29,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 29,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 30,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 30,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 31,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 31,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 32,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 32,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 33,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 33,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 34,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 34,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 35,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 35,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 36,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 36,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 37,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 37,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 38,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 38,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 39,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 39,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 40,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 40,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 41,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 41,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 42,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 42,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 43,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 43,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 44,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 44,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 45,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 45,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 46,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 46,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 47,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 47,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 48,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 48,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 49,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 49,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 50,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 50,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 51,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 51,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 52,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 52,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 53,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 53,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 54,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 54,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 55,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 55,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 56,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 56,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 57,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 57,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 58,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 58,
+      "action": "SCAN"
+    },
+    {
+      "type": "fire",
+      "tick": 59,
+      "action": "FIRE"
+    },
+    {
+      "type": "scan",
+      "tick": 59,
+      "action": "SCAN"
+    }
+  ]
+}
