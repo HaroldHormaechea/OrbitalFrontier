@@ -80,10 +80,21 @@ data class ShipType(
      * for sale, so its price is unused); a purchasable type sets a positive [TUNE] price.
      */
     val price: Long = 0L,
+    /**
+     * Minimum standing the player must hold with the **docked station's faction** to buy this hull
+     * (UC48 AC#1) — the shipyard analogue of [com.orbitalfrontier.outfit.Upgrade.unlockThreshold].
+     * Default **0 = ungated**, so every pre-UC48 hull stays buyable everywhere and the roster is
+     * byte-identical; a positive value gates the hull behind reputation at league shipyards. The
+     * required faction is implicit (the docked station's), so this stays pure authored data — never
+     * persisted (only the owned [ShipTypeId] persists), so it carries no schema/DTO impact. Evaluated at
+     * read time by [com.orbitalfrontier.faction.StandingGate]. [TUNE]
+     */
+    val unlockThreshold: Int = 0,
 ) {
     init {
         require(displayName.isNotBlank()) { "ShipType ${id.value} displayName must not be blank" }
         require(price >= 0) { "ShipType ${id.value} price must not be negative: $price" }
+        require(unlockThreshold >= 0) { "ShipType ${id.value} unlockThreshold must not be negative: $unlockThreshold" }
         require(baseCargoCapacity >= 0) { "ShipType ${id.value} baseCargoCapacity must not be negative" }
         require(baseFuelCapacity > 0f) { "ShipType ${id.value} baseFuelCapacity must be positive" }
         require(baseScanRange >= 0f) { "ShipType ${id.value} baseScanRange must not be negative" }

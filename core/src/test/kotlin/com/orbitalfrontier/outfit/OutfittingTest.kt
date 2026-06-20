@@ -1,5 +1,10 @@
 package com.orbitalfrontier.outfit
 
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
+import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipRoster
 import com.orbitalfrontier.world.PoiId
 import org.junit.Assert.assertEquals
@@ -410,6 +415,225 @@ class OutfittingTest {
         assertTrue("the sell still succeeds", result.changed)
         assertSame("RemoveSell must not restock — depletion threaded through", seeded, result.junkyardStock)
     }
+
+    // --- UC48: reputation-gated BuyInstall + faction-adjusted effective price ----------------------------
+
+    private val league = FactionId("league")
+    private val pricingParams = PricingParams()
+    private val gatedPart = UpgradeCatalog.ENGINE_TUNE_II // ENGINES, price 700, unlockThreshold 10
+    private val gatedPartPrice = 700L
+    private val gatedMarket = OutfitMarket.of(listOf(gatedPart))
+
+    @Test
+    fun `UC48 buy-install of a gated part is a no-op below the standing threshold`() {
+        // Offered and affordable, but the player is at neutral standing (< the part's threshold of 10).
+        val result =
+            Outfitting.resolve(
+                credits = 10_000L,
+                loadout = Loadout.EMPTY,
+                slotCounts = slotCounts,
+                outfitMarket = gatedMarket,
+                isJunkyard = false,
+                order = OutfitOrder.BuyInstall(gatedPart),
+                factionId = league,
+                reputation = Reputation.EMPTY,
+                pricingParams = pricingParams,
+            )
+
+        assertFalse("a gated part below threshold must be a no-op (locked)", result.changed)
+        assertEquals(10_000L, result.credits)
+        assertTrue(result.loadout.isEmpty)
+    }
+
+    @Test
+    fun `UC48 buy-install of a gated part succeeds at or above threshold and charges the adjusted price`() {
+        val standing = 10
+        val expectedPrice = FactionPricing.adjustedPrice(gatedPartPrice, league, Reputation(mapOf(league to standing)), pricingParams)
+        // mul = 0.99 at +10 ⇒ round(700 * 0.99) = 693 — a discount versus the 700 base.
+        assertEquals(693L, expectedPrice)
+
+        val result =
+            Outfitting.resolve(
+                credits = 10_000L,
+                loadout = Loadout.EMPTY,
+                slotCounts = slotCounts,
+                outfitMarket = gatedMarket,
+                isJunkyard = false,
+                order = OutfitOrder.BuyInstall(gatedPart),
+                factionId = league,
+                reputation = Reputation(mapOf(league to standing)),
+                pricingParams = pricingParams,
+            )
+
+        assertTrue("unlocked at the threshold (>=)", result.changed)
+        assertEquals("the faction-adjusted price is deducted (display==charge)", 10_000L - expectedPrice, result.credits)
+        assertEquals(gatedPart, result.loadout.upgradeAt(SlotCategory.ENGINES, 0))
+    }
+
+    @Test
+    fun `UC48 a gated part at a faction-less station is permanently locked (authoring error)`() {
+        val result =
+            Outfitting.resolve(
+                credits = 10_000L,
+                loadout = Loadout.EMPTY,
+                slotCounts = slotCounts,
+                outfitMarket = gatedMarket,
+                isJunkyard = false,
+                order = OutfitOrder.BuyInstall(gatedPart),
+                // A positive threshold with a null faction can never be met.
+                factionId = null,
+                reputation = Reputation(mapOf(league to 999)),
+                pricingParams = pricingParams,
+            )
+
+        assertFalse("a positive threshold at a null-faction station is locked", result.changed)
+        assertEquals(10_000L, result.credits)
+    }
+
+    @Test
+    fun `UC48 an ungated part still charges the faction-adjusted price at an allied standing`() {
+        // engine-tune-i is ungated (threshold 0) but its price is still graded by standing (AC#2).
+        val standing = 50
+        val expected = FactionPricing.adjustedPrice(enginePrice, league, Reputation(mapOf(league to standing)), pricingParams)
+        assertEquals("round(300 * 0.95) = 285", 285L, expected)
+
+        val result =
+            Outfitting.resolve(
+                credits = 1000L,
+                loadout = Loadout.EMPTY,
+                slotCounts = slotCounts,
+                outfitMarket = market,
+                isJunkyard = false,
+                order = OutfitOrder.BuyInstall(engine),
+                factionId = league,
+                reputation = Reputation(mapOf(league to standing)),
+                pricingParams = pricingParams,
+            )
+
+        assertTrue(result.changed)
+        assertEquals(1000L - expected, result.credits)
+    }
+
+    // --- UC48: reputation-gated BuyUsed (compose-on-base price) ------------------------------------------
+
+    @Test
+    fun `UC48 buy-used of a gated part is a no-op below the standing threshold`() {
+        // The junkyard offers the gated tier-II part used, the player can afford it, but is below threshold.
+        val result =
+            resolveGatedBuyUsed(
+                credits = 10_000L,
+                usedPartMarket = OutfitMarket.of(listOf(gatedPart)),
+                order = OutfitOrder.BuyUsed(gatedPart),
+                factionId = league,
+                reputation = Reputation.EMPTY,
+            )
+
+        assertFalse("a gated used part below threshold must be a no-op (locked)", result.changed)
+        assertEquals(10_000L, result.credits)
+    }
+
+    @Test
+    fun `UC48 buy-used of a gated part succeeds above threshold and composes used discount on the faction base`() {
+        val standing = 50
+        // Compose-on-base: faction-adjust the catalog price first, THEN the used discount on top.
+        val factionBase = FactionPricing.adjustedPrice(gatedPartPrice, league, Reputation(mapOf(league to standing)), pricingParams)
+        val expectedUsed = UsedPartPricing.usedPrice(factionBase, usedParams)
+        // factionBase = round(700 * 0.95) = 665; used = round(665 * 0.6) = 399.
+        assertEquals(665L, factionBase)
+        assertEquals(399L, expectedUsed)
+
+        val result =
+            resolveGatedBuyUsed(
+                credits = 10_000L,
+                usedPartMarket = OutfitMarket.of(listOf(gatedPart)),
+                order = OutfitOrder.BuyUsed(gatedPart),
+                factionId = league,
+                reputation = Reputation(mapOf(league to standing)),
+            )
+
+        assertTrue("unlocked above threshold", result.changed)
+        assertEquals("the composed used price is deducted", 10_000L - expectedUsed, result.credits)
+        assertEquals(gatedPart, result.loadout.upgradeAt(SlotCategory.ENGINES, 0))
+    }
+
+    // --- UC48 edge case: no confiscation — gating governs purchase, not retained inventory ---------------
+
+    @Test
+    fun `UC48 a part installed at high standing stays installed and keeps its stats after standing drops`() {
+        // 1) Buy + install the gated part while allied (standing 50).
+        val installed =
+            Outfitting.resolve(
+                credits = 10_000L,
+                loadout = Loadout.EMPTY,
+                slotCounts = slotCounts,
+                outfitMarket = gatedMarket,
+                isJunkyard = false,
+                order = OutfitOrder.BuyInstall(gatedPart),
+                factionId = league,
+                reputation = Reputation(mapOf(league to 50)),
+                pricingParams = pricingParams,
+            )
+        assertTrue("precondition: the gated part installs while allied", installed.changed)
+        val loadoutWithGatedPart = installed.loadout
+
+        // Stats derived while the part is installed (stat derivation never consults standing).
+        val baseParams = ShipMovementParams()
+        val statsAtHighStanding =
+            ShipStats.effectiveMovementParams(baseParams, ShipRoster.STARTER, loadoutWithGatedPart)
+
+        // 2) Standing collapses to neutral (e.g. via combat reputation, UC43). Any later non-buy tick at the
+        //    now-locked standing must NOT strip the installed part — gating only governs purchase availability.
+        val afterDrop =
+            Outfitting.resolve(
+                credits = installed.credits,
+                loadout = loadoutWithGatedPart,
+                slotCounts = slotCounts,
+                outfitMarket = gatedMarket,
+                isJunkyard = false,
+                order = OutfitOrder.None,
+                factionId = league,
+                // Reputation.EMPTY is below the part's threshold now.
+                reputation = Reputation.EMPTY,
+                pricingParams = pricingParams,
+            )
+
+        assertFalse("a None tick changes nothing", afterDrop.changed)
+        assertEquals("the installed gated part is retained — never confiscated", loadoutWithGatedPart, afterDrop.loadout)
+        assertEquals(gatedPart, afterDrop.loadout.upgradeAt(SlotCategory.ENGINES, 0))
+
+        // 3) Derived stats are unchanged after the standing drop — the loadout still contributes its delta.
+        val statsAfterDrop =
+            ShipStats.effectiveMovementParams(baseParams, ShipRoster.STARTER, afterDrop.loadout)
+        assertEquals("derived stats are unaffected by the standing drop", statsAtHighStanding, statsAfterDrop)
+        assertTrue("the engine delta is still applied", statsAfterDrop.maxSpeed > baseParams.maxSpeed)
+    }
+
+    private fun resolveGatedBuyUsed(
+        credits: Long,
+        loadout: Loadout = Loadout.EMPTY,
+        isJunkyard: Boolean = true,
+        usedPartMarket: OutfitMarket,
+        junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
+        stationId: PoiId? = junkyardId,
+        order: OutfitOrder,
+        factionId: FactionId?,
+        reputation: Reputation,
+    ): OutfitResult =
+        Outfitting.resolve(
+            credits = credits,
+            loadout = loadout,
+            slotCounts = slotCounts,
+            outfitMarket = OutfitMarket.EMPTY,
+            isJunkyard = isJunkyard,
+            order = order,
+            usedPartMarket = usedPartMarket,
+            junkyardStock = junkyardStock,
+            stationId = stationId,
+            usedPartParams = usedParams,
+            factionId = factionId,
+            reputation = reputation,
+            pricingParams = pricingParams,
+        )
 
     private companion object {
         val cargoUsed: UpgradeId = UpgradeCatalog.CARGO_POD_I

@@ -95,4 +95,58 @@ class FactionPricingTest {
     fun `adjust is deterministic for identical inputs`() {
         assertEquals(adjust(league, 37), adjust(league, 37), 0.0)
     }
+
+    // --- adjustedPrice: the single source of truth for an acquisition's effective price (UC48 AC#2) ---
+
+    private fun adjustedPrice(
+        basePrice: Long,
+        faction: FactionId?,
+        standing: Int,
+    ): Long {
+        val reputation = if (standing == 0) Reputation.EMPTY else Reputation(mapOf(league to standing))
+        return FactionPricing.adjustedPrice(basePrice, faction, reputation, params)
+    }
+
+    @Test
+    fun `adjustedPrice at a neutral standing is exactly the base price (byte-identity)`() {
+        assertEquals("neutral standing prices at the authored base", 700L, adjustedPrice(700L, league, 0))
+    }
+
+    @Test
+    fun `adjustedPrice at a null faction is exactly the base price (byte-identity)`() {
+        assertEquals(700L, adjustedPrice(700L, null, 80))
+    }
+
+    @Test
+    fun `adjustedPrice at an allied standing rounds to a discount below base`() {
+        // mul = 1 - 0.1 * (10/100) = 0.99 ⇒ round(700 * 0.99) = round(693.0) = 693.
+        assertEquals(693L, adjustedPrice(700L, league, 10))
+        // mul = 0.95 ⇒ round(700 * 0.95) = 665.
+        assertEquals(665L, adjustedPrice(700L, league, 50))
+        assertTrue("an allied standing prices below base", adjustedPrice(700L, league, 50) < 700L)
+    }
+
+    @Test
+    fun `adjustedPrice at a hostile standing rounds to a surcharge above base`() {
+        // mul = 1 - 0.1 * (-50/100) = 1.05 ⇒ round(700 * 1.05) = 735.
+        assertEquals(735L, adjustedPrice(700L, league, -50))
+        assertTrue("a hostile standing prices above base", adjustedPrice(700L, league, -50) > 700L)
+    }
+
+    @Test
+    fun `adjustedPrice honours the shared minMul clamp at an extreme allied standing`() {
+        // mul floors at minMul (0.5) ⇒ round(700 * 0.5) = 350.
+        assertEquals(350L, adjustedPrice(700L, league, 100_000))
+    }
+
+    @Test
+    fun `adjustedPrice never returns below 1 credit`() {
+        // A zero base would round to 0; the >=1 floor keeps a discounted item from being free.
+        assertEquals(1L, adjustedPrice(0L, league, 50))
+    }
+
+    @Test
+    fun `adjustedPrice is deterministic for identical inputs`() {
+        assertEquals(adjustedPrice(2500L, league, 37), adjustedPrice(2500L, league, 37))
+    }
 }

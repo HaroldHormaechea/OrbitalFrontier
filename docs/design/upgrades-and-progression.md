@@ -49,14 +49,19 @@ tree. Slot counts per category vary by ship.
 - weapons → fixed weapons & turret mounts (combat, later)
 
 **Acquisition gating — cash + reputation, no tech tree.** Upgrades and ships are **bought
-at stations**; what's available and the price is gated by **credits** and (post-MVP)
-**reputation/faction state**. There is **no unlock/research progression** for now.
+at stations**; what's available and the price is gated by **credits** and **reputation/faction
+state**. There is **no unlock/research progression** for now.
 
-> **Reputation exists as of UC14, but it does not yet gate upgrades/ships.** UC14
-> ([ADR 0013](../adr/0013-factions-and-reputation.md)) implemented per-faction reputation and used it
-> to gate **mission offers** only. Gating upgrade/ship **availability or price** by standing is not
-> built — it remains a recorded hook (reward/price modulation, ADR 0013). Acquisition is still
-> cash-only at the dealer/shipyard.
+> **Reputation now gates upgrade/ship acquisition as of UC48** ([ADR
+> 0036](../adr/0036-reputation-gated-acquisition.md), supersedes the ADR 0013 deferral in part). An
+> authored `unlockThreshold` per catalog item is gated against the player's standing with the **docked
+> station's faction**, and the price is graded by the same `FactionPricing` seam UC46 uses for trade
+> (exactly the base at neutral). Gating + pricing are derived **at read time** from live reputation, so
+> they persist across reload and update as standing changes — no save schema change. A locked item stays
+> **visible** with its standing requirement (it does not silently vanish), and an item already installed
+> when standing later drops is **never confiscated**. (UC14, [ADR
+> 0013](../adr/0013-factions-and-reputation.md), still owns the per-faction reputation model and mission
+> gating.)
 
 **Selling & refitting — junkyards (a station _kind_, not a new POI type).** Installed/used
 upgrades can be **removed and sold only at junkyard-type stations** (not back to a normal
@@ -90,7 +95,7 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
 
 ## Dependencies & interactions
 
-- **Spends** economy (credits); availability gated by **reputation** (post-MVP).
+- **Spends** economy (credits); availability + price gated by **reputation** (UC48, ADR 0036).
 - **Modifies** ship-and-controls (movement), combat (weapons/turrets/defense), world
   (scanner/sensors, comms), economy (cargo), and crew (capacity).
 - **Junkyards** are a new **POI/station type** in [world-and-sector.md](world-and-sector.md)
@@ -106,8 +111,12 @@ Persisted (see [save-and-persistence.md](save-and-persistence.md)):
   0035](../adr/0035-junkyard-buy-used-parts.md)):** data-driven flat discount + deterministic-baseline /
   persisted-depletion finite stock; purely cheaper (no condition/wear) and **no time-based restock**
   (restock cadence remains deferred). The discount fraction + stock bounds are [TUNE] values.
-- **Reputation gating of upgrades/ships** detail — still deferred. Reputation itself shipped in UC14
-  (ADR 0013) but gates only **mission offers**; upgrade/ship acquisition is still cash-only.
+- **Reputation gating of upgrades/ships** — **shipped (UC48, [ADR
+  0036](../adr/0036-reputation-gated-acquisition.md)):** authored `unlockThreshold` per item × the docked
+  station's faction, gated against live standing and priced through the UC46 `FactionPricing` seam
+  (exactly base at neutral), derived at read time (no schema change), locked-with-reason and
+  no-confiscation. Per-station thresholds, allied/rival propagation, and continuous-curve tuning remain
+  deferred; the thresholds + curve are [TUNE] values.
 - Active-ship **switching while ships are parked apart**: the MVP presents the switched-to ship at the
   docked station (no idle-ship storage / travel model yet).
 

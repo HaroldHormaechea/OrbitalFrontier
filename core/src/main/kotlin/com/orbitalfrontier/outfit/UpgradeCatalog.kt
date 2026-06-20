@@ -62,6 +62,9 @@ class UpgradeCatalog(upgrades: List<Upgrade>) {
                         displayName = "Engine Tune II",
                         price = 700,
                         statDeltas = StatDelta(maxSpeed = 45f, maxAcceleration = 28f),
+                        // UC48 AC#1: a premium tier-II part gated behind league standing (10 ≤
+                        // ReputationParams.missionCompleteDelta, so one league mission unlocks it). [TUNE]
+                        unlockThreshold = 10,
                     ),
                     Upgrade(
                         id = CARGO_POD_I,
@@ -76,6 +79,9 @@ class UpgradeCatalog(upgrades: List<Upgrade>) {
                         displayName = "Cargo Pod II",
                         price = 600,
                         statDeltas = StatDelta(cargoCapacity = 60),
+                        // UC48 AC#1: a premium tier-II part gated behind league standing (10 ≤
+                        // ReputationParams.missionCompleteDelta, so one league mission unlocks it). [TUNE]
+                        unlockThreshold = 10,
                     ),
                     Upgrade(
                         id = FUEL_TANK_I,

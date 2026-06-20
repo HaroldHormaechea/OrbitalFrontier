@@ -1,6 +1,10 @@
 package com.orbitalfrontier.ship
 
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.economy.FactionPricing
+import com.orbitalfrontier.economy.PricingParams
+import com.orbitalfrontier.faction.FactionId
+import com.orbitalfrontier.faction.Reputation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -223,5 +227,105 @@ class FleetTest {
         assertFalse(result.changed)
         assertEquals(123L, result.credits)
         assertSame(fleet, result.fleet)
+    }
+
+    // --- UC48: reputation-gated BuyShip + faction-adjusted price -----------------------------------------
+
+    private val league = FactionId("league")
+    private val pricingParams = PricingParams()
+
+    @Test
+    fun `UC48 buy-ship of a gated hull is a no-op below the standing threshold`() {
+        // PROSPECTOR (price 2500, unlockThreshold 10) is offered and affordable, but the player is neutral.
+        val fleet = Fleet.starter()
+        val yard = Shipyard.of(listOf(ShipRoster.PROSPECTOR.id))
+
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 10_000L,
+                shipyard = yard,
+                order = FleetOrder.BuyShip(ShipRoster.PROSPECTOR.id),
+                factionId = league,
+                reputation = Reputation.EMPTY,
+                pricingParams = pricingParams,
+            )
+
+        assertFalse("a gated hull below threshold must be a no-op (locked)", result.changed)
+        assertEquals(10_000L, result.credits)
+        assertEquals(1, result.fleet.ships.size)
+    }
+
+    @Test
+    fun `UC48 buy-ship of a gated hull succeeds at or above threshold and charges the adjusted price`() {
+        val standing = 10
+        val fleet = Fleet.starter()
+        val yard = Shipyard.of(listOf(ShipRoster.PROSPECTOR.id))
+        val expectedPrice =
+            FactionPricing.adjustedPrice(ShipRoster.PROSPECTOR.price, league, Reputation(mapOf(league to standing)), pricingParams)
+        // mul = 0.99 at +10 ⇒ round(2500 * 0.99) = 2475 — a discount versus the 2500 base.
+        assertEquals(2475L, expectedPrice)
+
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 10_000L,
+                shipyard = yard,
+                order = FleetOrder.BuyShip(ShipRoster.PROSPECTOR.id),
+                factionId = league,
+                reputation = Reputation(mapOf(league to standing)),
+                pricingParams = pricingParams,
+            )
+
+        assertTrue("unlocked at the threshold (>=)", result.changed)
+        assertEquals("the faction-adjusted price is deducted (display==charge)", 10_000L - expectedPrice, result.credits)
+        assertEquals(2, result.fleet.ships.size)
+        assertEquals(ShipRoster.PROSPECTOR.id, result.fleet.ship(ShipId(1))!!.type.id)
+    }
+
+    @Test
+    fun `UC48 a gated hull at a faction-less shipyard is permanently locked (authoring error)`() {
+        val fleet = Fleet.starter()
+        val yard = Shipyard.of(listOf(ShipRoster.PROSPECTOR.id))
+
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 10_000L,
+                shipyard = yard,
+                order = FleetOrder.BuyShip(ShipRoster.PROSPECTOR.id),
+                factionId = null,
+                reputation = Reputation(mapOf(league to 999)),
+                pricingParams = pricingParams,
+            )
+
+        assertFalse("a positive threshold at a null-faction shipyard is locked", result.changed)
+        assertEquals(10_000L, result.credits)
+    }
+
+    @Test
+    fun `UC48 an ungated hull still charges the faction-adjusted price at an allied standing`() {
+        // SWIFT is ungated (threshold 0) but its price is still graded by standing (AC#2).
+        val standing = 10
+        val fleet = Fleet.starter()
+        val yard = Shipyard.of(listOf(ShipRoster.SWIFT.id))
+        val expected =
+            FactionPricing.adjustedPrice(ShipRoster.SWIFT.price, league, Reputation(mapOf(league to standing)), pricingParams)
+        // round(1800 * 0.99) = 1782.
+        assertEquals(1782L, expected)
+
+        val result =
+            FleetResolver.resolve(
+                fleet,
+                credits = 10_000L,
+                shipyard = yard,
+                order = FleetOrder.BuyShip(ShipRoster.SWIFT.id),
+                factionId = league,
+                reputation = Reputation(mapOf(league to standing)),
+                pricingParams = pricingParams,
+            )
+
+        assertTrue(result.changed)
+        assertEquals(10_000L - expected, result.credits)
     }
 }

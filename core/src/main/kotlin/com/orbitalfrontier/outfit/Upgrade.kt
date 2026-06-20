@@ -73,9 +73,22 @@ data class Upgrade(
     val displayName: String,
     val price: Long,
     val statDeltas: StatDelta,
+    /**
+     * Minimum standing the player must hold with the **docked station's faction** to buy this part
+     * (UC48 AC#1) — the outfitting analogue of [com.orbitalfrontier.ship.ShipType.unlockThreshold] and a
+     * mirror of how [com.orbitalfrontier.economy.FactionPricing] keys off the station's faction. Default
+     * **0 = ungated**, so every pre-UC48 part stays buyable everywhere and the catalog is byte-identical;
+     * a positive value gates the part behind reputation at league stations. The required faction is
+     * implicit (the docked station's), so this stays pure authored data — never persisted (only the
+     * installed [UpgradeId] persists), so it carries no schema/DTO impact. Evaluated at read time by
+     * [com.orbitalfrontier.faction.StandingGate]; a positive threshold at a faction-less station is
+     * permanently locked (surfaced as an authoring error, not special-cased). [TUNE]
+     */
+    val unlockThreshold: Int = 0,
 ) {
     init {
         require(displayName.isNotBlank()) { "Upgrade ${id.value} displayName must not be blank" }
         require(price >= 0) { "Upgrade ${id.value} price must not be negative: $price" }
+        require(unlockThreshold >= 0) { "Upgrade ${id.value} unlockThreshold must not be negative: $unlockThreshold" }
     }
 }
