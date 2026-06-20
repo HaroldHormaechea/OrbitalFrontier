@@ -43,6 +43,7 @@ import com.orbitalfrontier.screen.PlayScreen
 import com.orbitalfrontier.screen.SaveSlotScreen
 import com.orbitalfrontier.screen.SettingsScreen
 import com.orbitalfrontier.screen.ShipyardScreen
+import com.orbitalfrontier.screen.StationBuildScreen
 import com.orbitalfrontier.screen.StationHubScreen
 import com.orbitalfrontier.screen.StationWalkaroundScreen
 import com.orbitalfrontier.screen.TradeScreen
@@ -50,6 +51,10 @@ import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.settings.Handedness
 import com.orbitalfrontier.settings.JoystickTuning
 import com.orbitalfrontier.ship.Fleet
+import com.orbitalfrontier.station.HubService
+import com.orbitalfrontier.station.OwnedStationProjection
+import com.orbitalfrontier.station.OwnedStationServices
+import com.orbitalfrontier.station.StationBuildMenu
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationModuleCatalog
 import com.orbitalfrontier.walkaround.StationInterior
@@ -142,6 +147,11 @@ class OrbitalFrontierGame(
     private var hireScreen: HireScreen? = null
     private var fleetCrewScreen: FleetCrewScreen? = null
     private var missionBoardScreen: MissionBoardScreen? = null
+
+    // UC51: the station build/edit screen, opened from the hub's BUILD action at a build-capable station,
+    // owned here so it can be disposed (libGDX only hide()s the previous screen). It is a sub-desk of the
+    // hub, disposed in returnToHub() alongside the other desks.
+    private var stationBuildScreen: StationBuildScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
     // resolution agrees across the game and the screen.
@@ -466,17 +476,38 @@ class OrbitalFrontierGame(
         }
     }
 
-    /** The [Station] the saved [WorldState] is docked at, or null if undocked or unresolvable. */
+    /**
+     * The [Station] the saved [WorldState] is docked at, or null if undocked or unresolvable. UC51:
+     * resolves an **owned-station projection** id too (the synthetic `owned-station-<id>` POI), so a save
+     * left docked at a personal station resumes on its hub — via the single pure
+     * [OwnedStationProjection.resolveDocked] the play screen + sim also use (lockstep).
+     */
     private fun resolveDockedStation(worldState: WorldState): Station? =
-        worldState.dockedStation?.let { id ->
-            sectorWorld.sectorOrNull(worldState.currentSector)?.station(id)
-        }
+        OwnedStationProjection.resolveDocked(
+            world = sectorWorld,
+            currentSector = worldState.currentSector,
+            registry = worldState.stations,
+            dockedStation = worldState.dockedStation,
+        )
 
     /** Open the station hub for [station], owning it so it can be disposed (libGDX only hide()s). */
     private fun openStationHub(station: Station) {
         // UC31: switch to the station ambience (AC#2). Idempotent, so the on-foot walk-around, sub-desks
         // and hub-return (which never call playMusic) let STATION span them gap-free until undock.
         audio.playMusic(MusicTrack.STATION)
+        // UC51: which services this station's hub offers. An OWNED station (a synthetic projection id)
+        // offers only the {TRADE/OUTFIT} its installed modules expose + UNDOCK — no duplicated refuel /
+        // missions / crew / shipyard / fleet / disembark (pitfall #4). An authored station offers the full
+        // default set (HubService.ALL), so its button set is unchanged (guard-pinned).
+        val ownedFunctions =
+            OwnedStationProjection.ownedStationIdOf(station.id)
+                ?.let { playScreen?.stationsSnapshot()?.station(it)?.availableFunctions() }
+        val enabledServices =
+            if (ownedFunctions != null) {
+                OwnedStationServices.hubServices(ownedFunctions) + HubService.UNDOCK
+            } else {
+                HubService.ALL
+            }
         val hub =
             StationHubScreen(
                 logger = logger,
@@ -507,20 +538,52 @@ class OrbitalFrontierGame(
                 fuelStatus = { playScreen?.fuelStatusLine() ?: "" },
                 // UC14: the station's owning faction (cosmetic), resolved from the authored catalog.
                 factionName = station.factionId?.let { Factions.byId(it)?.displayName },
-                // UC15: BUILD founds a personal station via the play screen's pure StationBuilder. Per
-                // ADR 0014 there is no dedicated build screen yet, so the action fires a default
-                // FoundStation order (the first catalogued module) directly; the full build/edit UI
-                // (module choice, expansion) is deferred. The row only shows at a build-capable station.
-                onBuild = { playScreen?.build(StationBuildOrder.FoundStation(StationModuleCatalog.MVP.all.first().id)) },
+                // UC51: BUILD opens the dedicated station build/edit screen (module choice, expansion, cost
+                // preview) — the deferred-from-UC15 build UI (ADR 0014). CONFIRM there routes to the play
+                // screen's pure StationBuilder. The row only shows at a build-capable station that offers
+                // the BUILD service.
+                onBuild = { openStationBuildScreen(station) },
                 buildsStations = station.buildsStations,
                 // UC19: EXIT SHIP opens the on-foot walk-around for this station. Purely additive — the
                 // hub and the docked WorldState are untouched; re-boarding re-shows this same hub (AC#1/#7).
                 onDisembark = { openWalkaround(station) },
                 // UC40: render the shared queue so buy-fuel deltas/errors surface on the hub.
                 notifications = sharedNotifications,
+                // UC51: gate the hub's service buttons (owned station → only its module services + UNDOCK).
+                enabledServices = enabledServices,
             )
         stationHubScreen = hub
         setScreen(hub)
+    }
+
+    /**
+     * Open the station build/edit screen for [station] (UC51 AC#1), owning it so it can be disposed
+     * (libGDX only hide()s the hub). It is a sub-desk of the hub: the option list comes from the pure
+     * [StationBuildMenu] (computed against the live registry / credits / cargo via the play screen) and a
+     * CONFIRM routes to [PlayScreen.build] (the pure [com.orbitalfrontier.station.StationBuilder]). BACK
+     * returns to the hub. The build menu / play screen are the gate; this screen is a thin view.
+     */
+    private fun openStationBuildScreen(station: Station) {
+        val screen =
+            StationBuildScreen(
+                logger = logger,
+                stationName = station.displayName,
+                optionsSupplier = {
+                    StationBuildMenu.options(
+                        catalog = StationModuleCatalog.MVP,
+                        registry = playScreen?.stationsSnapshot() ?: com.orbitalfrontier.station.StationRegistry.EMPTY,
+                        credits = playScreen?.creditsBalance() ?: 0L,
+                        cargo = playScreen?.cargoSnapshot() ?: Cargo.empty(),
+                        buildsStations = station.buildsStations,
+                    )
+                },
+                creditsSupplier = { playScreen?.creditsBalance() ?: 0L },
+                onBuild = { order: StationBuildOrder -> playScreen?.build(order) },
+                onBack = { returnToHub() },
+                notifications = sharedNotifications,
+            )
+        stationBuildScreen = screen
+        setScreen(screen)
     }
 
     /**
@@ -795,6 +858,9 @@ class OrbitalFrontierGame(
         fleetCrewScreen = null
         missionBoardScreen?.dispose()
         missionBoardScreen = null
+        // UC51: the station build/edit screen is a hub sub-desk too.
+        stationBuildScreen?.dispose()
+        stationBuildScreen = null
     }
 
     /**
@@ -898,6 +964,12 @@ class OrbitalFrontierGame(
             logger.error(TAG, "Failed to dispose mission board screen on shutdown", e)
         }
         missionBoardScreen = null
+        try {
+            stationBuildScreen?.dispose()
+        } catch (e: Exception) {
+            logger.error(TAG, "Failed to dispose station build screen on shutdown", e)
+        }
+        stationBuildScreen = null
 
         // UC27: dispose the shared atlas only AFTER every screen (which borrowed it) is disposed, so no
         // live screen can draw from a freed texture. Single owner, single dispose (AC#1).

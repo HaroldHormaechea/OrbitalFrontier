@@ -1,8 +1,8 @@
-# Design Note — Station Building (post-MVP stretch; UC15 sim + persistence built)
+# Design Note — Station Building (post-MVP stretch; UC15 sim + UC51 build UI / surfacing / dock-to-use built)
 
-- **Status:** in-progress — the **sim model + persistence** are built (UC15, ADR 0014); the **build/edit UI, world-surfacing/placement, docking-to-use, defense, passive economics, and crew** stay deferred.
-- **Last updated:** 2026-06-08
-- **Related:** PROJECT_BRIEF.md → non_goals #2 (stretch, lowest priority), core_gameplay_loop (Improve, deeper); **[ADR 0014](../adr/0014-owned-stations.md)** (the binding decision); [economy-and-resources.md](economy-and-resources.md) (credits/resources cost, commerce), [upgrades-and-progression.md](upgrades-and-progression.md) (retrofit), [world-and-sector.md](world-and-sector.md) (where stations sit), [save-and-persistence.md](save-and-persistence.md) (additive v13 migration)
+- **Status:** in-progress — the **sim model + persistence** (UC15, ADR 0014) AND the **build/edit UI, world-surfacing + placement, and docking-to-use** (UC51, ADR 0039) are built; **defense, passive economics, crew-staffing, teardown/removal, and respawn-at-owned-station** stay deferred. Placement was the ADR 0014 open question — **decided** in UC51 (a fixed per-sector lattice fanned by station id near `(0,-600)`, re-derived deterministically on load, no save column).
+- **Last updated:** 2026-06-20
+- **Related:** PROJECT_BRIEF.md → non_goals #2 (stretch, lowest priority), core_gameplay_loop (Improve, deeper); **[ADR 0014](../adr/0014-owned-stations.md)** (the sim/persistence decision) + **[ADR 0039](../adr/0039-station-build-ui-surfacing-and-dock-to-use.md)** (build UI, surfacing, placement, dock-to-use); [economy-and-resources.md](economy-and-resources.md) (credits/resources cost, commerce), [upgrades-and-progression.md](upgrades-and-progression.md) (retrofit), [world-and-sector.md](world-and-sector.md) (where stations sit), [save-and-persistence.md](save-and-persistence.md) (additive v13 migration)
 
 ## Summary
 

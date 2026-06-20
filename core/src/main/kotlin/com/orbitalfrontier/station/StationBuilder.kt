@@ -135,10 +135,7 @@ object StationBuilder {
         cargo: Cargo,
         cost: StationBuildCost,
     ): Pair<Long, Cargo>? {
-        if (credits < cost.credits) return null
-        for ((resource, units) in cost.resources) {
-            if ((cargo.contents[resource] ?: 0) < units) return null
-        }
+        if (!cost.canAfford(credits, cargo)) return null // atomic check — single source of truth (UC51)
         var newCargo = cargo
         for ((resource, units) in cost.resources) {
             newCargo = newCargo.remove(resource, units)

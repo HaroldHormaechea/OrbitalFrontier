@@ -1,0 +1,2317 @@
+{
+  "formatVersion": 1,
+  "name": "uc51-owned-station",
+  "seed": 51,
+  "dtSeconds": 0.016666668,
+  "tickCount": 183,
+  "config": {
+    "maxSpeed": 600.0,
+    "maxAcceleration": 6000.0,
+    "maxReverseSpeed": 60.0,
+    "rotationAcceleration": 50.0,
+    "maxRotationSpeed": 8.0,
+    "driftDecay": 40.0,
+    "forwardConeRadians": 1.5707964,
+    "reverseConeRadians": 2.3561945,
+    "inputDeadzone": 0.15
+  },
+  "miningConfig": {
+    "extractionUnitsPerTick": 2
+  },
+  "powerConfig": {
+    "reactorOutput": 2.0,
+    "baseModuleDraw": 0.013888889,
+    "thrustDraw": 0.041666668
+  },
+  "fuelConfig": {
+    "lowFuelThreshold": 0.2,
+    "floorSpeedFraction": 0.25,
+    "hydrogenToFuelRatio": 1.0
+  },
+  "missionConfig": {
+    "boardMiningQuotaMin": 8,
+    "boardMiningQuotaMax": 20,
+    "radioMiningQuotaMin": 6,
+    "radioMiningQuotaMax": 14,
+    "miningRewardBase": 200,
+    "miningRewardPerUnit": 25,
+    "courierRewardBase": 400,
+    "courierRewardSpan": 400,
+    "courierTickLimitMin": 60,
+    "courierTickLimitMax": 240,
+    "courierFailurePenalty": 150,
+    "radioRange": 700.0
+  },
+  "combatConfig": {
+    "hitRadius": 28.0,
+    "sectionHitWeights": {
+      "HULL": 5,
+      "ENGINE": 2,
+      "TURRET": 2,
+      "WEAPON": 2
+    },
+    "minEngineSpeedFactor": 0.35,
+    "respawnCargoLossFraction": 0.25,
+    "muzzleOffset": 24.0,
+    "spawnDistance": 360.0
+  },
+  "initialState": {
+    "tick": 0,
+    "posX": 0.0,
+    "posY": 600.0,
+    "velX": 0.0,
+    "velY": 0.0,
+    "headingRadians": -1.8313987,
+    "angularVelocity": 0.0,
+    "currentSector": "alpha",
+    "dockedStation": "alpha-station",
+    "cargoCapacity": 50,
+    "cargo": {
+      "IRON_ORE": 30,
+      "SILICON": 12
+    },
+    "fieldDepletion": {},
+    "fuel": 100.0,
+    "credits": 2000,
+    "ownedShips": [
+      {
+        "id": 0,
+        "shipType": "starter",
+        "posX": 0.0,
+        "posY": 600.0,
+        "velX": 0.0,
+        "velY": 0.0,
+        "headingRadians": -1.8313987,
+        "angularVelocity": 0.0,
+        "cargoCapacity": 50,
+        "cargo": {
+          "IRON_ORE": 30,
+          "SILICON": 12
+        },
+        "fuelLevel": 100.0,
+        "fuelCapacity": 100.0,
+        "loadout": {},
+        "crew": 0,
+        "sectionDamage": {}
+      }
+    ],
+    "activeShipId": 0,
+    "revealedContacts": [],
+    "missions": {
+      "available": [],
+      "accepted": []
+    },
+    "lastDockedStation": null
+  },
+  "inputEvents": [
+    {
+      "type": "stationBuild",
+      "tick": 0,
+      "kind": "FOUND_STATION",
+      "moduleType": "commerce-hub-i",
+      "stationId": null
+    },
+    {
+      "type": "movement",
+      "tick": 1,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 1,
+      "action": "UNDOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 2,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 3,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 4,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 5,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 6,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 7,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 8,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 9,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 10,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 11,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 12,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 13,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 14,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 15,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 16,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 17,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 18,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 19,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 20,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 21,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 22,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 23,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 24,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 25,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 26,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 27,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 28,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 29,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 30,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "movement",
+      "tick": 31,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 31,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 32,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 32,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 33,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 33,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 34,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 34,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 35,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 35,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 36,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 36,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 37,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 37,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 38,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 38,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 39,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 39,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 40,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 40,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 41,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 41,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 42,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 42,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 43,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 43,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 44,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 44,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 45,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 45,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 46,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 46,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 47,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 47,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 48,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 48,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 49,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 49,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 50,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 50,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 51,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 51,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 52,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 52,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 53,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 53,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 54,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 54,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 55,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 55,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 56,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 56,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 57,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 57,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 58,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 58,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 59,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 59,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 60,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 60,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 61,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 61,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 62,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 62,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 63,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 63,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 64,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 64,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 65,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 65,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 66,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 66,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 67,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 67,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 68,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 68,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 69,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 69,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 70,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 70,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 71,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 71,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 72,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 72,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 73,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 73,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 74,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 74,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 75,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 75,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 76,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 76,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 77,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 77,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 78,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 78,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 79,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 79,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 80,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 80,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 81,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 81,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 82,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 82,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 83,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 83,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 84,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 84,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 85,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 85,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 86,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 86,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 87,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 87,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 88,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 88,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 89,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 89,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 90,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 90,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 91,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 91,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 92,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 92,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 93,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 93,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 94,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 94,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 95,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 95,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 96,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 96,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 97,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 97,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 98,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 98,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 99,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 99,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 100,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 100,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 101,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 101,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 102,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 102,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 103,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 103,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 104,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 104,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 105,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 105,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 106,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 106,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 107,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 107,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 108,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 108,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 109,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 109,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 110,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 110,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 111,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 111,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 112,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 112,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 113,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 113,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 114,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 114,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 115,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 115,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 116,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 116,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 117,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 117,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 118,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 118,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 119,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 119,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 120,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 120,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 121,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 121,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 122,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 122,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 123,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 123,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 124,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 124,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 125,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 125,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 126,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 126,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 127,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 127,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 128,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 128,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 129,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 129,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 130,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 130,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 131,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 131,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 132,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 132,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 133,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 133,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 134,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 134,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 135,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 135,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 136,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 136,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 137,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 137,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 138,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 138,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 139,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 139,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 140,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 140,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 141,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 141,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 142,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 142,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 143,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 143,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 144,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 144,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 145,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 145,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 146,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 146,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 147,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 147,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 148,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 148,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 149,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 149,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 150,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 150,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 151,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 151,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 152,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 152,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 153,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 153,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 154,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 154,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 155,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 155,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 156,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 156,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 157,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 157,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 158,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 158,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 159,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 159,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 160,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 160,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 161,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 161,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 162,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 162,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 163,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 163,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 164,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 164,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 165,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 165,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 166,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 166,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 167,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 167,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 168,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 168,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 169,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 169,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 170,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 170,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 171,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 171,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 172,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 172,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 173,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 173,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 174,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 174,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 175,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 175,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 176,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 176,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 177,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 177,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 178,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 178,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 179,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 179,
+      "action": "DOCK"
+    },
+    {
+      "type": "movement",
+      "tick": 180,
+      "dirX": -320.0,
+      "dirY": -1200.0,
+      "magnitude": 1.0,
+      "released": false
+    },
+    {
+      "type": "dock",
+      "tick": 180,
+      "action": "DOCK"
+    },
+    {
+      "type": "trade",
+      "tick": 181,
+      "kind": "SELL",
+      "resource": "IRON_ORE",
+      "units": 10
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import com.orbitalfrontier.render.applyUiScale
 import com.orbitalfrontier.screen.controls.OrbitalUiSkin
 import com.orbitalfrontier.screen.layout.GridCell
 import com.orbitalfrontier.screen.layout.MenuGrid
+import com.orbitalfrontier.station.HubService
 
 /**
  * The station-hub screen shown while the ship is docked (UC05 AC#3).
@@ -73,6 +74,12 @@ class StationHubScreen(
     // toasts, but PlayScreen.buyFuel/refuel enqueue the +N/-N CR delta and styled buy-fuel errors here, so
     // the hub renders the shared queue to surface them. Defaults to a fresh queue for JVM/tests.
     private val notifications: NotificationQueue = NotificationQueue(),
+    // UC51 [challenger #3]: which hub services this station offers. EVERY service button is gated on its
+    // presence here; the default [HubService.ALL] reproduces the historical full button set EXACTLY (an
+    // authored station), pinned by a guard test. A player-owned station passes only the subset its modules
+    // expose ({TRADE/OUTFIT} via OwnedStationServices.hubServices) + UNDOCK, so it never duplicates the
+    // refuel/missions/crew/shipyard/fleet/disembark services (pitfall #4).
+    private val enabledServices: Set<HubService> = HubService.ALL,
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
@@ -110,52 +117,58 @@ class StationHubScreen(
 
         // UC20: collect every action button in display order, each built EXACTLY as before (same label,
         // same click listener → same action), then arrange them into a capped grid below. The order is
-        // the historical one: TRADE, OUTFIT, SHIPS, CREW, MISSIONS, BUILD (build-capable only), the two
-        // refuel buttons, EXIT SHIP, UNDOCK. UNDOCK now folds into the uniform grid (no padTop emphasis).
+        // the historical one: TRADE, OUTFIT, SHIPS, CREW, FLEET, MISSIONS, BUILD (build-capable only),
+        // the two refuel buttons, EXIT SHIP, UNDOCK. UNDOCK now folds into the uniform grid (no padTop
+        // emphasis). UC51: every entry is additionally gated on [enabledServices] — the default
+        // HubService.ALL keeps an authored station's set identical (guard-pinned); an owned station drops
+        // every service except the {TRADE/OUTFIT} its modules expose + UNDOCK.
         val buttons = ArrayList<TextButton>()
 
         // Active TRADE service (UC08): opens the station trade desk. The play screen owns the pure
         // Trading.resolve; this button just fires the intent so the game switches to the TradeScreen.
-        val tradeButton = TextButton("TRADE", skin.settingsButtonStyle)
-        tradeButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    onTrade()
-                }
-            },
-        )
-        buttons.add(tradeButton)
+        if (HubService.TRADE in enabledServices) {
+            val tradeButton = TextButton("TRADE", skin.settingsButtonStyle)
+            tradeButton.addListener(
+                object : ClickListener() {
+                    override fun clicked(
+                        event: InputEvent?,
+                        x: Float,
+                        y: Float,
+                    ) {
+                        onTrade()
+                    }
+                },
+            )
+            buttons.add(tradeButton)
+        }
 
         // Active OUTFIT service (UC09 AC#2/#3/#4): opens the outfitting desk (buy/install upgrades; at a
         // junkyard, also remove/sell used parts). The play screen owns the pure Outfitting resolver.
-        buttons.add(serviceButton("OUTFIT", onOutfit))
+        if (HubService.OUTFIT in enabledServices) buttons.add(serviceButton("OUTFIT", onOutfit))
 
         // Active SHIPS service (UC09 AC#5): opens the shipyard / ship-switch screen (buy a ship where a
         // shipyard exists; switch the active ship anywhere while docked). Pure FleetResolver behind it.
-        buttons.add(serviceButton("SHIPS", onShipyard))
+        if (HubService.SHIPS in enabledServices) buttons.add(serviceButton("SHIPS", onShipyard))
 
         // Active CREW service (UC11 AC#2): opens the crew-hire desk (hire crew where the station hires
         // them; the desk shows crew/capacity + turret operability anywhere). Pure Hiring behind it.
-        buttons.add(serviceButton("CREW", onCrew))
+        if (HubService.CREW in enabledServices) buttons.add(serviceButton("CREW", onCrew))
 
         // Active FLEET service (UC50 AC#3): opens the fleet & crew management screen — list ships + crew,
         // reassign crew to ships / roles, and switch the active ship (the primary switch surface; the
         // shipyard's bare switch is kept). Pure CrewAssignment / FleetResolver behind it.
-        buttons.add(serviceButton("FLEET", onFleetCrew))
+        if (HubService.FLEET in enabledServices) buttons.add(serviceButton("FLEET", onFleetCrew))
 
         // Active MISSIONS service (UC12 AC#2/#3): opens the station mission board (accept board offers,
         // turn in active missions). The play screen owns the pure Missions.resolve + MissionGenerator;
         // this button just fires the intent so the game switches to the MissionBoardScreen.
-        buttons.add(serviceButton("MISSIONS", onMissions))
+        if (HubService.MISSIONS in enabledServices) buttons.add(serviceButton("MISSIONS", onMissions))
 
-        // Active BUILD service (UC15 AC#1): only at a build-capable station. Founds/expands a personal
-        // station via the play screen's pure StationBuilder. Per ADR 0014 there is NO dedicated build
-        // screen yet — the action fires a default build order directly; the full build UI is deferred.
-        if (buildsStations) {
+        // Active BUILD service (UC51 AC#1): only at a build-capable station that offers the BUILD service.
+        // Opens the dedicated StationBuildScreen (module choice + expansion + cost preview), routed by the
+        // owner; CONFIRM there fires the play screen's pure StationBuilder. (UC15 fired a default order
+        // directly with the build UI deferred; UC51 lands the build screen.)
+        if (buildsStations && HubService.BUILD in enabledServices) {
             buttons.add(serviceButton("BUILD", onBuild))
         }
 
@@ -165,55 +178,63 @@ class StationHubScreen(
         // "Buy Fuel (credits)" pays the docked station for fuel (UC18, StationRefuel.resolve). Each
         // fires its intent, shows the returned feedback line, then re-reads the tank readout. The
         // listeners are UNCHANGED so the UC18 feedback guard stays green.
-        val refuelButton = TextButton("Refuel (H₂)", skin.settingsButtonStyle)
-        refuelButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    refuelFeedbackLabel.setText(onRefuel())
-                    fuelLabel.setText(fuelStatus())
-                }
-            },
-        )
-        buttons.add(refuelButton)
+        if (HubService.REFUEL in enabledServices) {
+            val refuelButton = TextButton("Refuel (H₂)", skin.settingsButtonStyle)
+            refuelButton.addListener(
+                object : ClickListener() {
+                    override fun clicked(
+                        event: InputEvent?,
+                        x: Float,
+                        y: Float,
+                    ) {
+                        refuelFeedbackLabel.setText(onRefuel())
+                        fuelLabel.setText(fuelStatus())
+                    }
+                },
+            )
+            buttons.add(refuelButton)
+        }
 
-        val buyFuelButton = TextButton("Buy Fuel (credits)", skin.settingsButtonStyle)
-        buyFuelButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    refuelFeedbackLabel.setText(onBuyFuel())
-                    fuelLabel.setText(fuelStatus())
-                }
-            },
-        )
-        buttons.add(buyFuelButton)
+        if (HubService.BUY_FUEL in enabledServices) {
+            val buyFuelButton = TextButton("Buy Fuel (credits)", skin.settingsButtonStyle)
+            buyFuelButton.addListener(
+                object : ClickListener() {
+                    override fun clicked(
+                        event: InputEvent?,
+                        x: Float,
+                        y: Float,
+                    ) {
+                        refuelFeedbackLabel.setText(onBuyFuel())
+                        fuelLabel.setText(fuelStatus())
+                    }
+                },
+            )
+            buttons.add(buyFuelButton)
+        }
 
         // Active EXIT SHIP action (UC19 AC#1): optionally leave the ship and walk the station interior
         // on foot. Purely additive — every menu above is unchanged and still reachable; this just opens
         // the walk-around view. The owner re-shows this hub untouched when the player re-boards (AC#7).
-        buttons.add(serviceButton("EXIT SHIP", onDisembark))
+        if (HubService.DISEMBARK in enabledServices) buttons.add(serviceButton("EXIT SHIP", onDisembark))
 
-        // The one active control: leave the station and return to flight. Now a uniform grid cell.
-        val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)
-        undockButton.addListener(
-            object : ClickListener() {
-                override fun clicked(
-                    event: InputEvent?,
-                    x: Float,
-                    y: Float,
-                ) {
-                    onUndock()
-                }
-            },
-        )
-        buttons.add(undockButton)
+        // The one always-present control: leave the station and return to flight. A uniform grid cell.
+        // UNDOCK is in the default set AND every owned-station set, so it is shown unconditionally in
+        // practice; gating it keeps the "every button is service-gated" rule uniform.
+        if (HubService.UNDOCK in enabledServices) {
+            val undockButton = TextButton("UNDOCK", skin.settingsButtonStyle)
+            undockButton.addListener(
+                object : ClickListener() {
+                    override fun clicked(
+                        event: InputEvent?,
+                        x: Float,
+                        y: Float,
+                    ) {
+                        onUndock()
+                    }
+                },
+            )
+            buttons.add(undockButton)
+        }
 
         // Fuel readout (UC07) sits full-width ABOVE the grid; the refuel feedback line (UC18) sits
         // full-width BELOW it. Both are status text, not buttons, so they stay out of the grid.

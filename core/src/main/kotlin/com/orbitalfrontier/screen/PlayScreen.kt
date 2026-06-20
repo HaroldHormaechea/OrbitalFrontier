@@ -143,6 +143,7 @@ import com.orbitalfrontier.ship.ShipMovementModel
 import com.orbitalfrontier.ship.ShipMovementParams
 import com.orbitalfrontier.ship.ShipPhysics
 import com.orbitalfrontier.ship.ShipRoster
+import com.orbitalfrontier.station.OwnedStationProjection
 import com.orbitalfrontier.station.StationBuildOrder
 import com.orbitalfrontier.station.StationBuilder
 import com.orbitalfrontier.station.StationRegistry
@@ -958,12 +959,17 @@ class PlayScreen(
         // explicit DOCK tap (proximity + action, never automatic — UC05 pitfall). While the play
         // screen is active the ship is always undocked (a dock hands off to the hub), so a successful
         // resolve yields the station id and we switch screens.
-        val available = Docking.availableStation(sectorWorld, currentSector, ship.position)
+        // UC51: surface the player's owned stations in this sector as synthetic, dockable Station
+        // projections so the player can dock at a personal station (AC#3). Empty when the player owns none
+        // here, so the docking resolution is byte-identical to before for a no-owned-station sector.
+        val ownedStationsHere = OwnedStationProjection.stationsIn(currentSector, stations)
+        val available = Docking.availableStation(sectorWorld, currentSector, ship.position, ownedStationsHere)
         actionCluster.setActionAvailable(ActionCluster.Action.DOCK, available != null)
         if (dockRequested) {
             dockRequested = false
             if (available != null) {
-                dockedStation = Docking.resolve(sectorWorld, currentSector, dockedStation, ship.position, DockAction.DOCK)
+                dockedStation =
+                    Docking.resolve(sectorWorld, currentSector, dockedStation, ship.position, DockAction.DOCK, ownedStationsHere)
                 // UC13: remember this as the respawn point on destruction (persisted, retained after undock).
                 lastDockedStation = available.id
                 logger.info(WORLD_TAG, "Docked at station ${available.id.value} (${available.displayName})")
@@ -1220,6 +1226,11 @@ class PlayScreen(
         val viewportWidth = Gdx.graphics.width.toFloat()
         val viewportHeight = Gdx.graphics.height.toFloat()
         val sector = sectorWorld.sector(currentSector)
+        // UC51: the EFFECTIVE POIs the renderers / minimap / overlay draw — the sector's authored POIs
+        // plus any player-owned station projected into this sector (a synthetic Station transponder, so
+        // it renders + labels (UC24) + is dockable with zero renderer changes). With no owned station here
+        // OwnedStationProjection.poisIn returns `sector.pois` unchanged, so the scene is byte-identical.
+        val effectivePois = OwnedStationProjection.poisIn(sector, stations)
         // Parallax keyed off the camera's world position conveys motion (AC#11).
         starfield.render(renderShip.position.x, renderShip.position.y, viewportWidth, viewportHeight)
         // Ring overlays first (mining / trigger radii), then the per-POI base markers on top: the
@@ -1227,7 +1238,7 @@ class PlayScreen(
         // (previously unrendered in-world) and revealed hidden contacts — keyed by WorldGlyphs.forPoi.
         asteroidFieldRenderer.render(worldCamera, sector.asteroidFields)
         gateRenderer.render(worldCamera, sector.gates)
-        worldObjectRenderer.render(worldCamera, sector.pois, revealedContacts)
+        worldObjectRenderer.render(worldCamera, effectivePois, revealedContacts)
         shipRenderer.render(worldCamera, renderShip)
         // UC13: hostiles + projectiles in world space (no-op while combat is inactive).
         hostileRenderer.render(worldCamera, combat)
@@ -1274,12 +1285,14 @@ class PlayScreen(
             viewportWidth,
             viewportHeight,
         )
-        // The minimap renders every transponder POI (gates + stations) plus any revealed hidden
-        // contacts (UC10), keyed by contact kind. It anchors top-right (UC22), fitting its size above
-        // the bottom controls; reservedBottom is the worst-case bottom-control top (handedness-agnostic)
-        // so it can never overlap the joystick or action cluster on either side.
+        // The minimap renders every transponder POI (gates + stations, incl. UC51 owned-station
+        // projections — a built outpost broadcasts a transponder, so it shows unconditionally on both the
+        // minimap and the overlay, challenger #4) plus any revealed hidden contacts (UC10), keyed by
+        // contact kind. It anchors top-right (UC22), fitting its size above the bottom controls;
+        // reservedBottom is the worst-case bottom-control top (handedness-agnostic) so it can never
+        // overlap the joystick or action cluster on either side.
         minimap.render(
-            sector.pois,
+            effectivePois,
             renderShip.position,
             sector.contentExtent,
             revealedContacts,
@@ -1365,7 +1378,7 @@ class PlayScreen(
         // LIVE-in-combat tradeoff is documented in docs/design/world-and-sector.md).
         if (mapOpen) {
             mapOverlay.render(
-                sector.pois,
+                effectivePois,
                 renderShip.position,
                 sector.contentExtent,
                 revealedContacts,
@@ -2078,7 +2091,11 @@ class PlayScreen(
     /** The effective docked-station market, or null when not docked / unresolvable. See [dockedMarket]. */
     private fun dockedMarketOrNull(): StationMarket? {
         val stationId = dockedStation ?: return null
-        val station = sectorWorld.sector(currentSector).station(stationId) ?: return null
+        // UC51: resolve an OWNED-station projection too (its reconstructed commerce desk), so trading at a
+        // personal station works — the single lookup the sim mirrors (lockstep). An owned station is
+        // neutral-faction with no pressure initially, so its effective prices start at the authored base.
+        val station =
+            OwnedStationProjection.resolveDocked(sectorWorld, currentSector, stations, stationId) ?: return null
         return MarketPricing.effectiveMarket(
             base = station.market,
             stationId = stationId,
