@@ -33,19 +33,33 @@ class Uc21MainMenuGuardTest {
     @Test
     fun `create() shows the main menu first, before any gameplay`() {
         val create = section(GAME_SOURCE, "override fun create(")
-        // UC32 extracted the menu construction into a shared buildMainMenu(loaded) helper (reused by
-        // quit-to-main-menu); create() builds the menu through it and shows it first.
+        // UC52 routed create() through the robust-open pipeline (SaveDatabaseOpener), then to a boot
+        // helper that builds + shows the menu: bootWithDatabase for an openable save, bootWithoutDatabase
+        // for the degraded (newer/unreadable) outcomes. The menu is still the FIRST screen on every
+        // launch — the construction simply moved out of create()'s own body into the boot helpers.
         assertTrue(
-            "AC#1: create() must build the main menu (via buildMainMenu(loaded))",
-            create.contains("buildMainMenu("),
+            "AC#1 (UC52): create() must route into a boot helper (bootWithDatabase / bootWithoutDatabase)",
+            create.contains("bootWithDatabase(") && create.contains("bootWithoutDatabase("),
+        )
+        // The normal boot builds the menu via buildMainMenu(...) and shows it via setScreen(menu) first.
+        val normalBoot = section(GAME_SOURCE, "private fun bootWithDatabase(")
+        assertTrue(
+            "AC#1: the normal boot must build the main menu (via buildMainMenu(...))",
+            normalBoot.contains("buildMainMenu("),
+        )
+        assertTrue(
+            "AC#1/#5: the normal boot must show the menu (setScreen(menu)) on launch",
+            normalBoot.contains("setScreen(menu)"),
+        )
+        // The degraded boot (newer/unreadable save) must ALSO show the menu first — never a crash/blank.
+        val degradedBoot = section(GAME_SOURCE, "private fun bootWithoutDatabase(")
+        assertTrue(
+            "AC#1/#5 (UC52): the degraded boot must still show the menu (setScreen(menu)) first",
+            degradedBoot.contains("buildMainMenu(") && degradedBoot.contains("setScreen(menu)"),
         )
         assertTrue(
             "AC#1: buildMainMenu(...) constructs a MainMenuScreen",
             section(GAME_SOURCE, "private fun buildMainMenu(").contains("MainMenuScreen("),
-        )
-        assertTrue(
-            "AC#1/#5: create() must show the menu (setScreen(menu)) on every launch",
-            create.contains("setScreen(menu)"),
         )
         // The play screen must NOT be constructed directly inside create(); it is built in enterGame().
         assertTrue(
@@ -105,10 +119,18 @@ class Uc21MainMenuGuardTest {
 
     @Test
     fun `a brand-new game still seeds STARTING_CREDITS`() {
+        // UC38/UC52: Start routes through newGameIntoSlot(activeSlot), which seeds the fresh WorldState
+        // (the credits live there, not inline in the onStartNewGame lambda — which now also handles the
+        // UC52 degraded-mode fresh-DB recovery before seeding).
         val onStart = section(GAME_SOURCE, "onStartNewGame =")
         assertTrue(
+            "AC#3 (UC38): Start must begin a fresh game via newGameIntoSlot(...)",
+            onStart.contains("newGameIntoSlot("),
+        )
+        val newGame = section(GAME_SOURCE, "private fun newGameIntoSlot(")
+        assertTrue(
             "UC17: a new game must seed the starting credits",
-            onStart.contains("credits = STARTING_CREDITS"),
+            newGame.contains("credits = STARTING_CREDITS"),
         )
         assertTrue(
             "UC17: STARTING_CREDITS must remain 50_000",
