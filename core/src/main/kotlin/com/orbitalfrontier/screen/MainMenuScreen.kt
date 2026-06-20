@@ -47,13 +47,24 @@ class MainMenuScreen(
     // into an empty slot, or delete a slot (AC#1/#2). Defaulted to a no-op so headless/JVM contexts need
     // not wire it; always available (it manages saves, not the current game).
     private val onLoadGame: () -> Unit = {},
+    // UC52: an optional explanatory line shown under the title — e.g. "your save was recovered from a
+    // backup" or "your save can't be opened (it's from a newer version)". Null in the normal launch.
+    private val notice: String? = null,
+    // UC52: force the Start double confirmation even when Continue is disabled. Set when a present-but-
+    // unopenable save (newer schema / corrupt) is on disk, so New Game still warns before discarding it.
+    private val forceNewGameConfirm: Boolean = false,
 ) : ScreenAdapter() {
     private val skin = OrbitalUiSkin()
     private val stage = Stage(ScreenViewport().apply { applyUiScale() })
 
     // The pure state machine. continueEnabled doubles as "a usable save exists": it gates Continue and
     // decides whether Start double-confirms (save present) or starts immediately (no save) — AC#3/#4.
-    private val model = MainMenuModel(saveUsable = continueEnabled)
+    // UC52: a present-but-unopenable save forces the confirm independently of Continue (forceNewGameConfirm).
+    private val model =
+        MainMenuModel(
+            saveUsable = continueEnabled,
+            requireNewGameConfirm = continueEnabled || forceNewGameConfirm,
+        )
 
     // The single root table; rebuilt in place from the model's current phase on every transition.
     private val root = Table()
@@ -85,7 +96,16 @@ class MainMenuScreen(
 
     /** The menu itself: title + START + CONTINUE (CONTINUE greyed/disabled when there is no save). */
     private fun buildMenu() {
-        root.add(Label("ORBITAL FRONTIER", skin.titleLabelStyle)).padBottom(TITLE_GAP).row()
+        root.add(Label("ORBITAL FRONTIER", skin.titleLabelStyle)).padBottom(if (notice == null) TITLE_GAP else NOTICE_GAP).row()
+
+        // UC52: the explanatory notice (recovered-from-backup, or save-unopenable) — a wrapped line in the
+        // amber "warning" tone so it reads as a status message, not a normal label.
+        notice?.let { text ->
+            val noticeLabel = Label(text, skin.labelStyle)
+            noticeLabel.wrap = true
+            noticeLabel.color = Palette.WARNING
+            root.add(noticeLabel).width(WARNING_WIDTH).padBottom(TITLE_GAP).row()
+        }
 
         val startButton = menuButton("START") { act(model.onStart()) }
         root.add(startButton).size(BTN_WIDTH, BTN_HEIGHT).pad(BTN_GAP).row()
@@ -185,6 +205,9 @@ class MainMenuScreen(
         const val TAG = "Screen"
         const val MARGIN = 32f
         const val TITLE_GAP = 24f
+
+        // UC52: a tighter gap under the title when a notice line follows, so the title + notice read as a group.
+        const val NOTICE_GAP = 12f
         const val BTN_GAP = 8f
         const val BTN_WIDTH = 240f
         const val BTN_HEIGHT = 64f

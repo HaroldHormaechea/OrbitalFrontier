@@ -29,6 +29,10 @@ import com.orbitalfrontier.render.UiScale
 import com.orbitalfrontier.save.AutosaveController
 import com.orbitalfrontier.save.GameStateRepository
 import com.orbitalfrontier.save.OrbitalFrontier
+import com.orbitalfrontier.save.SaveBackupStore
+import com.orbitalfrontier.save.SaveDatabaseOpener
+import com.orbitalfrontier.save.SaveOpenResult
+import com.orbitalfrontier.save.SaveSchemaProbe
 import com.orbitalfrontier.save.SaveSlotRepository
 import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.save.SlotId
@@ -63,6 +67,7 @@ import com.orbitalfrontier.world.SectorWorld
 import com.orbitalfrontier.world.Station
 import com.orbitalfrontier.world.StationKind
 import com.orbitalfrontier.world.WorldState
+import java.io.File
 
 /**
  * libGDX application entry point (bootstrap / wiring — package `app`, per coding-guidelines).
@@ -135,6 +140,13 @@ class OrbitalFrontierGame(
     // load / save-into a slot. The AutosaveController reads it through a supplier so autosave always follows.
     private var activeSlot: SlotId = SlotId.LEGACY
 
+    // UC52: non-null while the on-disk save could not be opened (a NEWER schema, or unreadable/corrupt with
+    // no backup). The robust-open pipeline (SaveDatabaseOpener) sets it in create(); it drives the menu's
+    // disabled-Continue + forced New-Game confirm + explanatory notice, and routes New Game through
+    // [recoverWithFreshDatabase] (which wipes the unopenable file only after the player's double-confirm).
+    // Cleared once a usable database is wired.
+    private var saveUnavailable: SaveUnavailable? = null
+
     // UC38: the save/load slot screen, built on demand (LOAD from the main menu, SAVE from the pause
     // overlay) and owned here so it can be disposed (libGDX only hide()s the previous screen).
     private var saveSlotScreen: SaveSlotScreen? = null
@@ -169,9 +181,89 @@ class OrbitalFrontierGame(
         // create()). Borrowed by every screen/renderer/skin; disposed once in dispose() (AC#1).
         gameAssets = GameAssets.load()
 
-        val sqlDriver = sqlDriverFactory.create()
-        driver = sqlDriver
+        // UC52: open the save DB through the robustness pipeline — probe the header before touching the
+        // driver, back up before a migration, roll back on failure, and refuse a newer-than-supported save
+        // rather than crashing on a downgrade-open. The two openable outcomes carry a ready driver; the two
+        // terminal outcomes (newer / unreadable) start the app in a non-crashing degraded mode.
+        val result =
+            SaveDatabaseOpener(
+                dbFile = sqlDriverFactory.databaseFile(),
+                currentVersion = OrbitalFrontier.Schema.version,
+                probe = SaveSchemaProbe(),
+                backupStore = SaveBackupStore(),
+                logger = logger,
+                openMigrating = { sqlDriverFactory.create() },
+            ).open()
 
+        when (result) {
+            is SaveOpenResult.Opened -> bootWithDatabase(result.driver, notice = null)
+            is SaveOpenResult.RecoveredFromBackup -> bootWithDatabase(result.driver, notice = RECOVERED_NOTICE)
+            SaveOpenResult.UnsupportedNewer -> bootWithoutDatabase(SaveUnavailable.UNSUPPORTED_NEWER)
+            SaveOpenResult.Unreadable -> bootWithoutDatabase(SaveUnavailable.UNREADABLE)
+        }
+    }
+
+    /**
+     * Normal boot (UC52 `Opened` / `RecoveredFromBackup`): wire the persistence stack, build + configure
+     * audio from the persisted settings, then show the main menu over the loaded save. [notice], when set,
+     * is the explanatory line shown under the title (e.g. the save was recovered from a backup).
+     */
+    private fun bootWithDatabase(
+        sqlDriver: SqlDriver,
+        notice: String?,
+    ) {
+        saveUnavailable = null
+        val loaded = wirePersistence(sqlDriver)
+
+        // UC31: build the real audio service on the GL/audio thread (alive by create()) and apply the
+        // persisted preferences before any cue/music plays, so audio honours the saved mute + volumes
+        // immediately (AC#3). The field stays NoOpAudioService until this point, so an early failure
+        // leaves a safe no-op rather than a half-built service.
+        val audioService = LibGdxAudioService.load(logger)
+        applyAudioSettings(audioService)
+        audio = audioService
+
+        // UC31: wire the shared UI-tap cue so every menu/hub/desk screen's buttons click audibly (AC#1).
+        // The hook is read at tap time, so screens built later still pick it up; reset in dispose().
+        OrbitalUiSkin.uiTapSound = { audio.play(Sfx.UI_TAP) }
+
+        // Show the main menu first, on every launch (UC21 AC#1/#5). Start / Continue route into the
+        // game via enterGame(); only then is the play screen / hub built.
+        val menu = buildMainMenu(loaded, notice)
+        mainMenuScreen = menu
+        setScreen(menu)
+
+        logger.info(TAG, "Game created; handedness=$handedness; menu shown" + if (notice != null) " (save recovered from backup)" else "")
+    }
+
+    /**
+     * Degraded boot (UC52 `UnsupportedNewer` / `Unreadable`): the on-disk save could not be opened and must
+     * NOT be silently discarded (a newer save is never clobbered). There is no database, so settings fall
+     * back to their defaults; the menu shows with Continue disabled and an explanatory notice. New Game
+     * still works — it double-confirms, then [recoverWithFreshDatabase] discards the unopenable file and
+     * opens a fresh DB. Settings / Load are unavailable until then.
+     */
+    private fun bootWithoutDatabase(reason: SaveUnavailable) {
+        saveUnavailable = reason
+        logger.error(TAG, "Save unavailable ($reason); starting in degraded mode — Continue disabled, settings at defaults")
+
+        // Build the audio service (unconfigured — no settings DB to read), so the menu still clicks audibly.
+        val audioService = LibGdxAudioService.load(logger)
+        audio = audioService
+        OrbitalUiSkin.uiTapSound = { audio.play(Sfx.UI_TAP) }
+
+        val menu = buildMainMenu(loaded = null, notice = reason.menuNotice)
+        mainMenuScreen = menu
+        setScreen(menu)
+    }
+
+    /**
+     * Build the persistence stack over an already-opened [sqlDriver] and restore the rendering-only globals,
+     * returning the active slot's loaded save (or null). Shared by the normal boot and by the degraded-mode
+     * New-Game recovery ([recoverWithFreshDatabase]). Does NOT build audio or show a screen.
+     */
+    private fun wirePersistence(sqlDriver: SqlDriver): WorldState? {
+        driver = sqlDriver
         val database = OrbitalFrontier(sqlDriver)
 
         val settings = SqlDelightSettingsRepository(database, logger)
@@ -192,21 +284,6 @@ class OrbitalFrontierGame(
         TextScale.set(settings.loadTextScale())
         MotionPreference.set(settings.loadReducedMotion())
 
-        // UC31: build the real audio service on the GL/audio thread (alive by create()) and apply the
-        // persisted preferences before any cue/music plays, so audio honours the saved mute + volumes
-        // immediately (AC#3). The field stays NoOpAudioService until this point, so an early failure
-        // leaves a safe no-op rather than a half-built service.
-        val audioService = LibGdxAudioService.load(logger)
-        val audioSettings = settings.loadAudioSettings()
-        audioService.setMasterMuted(audioSettings.masterMuted)
-        audioService.setSfxVolume(audioSettings.sfxVolume)
-        audioService.setMusicVolume(audioSettings.musicVolume)
-        audio = audioService
-
-        // UC31: wire the shared UI-tap cue so every menu/hub/desk screen's buttons click audibly (AC#1).
-        // The hook is read at tap time, so screens built later still pick it up; reset in dispose().
-        OrbitalUiSkin.uiTapSound = { audio.play(Sfx.UI_TAP) }
-
         // Read the save once, up front, to decide whether Continue is available (UC21 AC#4). The actual
         // New-Game-vs-Continue decision is now the player's at the menu, not an automatic load-or-seed:
         // a usable save (non-null) enables Continue and makes Start double-confirm before wiping; a
@@ -218,26 +295,60 @@ class OrbitalFrontierGame(
         // UC38: resume the slot the player last played / saved into (meta.active_slot_id; legacy slot 0 on a
         // fresh or migrated DB — the legacy single autosave appears as slot 0, AC#3).
         activeSlot = repository.activeSlot()
-        val loaded = repository.loadGameState(activeSlot)
+        return repository.loadGameState(activeSlot)
+    }
 
-        // Show the main menu first, on every launch (UC21 AC#1/#5). Start / Continue route into the
-        // game via enterGame(); only then is the play screen / hub built.
-        val menu = buildMainMenu(loaded)
-        mainMenuScreen = menu
-        setScreen(menu)
+    /** UC31/UC52: apply the persisted master mute + per-channel volumes (AC#3) to [service]. */
+    private fun applyAudioSettings(service: AudioService) {
+        val audioSettings = settingsRepository.loadAudioSettings()
+        service.setMasterMuted(audioSettings.masterMuted)
+        service.setSfxVolume(audioSettings.sfxVolume)
+        service.setMusicVolume(audioSettings.musicVolume)
+    }
 
-        logger.info(TAG, "Game created; handedness=$handedness; menu shown")
+    /**
+     * UC52 degraded-mode New Game: the player double-confirmed Start while the on-disk save was unopenable
+     * (newer schema or unreadable). That explicit choice authorises discarding it — delete the database
+     * file (and any sidecars / backup), open a FRESH driver, wire the persistence stack, and re-apply the
+     * (now default) audio settings to the already-built service. After this the app is in its normal state.
+     */
+    private fun recoverWithFreshDatabase() {
+        sqlDriverFactory.databaseFile()?.let { deleteDatabaseFiles(it) }
+        val freshDriver = sqlDriverFactory.create()
+        wirePersistence(freshDriver)
+        applyAudioSettings(audio)
+        saveUnavailable = null
+        logger.info(TAG, "Discarded the unopenable save and initialised a fresh database for a new game")
+    }
+
+    /** Delete the save database [file] and its known sidecars (WAL/SHM/journal) and the UC52 `.bak`. */
+    private fun deleteDatabaseFiles(file: File) {
+        listOf("", "-wal", "-shm", "-journal", ".bak").forEach { suffix ->
+            File(file.parentFile, file.name + suffix).delete()
+        }
     }
 
     /**
      * Build the main menu over the given [loaded] save snapshot (UC21; reused by UC32's quit-to-main-menu).
      * Continue is enabled iff a usable save exists; Start wipes any save and seeds a fresh game. The two
      * callbacks defer the New-Game-vs-Continue decision to the player and route into [enterGame].
+     *
+     * UC52: in degraded mode ([saveUnavailable] non-null) there is no database — New Game first recovers a
+     * fresh DB (after the forced double-confirm), and Settings / Load are inert until then. [notice] is the
+     * explanatory line shown under the title.
      */
-    private fun buildMainMenu(loaded: WorldState?): MainMenuScreen =
-        MainMenuScreen(
+    private fun buildMainMenu(
+        loaded: WorldState?,
+        notice: String? = null,
+    ): MainMenuScreen {
+        val degraded = saveUnavailable != null
+        return MainMenuScreen(
             logger = logger,
             continueEnabled = loaded != null,
+            notice = notice,
+            // UC52: a present-but-unopenable save must still double-confirm before New Game discards it,
+            // even though Continue is disabled.
+            forceNewGameConfirm = degraded,
             // Continue: resume the active slot's save (AC#2; UC38 — the slot is meta.active_slot_id). loaded
             // is non-null here (Continue is only enabled when it is), so the !! is safe.
             onContinue = {
@@ -249,15 +360,37 @@ class OrbitalFrontierGame(
             // corrupt one; it is decoupled from the warnings (the menu model gates those on whether a save
             // exists). Safe at menu time: there is no AutosaveController yet (the play screen, hence
             // autosaving, is built only in enterGame() below), so there is no concurrent writer to race.
+            // UC52: in degraded mode there is no DB yet — recover a fresh one first (the confirmed Start
+            // authorises discarding the unopenable save), then seed the new game into the active slot.
             onStartNewGame = {
-                logger.info(TAG, "New Game: wiping slot ${activeSlot.value}; seeding defaults (credits=$STARTING_CREDITS)")
+                if (degraded) {
+                    logger.info(TAG, "New Game (degraded): discarding unopenable save, then seeding defaults")
+                    recoverWithFreshDatabase()
+                } else {
+                    logger.info(TAG, "New Game: wiping slot ${activeSlot.value}; seeding defaults (credits=$STARTING_CREDITS)")
+                }
                 newGameIntoSlot(activeSlot)
             },
-            // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu.
-            onOpenSettings = { openSettings() },
+            // UC37 AC#4: SETTINGS opens the standalone settings screen over the menu. UC52: inert in degraded
+            // mode (no settings DB) until a new game restores one.
+            onOpenSettings = {
+                if (degraded) {
+                    logger.warn(TAG, "Settings unavailable until a new game is started (save unreadable)")
+                } else {
+                    openSettings()
+                }
+            },
             // UC38: LOAD GAME opens the save-slot screen in LOAD mode (resume / new-game-into / delete a slot).
-            onLoadGame = { openSaveSlots(SaveSlotModel.Mode.LOAD, returnToMenuOnBack = true) },
+            // UC52: inert in degraded mode (no DB to list slots from).
+            onLoadGame = {
+                if (degraded) {
+                    logger.warn(TAG, "Load unavailable until a new game is started (save unreadable)")
+                } else {
+                    openSaveSlots(SaveSlotModel.Mode.LOAD, returnToMenuOnBack = true)
+                }
+            },
         )
+    }
 
     /**
      * Begin a brand-new game in [slot] (UC38): make it the active slot, wipe any existing save there, and
@@ -1010,5 +1143,26 @@ class OrbitalFrontierGame(
          * only to a fresh game. [TUNE]
          */
         const val STARTING_CREDITS: Long = 50_000L
+
+        // UC52: shown under the title when the save was rolled back to a backup after a failed migration /
+        // corrupt file (the game still loaded, so Continue stays enabled). ASCII-only (GameFont coverage).
+        const val RECOVERED_NOTICE = "Your previous save was recovered from a backup."
     }
+}
+
+/**
+ * UC52: why the on-disk save could not be opened, driving the degraded-mode main menu. Each carries the
+ * ASCII-only explanatory [menuNotice] shown under the title (within [com.orbitalfrontier.render.GameFont]
+ * glyph coverage).
+ */
+enum class SaveUnavailable(
+    val menuNotice: String,
+) {
+    /** The save is from a NEWER version than this build supports — never opened or downgraded (AC#4). */
+    UNSUPPORTED_NEWER(
+        "Your save is from a newer version of the game and can't be opened. Update the app to continue it, or start a new game.",
+    ),
+
+    /** The save is unreadable/corrupt and no usable backup existed (AC#4). */
+    UNREADABLE("Your save couldn't be read and no backup was available. Start a new game to continue."),
 }
