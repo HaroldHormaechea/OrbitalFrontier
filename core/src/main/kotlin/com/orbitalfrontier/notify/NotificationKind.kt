@@ -72,4 +72,12 @@ enum class NotificationKind(
      * one toast rather than flooding the feed.
      */
     REPUTATION_CHANGED(NotificationSeverity.WARNING, coalescable = true),
+
+    /**
+     * The crew wage drain could not be fully paid this period (UC50 AC#2) — the wallet was short, so the
+     * balance clamped at 0 (no debt / no desertion in the MVP, ADR 0038). A [NotificationSeverity.WARNING]
+     * cue (the renderer colours by *severity*, so no renderer change is needed), coalesced so repeated
+     * shortfall periods collapse into one toast rather than flooding the feed.
+     */
+    UNPAID_WAGES(NotificationSeverity.WARNING, coalescable = true),
 }

@@ -45,6 +45,10 @@ class StationHubScreen(
     private val onOutfit: () -> Unit,
     private val onShipyard: () -> Unit,
     private val onCrew: () -> Unit,
+    // UC50: opens the fleet & crew management screen (list ships + crew, reassign / change role, switch the
+    // active ship — the primary ship-switch surface). Defaulted to a no-op so existing call sites / tests
+    // need not supply it; the FLEET row only fires this intent and is purely additive.
+    private val onFleetCrew: () -> Unit = {},
     private val onMissions: () -> Unit,
     // UC07 hydrogen-conversion refuel; UC18 adds a credits-based fuel purchase. Each returns a short
     // feedback line the hub shows so neither refuel path fails silently (UC18 AC#1/#4). [onBuyFuel]
@@ -137,6 +141,11 @@ class StationHubScreen(
         // Active CREW service (UC11 AC#2): opens the crew-hire desk (hire crew where the station hires
         // them; the desk shows crew/capacity + turret operability anywhere). Pure Hiring behind it.
         buttons.add(serviceButton("CREW", onCrew))
+
+        // Active FLEET service (UC50 AC#3): opens the fleet & crew management screen — list ships + crew,
+        // reassign crew to ships / roles, and switch the active ship (the primary switch surface; the
+        // shipyard's bare switch is kept). Pure CrewAssignment / FleetResolver behind it.
+        buttons.add(serviceButton("FLEET", onFleetCrew))
 
         // Active MISSIONS service (UC12 AC#2/#3): opens the station mission board (accept board offers,
         // turn in active missions). The play screen owns the pure Missions.resolve + MissionGenerator;

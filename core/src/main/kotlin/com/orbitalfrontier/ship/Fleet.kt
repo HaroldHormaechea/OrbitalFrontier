@@ -40,6 +40,9 @@ data class Fleet(
     /** True when the player owns more than one ship (so a switch is meaningful). */
     val hasMultipleShips: Boolean get() = ships.size > 1
 
+    /** Total crew aboard the whole fleet (UC50) — Σ each ship's [OwnedShip.crew]; the wage drain's base. */
+    val totalCrew: Int get() = ships.sumOf { it.crew }
+
     /** The owned ship with [id], or null if the player does not own it. */
     fun ship(id: ShipId): OwnedShip? = ships.firstOrNull { it.id == id }
 

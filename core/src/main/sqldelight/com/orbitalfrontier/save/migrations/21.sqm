@@ -1,0 +1,33 @@
+-- Migration v21 -> v22 (named by FROM-version, per ADR 0002's sequential .sqm chain).
+--
+-- v22 (UC50, ADR 0038) adds **crew identities** behind the existing per-ship crew COUNT. Crew has been a
+-- bare Int (`ship.crew`, v9/UC11) driving only turret-operability + wages; UC50 layers named, roled crew
+-- members over that count without changing the count itself (the count stays the authoritative,
+-- deterministic number). The identities move into the save in a new per-slot `crew_member` table:
+--
+--  * `ship_id`  — the OwnedShip id the member serves on (a Long, like `ship.id`).
+--  * `crew_id`  — the per-save CrewId of the member (allocated max+1, stable across reordering).
+--  * `name`     — the member's display name (a generic synthesized name for migrated/hired crew).
+--  * `role`     — the CrewRole NAME (stable across enum reordering; an unknown slug degrades to the
+--                 default DECKHAND on load, like every other enum column).
+--
+-- There is NO backfill SQL here: a pre-UC50 save has no crew_member rows, so on load the repository
+-- SYNTHESIZES generic identities up to each ship's persisted `crew` count (the reconcile-to-counts path),
+-- making `roster.forShip(s).size == s.crew` hold without writing migration data. So a migrated save reads
+-- back with the same crew counts it always had + freshly-named generic members → behaviourally identical
+-- to today (wages default-off, turret-op keys on the count). CREATE TABLE is supported by the bundled
+-- SQLite on minSdk-24 devices (it long predates 24), so this is minSdk-safe — the same rationale as every
+-- prior additive migration. No table is rebuilt; all prior data is untouched. There is NO UPSERT / NO
+-- `ON CONFLICT` (minSdk-24 SQLite lacks it) — the table is rewritten as a full delete-then-insert snapshot
+-- per slot (delete-all-then-insert), so additive CREATE TABLE alone suffices. Parameterized only.
+
+CREATE TABLE crew_member (
+    slot_id INTEGER NOT NULL,
+    ship_id INTEGER NOT NULL,
+    crew_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    PRIMARY KEY (slot_id, ship_id, crew_id)
+);
+
+UPDATE meta SET save_version = 22 WHERE id = 0;

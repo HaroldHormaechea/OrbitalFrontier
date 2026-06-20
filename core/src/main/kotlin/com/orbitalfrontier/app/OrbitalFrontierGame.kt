@@ -34,6 +34,7 @@ import com.orbitalfrontier.save.SettingsRepository
 import com.orbitalfrontier.save.SlotId
 import com.orbitalfrontier.save.SqlDelightGameStateRepository
 import com.orbitalfrontier.save.SqlDelightSettingsRepository
+import com.orbitalfrontier.screen.FleetCrewScreen
 import com.orbitalfrontier.screen.HireScreen
 import com.orbitalfrontier.screen.MainMenuScreen
 import com.orbitalfrontier.screen.MissionBoardScreen
@@ -139,6 +140,7 @@ class OrbitalFrontierGame(
     private var outfitScreen: OutfitScreen? = null
     private var shipyardScreen: ShipyardScreen? = null
     private var hireScreen: HireScreen? = null
+    private var fleetCrewScreen: FleetCrewScreen? = null
     private var missionBoardScreen: MissionBoardScreen? = null
 
     // Fixed authored sector graph (ADR 0004), built once and shared with the play screen so dock-state
@@ -490,6 +492,9 @@ class OrbitalFrontierGame(
                 // CREW opens the crew-hire desk for this station (UC11); HIRE taps route back to the play
                 // screen's pure Hiring.resolve.
                 onCrew = { openHireDesk(station) },
+                // FLEET opens the fleet & crew management screen (UC50); REASSIGN / CHANGE-ROLE taps route
+                // to the play screen's pure CrewAssignment, SET-ACTIVE to the pure FleetResolver.
+                onFleetCrew = { openFleetCrew(station) },
                 // MISSIONS opens the station mission board for this station (UC12); ACCEPT / TURN IN taps
                 // route back to the play screen's pure Missions.resolve.
                 onMissions = { openMissionBoard(station) },
@@ -671,6 +676,30 @@ class OrbitalFrontierGame(
     }
 
     /**
+     * Open the fleet & crew management screen for [station] (UC50 AC#3), owning it so it can be disposed
+     * (libGDX only hide()s the hub). REASSIGN / CHANGE-ROLE taps route to [PlayScreen.applyCrewOrder] (pure
+     * [com.orbitalfrontier.crew.CrewAssignment]); SET-ACTIVE routes to [PlayScreen.fleetCommand] (pure
+     * [com.orbitalfrontier.ship.FleetResolver] — the same switch the shipyard uses). The screen reads the
+     * live fleet + roster back for its rows. BACK returns to the hub.
+     */
+    private fun openFleetCrew(station: Station) {
+        val desk =
+            FleetCrewScreen(
+                logger = logger,
+                stationName = station.displayName,
+                fleetSupplier = { playScreen?.fleetSnapshot() ?: Fleet.starter() },
+                rosterSupplier = { playScreen?.crewRosterSnapshot() ?: com.orbitalfrontier.crew.CrewRoster.EMPTY },
+                onFleetOrder = { order -> playScreen?.fleetCommand(order) },
+                onCrewOrder = { order -> playScreen?.applyCrewOrder(order) },
+                onBack = { returnToHub() },
+                // UC40: the shared notification queue (styled rejections surface on this desk).
+                notifications = sharedNotifications,
+            )
+        fleetCrewScreen = desk
+        setScreen(desk)
+    }
+
+    /**
      * Open the station mission board for [station] (UC12 AC#2/#3), owning it so it can be disposed
      * (libGDX only hide()s the hub). ACCEPT / TURN IN taps route to [PlayScreen.applyMissionOrder] (pure
      * [com.orbitalfrontier.mission.Missions]); the board reads the live available offers, active
@@ -762,6 +791,8 @@ class OrbitalFrontierGame(
         shipyardScreen = null
         hireScreen?.dispose()
         hireScreen = null
+        fleetCrewScreen?.dispose()
+        fleetCrewScreen = null
         missionBoardScreen?.dispose()
         missionBoardScreen = null
     }

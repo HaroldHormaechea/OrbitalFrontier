@@ -4,6 +4,10 @@ import com.orbitalfrontier.combat.SectionDamage
 import com.orbitalfrontier.combat.SectionDamages
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.CrewId
+import com.orbitalfrontier.crew.CrewMember
+import com.orbitalfrontier.crew.CrewRole
+import com.orbitalfrontier.crew.CrewRoster
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -172,6 +176,12 @@ class SqlDelightGameStateRepository(
                 // upgrade slug is skipped (WARN), a zero/negative purchased dropped. Empty for a fresh /
                 // migrated pre-UC47 save (no junkyard_stock rows), so every used part reads back at full baseline.
                 junkyardStock = loadJunkyardStock(slotId),
+                // Crew roster (UC50): the identified crew (name + role) overlaid on each ship's crew COUNT.
+                // Loaded rows are reconciled against the fleet's per-ship counts — generic members are
+                // synthesized up to each ship's `crew` (so a pre-UC50 / migrated save with no crew_member
+                // rows reads back fully populated), and any surplus / orphaned row is dropped — making
+                // `roster.forShip(s).size == s.crew` hold. An unknown role slug degrades to DECKHAND (WARN).
+                crewRoster = loadCrewRoster(slotId, fleet),
                 // Play time (UC38): the accumulated wall-of-play seconds shown per slot; coerced >= 0.
                 playTimeSeconds = header.play_time_seconds.coerceAtLeast(0),
             )
@@ -388,6 +398,22 @@ class SqlDelightGameStateRepository(
                         )
                     }
                 }
+
+                // Crew roster (UC50): full-snapshot rewrite of this slot's identified crew members
+                // (delete-then-plain-INSERT, minSdk-24-safe), exactly like the reputation / station_market
+                // tables. One row per member; the count itself rides on the `ship` rows (ship.crew), so this
+                // table carries only the identity overlay. A no-crew save writes no rows and reads back as a
+                // freshly-reconciled (synthesized) roster — byte-identical behaviour to a count-only save.
+                queries.deleteAllCrewForSlot(slotId)
+                for (member in state.crewRoster.members) {
+                    queries.insertCrewMember(
+                        slot_id = slotId,
+                        ship_id = member.assignedShipId.value,
+                        crew_id = member.id.value,
+                        name = member.name,
+                        role = member.role.name,
+                    )
+                }
             }
             logger.info(
                 TAG,
@@ -494,6 +520,7 @@ class SqlDelightGameStateRepository(
                 queries.deleteAllReputationForSlot(slotId)
                 queries.deleteAllStationMarketForSlot(slotId)
                 queries.deleteAllJunkyardStockForSlot(slotId)
+                queries.deleteAllCrewForSlot(slotId)
                 queries.deleteAllOwnedStationsForSlot(slotId)
                 queries.deleteAllStationModulesForSlot(slotId)
             }
@@ -709,6 +736,46 @@ class SqlDelightGameStateRepository(
             byStation.getOrPut(PoiId(row.station_id)) { LinkedHashMap() }[UpgradeId(row.upgrade_id)] = purchased
         }
         return if (byStation.isEmpty()) JunkyardStock.EMPTY else JunkyardStock(byStation)
+    }
+
+    /**
+     * Reconstruct a slot's crew [CrewRoster] from the `crew_member` table (UC50), then **reconcile it to
+     * the fleet's per-ship crew counts**. Each row maps to a [CrewMember] (role degraded to
+     * [CrewRole.DEFAULT] on an unknown slug, WARN); a duplicate `crew_id` is dropped defensively (the first
+     * wins) so a corrupt save can never throw the [CrewRoster] unique-id check. The raw roster is then run
+     * through [CrewRoster.reconciledToCounts]: generic members are synthesized up to each ship's `crew`
+     * (so a pre-UC50 / migrated save with no rows reads back fully populated) and any surplus / orphaned row
+     * is dropped, making `roster.forShip(s).size == s.crew` hold. Never stranded — a bad row degrades, the
+     * load never crashes.
+     */
+    private fun loadCrewRoster(
+        slotId: Long,
+        fleet: Fleet,
+    ): CrewRoster {
+        val seen = LinkedHashSet<Long>()
+        val members = ArrayList<CrewMember>()
+        for (row in queries.selectCrewForSlot(slotId).executeAsList()) {
+            if (!seen.add(row.crew_id)) {
+                logger.warn(TAG, "Slot $slotId: crew_member has duplicate crew_id ${row.crew_id}; skipping")
+                continue
+            }
+            members +=
+                CrewMember(
+                    id = CrewId(row.crew_id),
+                    name = row.name,
+                    role = parseCrewRole(row.role),
+                    assignedShipId = ShipId(row.ship_id),
+                )
+        }
+        val raw = CrewRoster(members.sortedBy { it.id.value })
+        return raw.reconciledToCounts(fleet)
+    }
+
+    /** Map a persisted crew-role slug to a [CrewRole]; an unknown slug degrades to [CrewRole.DEFAULT] (WARN). */
+    private fun parseCrewRole(name: String): CrewRole {
+        val role = CrewRole.entries.firstOrNull { it.name == name }
+        if (role == null) logger.warn(TAG, "Crew member has unknown role '$name' (enum changed?); defaulting to ${CrewRole.DEFAULT}")
+        return role ?: CrewRole.DEFAULT
     }
 
     /**

@@ -57,6 +57,13 @@ object GameNotifications {
     fun actionRejected(reason: String = "ACTION UNAVAILABLE"): GameNotification = GameNotification(NotificationKind.ACTION_REJECTED, reason)
 
     /**
+     * The crew wage drain could not be fully paid this period (UC50 AC#2) — a styled [NotificationKind.
+     * UNPAID_WAGES] WARNING toast. The wallet clamped at 0 (no debt / no desertion in the MVP, ADR 0038);
+     * this is the player-facing cue that upkeep went unpaid.
+     */
+    fun unpaidWages(): GameNotification = GameNotification(NotificationKind.UNPAID_WAGES, "UNPAID WAGES")
+
+    /**
      * The notification for a credit change from [old] to [new], or `null` when the balance is unchanged
      * (UC35 AC#1). A rise is a [NotificationKind.CREDIT_GAIN] ("+N CR"); a drop a
      * [NotificationKind.CREDIT_LOSS] ("-N CR"). The single chokepoint
