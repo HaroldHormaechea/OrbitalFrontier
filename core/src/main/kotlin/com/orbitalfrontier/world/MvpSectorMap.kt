@@ -282,6 +282,19 @@ object MvpSectorMap {
                                     ResourceType.TITANIUM to 6,
                                 ),
                             ),
+                            // UC54 — the three additional POI types, clustered in Beta's DEEP SOUTH (y ≈ -1000),
+                            // provably DISJOINT from every committed fixture's Beta path: the UC03 jump flies the
+                            // y≈0 corridor east from beta-to-alpha (-1300,0); beta-station (300,-300), beta-belt
+                            // (-500,500) and the beta-regroup-picket zone (600,700) all sit at y ≥ -300. The
+                            // nearest of those to this cluster is ~1100 wu away — far outside any new POI's
+                            // radius — so existing replays touch these zero times (the zero-fixture-regen lever;
+                            // see docs/adr/0042-additional-poi-types.md). All within the 1800-wu content radius.
+                            //   * beta-derelict @ (-600,-1000): scan-only wreck (UC10 detection), scavengeable.
+                            //   * beta-distress @ (-300,-1050): broadcasting beacon; outside→inside triggers the event.
+                            //   * beta-hazard   @ (-750,-700): broadcasting debris field; per-tick fuel drain inside.
+                            derelict("beta-derelict", Vec2(-600f, -1000f)),
+                            distressSignal("beta-distress", Vec2(-300f, -1050f)),
+                            hazardZone("beta-hazard", Vec2(-750f, -700f)),
                         ),
                 ),
                 Sector(
@@ -458,6 +471,36 @@ object MvpSectorMap {
         position: Vec2,
     ): HiddenContact =
         HiddenContact(
+            id = PoiId(id),
+            position = position,
+        )
+
+    /** A scan-only [Derelict]/wreck (UC54) at [position] with the default scavenge radius. */
+    private fun derelict(
+        id: String,
+        position: Vec2,
+    ): Derelict =
+        Derelict(
+            id = PoiId(id),
+            position = position,
+        )
+
+    /** A broadcasting [DistressSignal] (UC54) at [position] with the default trigger radius. */
+    private fun distressSignal(
+        id: String,
+        position: Vec2,
+    ): DistressSignal =
+        DistressSignal(
+            id = PoiId(id),
+            position = position,
+        )
+
+    /** A broadcasting [HazardZone] (UC54) at [position] with the default radius + fuel-drain rate. */
+    private fun hazardZone(
+        id: String,
+        position: Vec2,
+    ): HazardZone =
+        HazardZone(
             id = PoiId(id),
             position = position,
         )

@@ -36,6 +36,15 @@ data class Sector(
     /** The hidden contacts in this sector (a view over [pois], authored order); empty if it has none (UC10). */
     val hiddenContacts: List<HiddenContact> get() = pois.filterIsInstance<HiddenContact>()
 
+    /** The derelicts/wrecks in this sector (a view over [pois], authored order); empty if it has none (UC54). */
+    val derelicts: List<Derelict> get() = pois.filterIsInstance<Derelict>()
+
+    /** The distress signals in this sector (a view over [pois], authored order); empty if it has none (UC54). */
+    val distressSignals: List<DistressSignal> get() = pois.filterIsInstance<DistressSignal>()
+
+    /** The hazard zones in this sector (a view over [pois], authored order); empty if it has none (UC54). */
+    val hazardZones: List<HazardZone> get() = pois.filterIsInstance<HazardZone>()
+
     /** The gate with [gateId] in this sector, or null if there is none. */
     fun gate(gateId: PoiId): JumpGate? = gates.firstOrNull { it.id == gateId }
 

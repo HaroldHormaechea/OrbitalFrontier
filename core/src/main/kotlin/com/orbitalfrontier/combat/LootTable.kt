@@ -93,6 +93,25 @@ object LootTable {
     val DEFAULT: ArchetypeLoot =
         ArchetypeLoot(creditsMin = 5L, creditsMax = 15L, drops = emptyList())
 
+    /**
+     * A **derelict / wreck** loot profile (UC54) — a first-class [ArchetypeLoot] of salvageable resources
+     * (no fake hostile archetype). Derelicts yield **no credits** (`creditsMin == creditsMax == 0`, AC#2:
+     * "resources/parts"), only a spread of common materials, rolled via [roll]`(DERELICT, "derelict:$id")`
+     * — a fresh RNG namespace so it adds zero draws to any combat/salvage stream (the zero-fixture-regen
+     * lever). All numbers are `[TUNE]`.
+     */
+    val DERELICT: ArchetypeLoot =
+        ArchetypeLoot(
+            creditsMin = 0L,
+            creditsMax = 0L,
+            drops =
+                listOf(
+                    LootDrop(ResourceType.IRON_ORE, chance = 0.9f, minUnits = 2, maxUnits = 6),
+                    LootDrop(ResourceType.ALUMINUM, chance = 0.6f, minUnits = 1, maxUnits = 4),
+                    LootDrop(ResourceType.TITANIUM, chance = 0.3f, minUnits = 1, maxUnits = 2),
+                ),
+        )
+
     private val byId: Map<HostileArchetypeId, ArchetypeLoot> =
         mapOf(
             HostileArchetypes.RAIDER.id to RAIDER,
@@ -104,16 +123,26 @@ object LootTable {
 
     /**
      * Roll [archetypeId]'s loot deterministically from [seedKey] (UC42 AC#1/#4). Pure: identical
-     * `(archetypeId, seedKey)` always yields the same [LootResult]. The stream is FNV-1a(seedKey) → LCG:
+     * `(archetypeId, seedKey)` always yields the same [LootResult]. Looks the profile up via [lootFor] and
+     * delegates to the [roll]`(loot, seedKey)` core below.
+     */
+    fun roll(
+        archetypeId: HostileArchetypeId,
+        seedKey: String,
+    ): LootResult = roll(lootFor(archetypeId), seedKey)
+
+    /**
+     * Roll an explicit [loot] profile deterministically from [seedKey] (UC42 AC#1/#4; the shared core
+     * extracted in UC54 so a first-class profile like [DERELICT] rolls without a fake archetype). Pure:
+     * identical `(loot, seedKey)` always yields the same [LootResult]. The stream is FNV-1a(seedKey) → LCG:
      * one draw for credits, then two draws per authored [LootDrop] (chance, then quantity) in catalog
      * order. Only positive resource yields are kept, so the result's `resources` never carries a
      * zero-unit entry.
      */
     fun roll(
-        archetypeId: HostileArchetypeId,
+        loot: ArchetypeLoot,
         seedKey: String,
     ): LootResult {
-        val loot = lootFor(archetypeId)
         var state = DeterministicRng.fnv1a(seedKey)
 
         state = DeterministicRng.lcgAdvance(state)

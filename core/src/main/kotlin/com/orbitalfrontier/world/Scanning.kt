@@ -24,9 +24,15 @@ enum class ScanAction {
  * They do **not** mutate anything — the caller (the play screen on device, the replay harness in
  * tests) applies the returned revealed-id set.
  *
- * Scanning is **explicit action + sensor range**: [contactsInRange] reports which hidden contacts a
+ * Scanning is **explicit action + sensor range**: [contactsInRange] reports which scan-only contacts a
  * scan from a given point would reach (so the model/UI can reason about it), and [resolve] only
  * widens the revealed set when the player actually issues a [ScanAction.SCAN].
+ *
+ * **Scan-only is any non-[Transponder] [Contact]** (UC54). Detection reveals any [Contact] that does NOT
+ * broadcast a transponder — a [HiddenContact] (UC10) *and* a [Derelict] (UC54) — into the same monotonic
+ * [revealed] set; a broadcasting [Transponder] (gate / station / distress / hazard) auto-shows and is never
+ * part of this set. Generalizing here means derelicts plug into detection through the shared [Contact]
+ * capability rather than a per-type branch (coding-guidelines § O, Open/Closed).
  *
  * **Monotonic — revealed contacts never re-hide** (UC10 AC#4 / pitfall). [resolve] only ever *unions*
  * newly-in-range contacts into the revealed set; it never removes one, even when the ship later flies
@@ -35,26 +41,28 @@ enum class ScanAction {
  */
 object Scanning {
     /**
-     * The hidden contacts in [currentSector] within [scanRange] world-units of [shipPosition] — those
-     * a scan from that point would reveal. Returned in the sector's authored POI order (deterministic
-     * by construction). A non-positive [scanRange] reaches nothing.
+     * The **scan-only contacts** in [currentSector] within [scanRange] world-units of [shipPosition] —
+     * those a scan from that point would reveal. A scan-only contact is any [Poi] that is a [Contact] but
+     * not a broadcasting [Transponder] (a [HiddenContact] or a [Derelict], UC54). Returned in the sector's
+     * authored POI order (deterministic by construction). A non-positive [scanRange] reaches nothing.
      */
     fun contactsInRange(
         world: SectorWorld,
         currentSector: SectorId,
         shipPosition: Vec2,
         scanRange: Float,
-    ): List<HiddenContact> {
+    ): List<Poi> {
         if (scanRange <= 0f) return emptyList()
-        return world.sector(currentSector).hiddenContacts
+        return world.sector(currentSector).pois
+            .filter { it is Contact && it !is Transponder }
             .filter { (shipPosition - it.position).length <= scanRange }
     }
 
     /**
      * Resolve the next revealed-contact set from the current one and the player's [action].
      *
-     * On a [ScanAction.SCAN] it **unions** every hidden contact in [currentSector] within [scanRange]
-     * of [shipPosition] into [revealed] (UC10 AC#3). On [ScanAction.NONE] — or a scan that reveals
+     * On a [ScanAction.SCAN] it **unions** every scan-only contact in [currentSector] within [scanRange]
+     * of [shipPosition] into [revealed] (UC10 AC#3; derelicts too, UC54). On [ScanAction.NONE] — or a scan that reveals
      * nothing new (no contact in range, or every in-range contact already known) — it returns the
      * **same [revealed] instance** unchanged, so the caller can cheaply detect "nothing changed" with
      * a reference (`!==`) check and skip the autosave. It never removes an id (monotonic, UC10 AC#4).

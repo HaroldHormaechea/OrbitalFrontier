@@ -8,11 +8,19 @@ package com.orbitalfrontier.world
  * hidden, no-transponder kind ships/objects run as until an active scan reveals them (UC10). The
  * minimap keys its marker style off this value, so a new kind gets a distinct marker by extending the
  * renderer's mapping, not by editing per-type `if` ladders (coding-guidelines § O, Open/Closed).
+ *
+ * UC54 adds three additional point-of-interest kinds (docs/adr/0042-additional-poi-types.md): a
+ * [DERELICT] wreck (a scan-only [Contact], not a [Transponder] — uncovered by an active scan like a
+ * [HiddenContact]), a [DISTRESS] beacon and a [HAZARD] field (both broadcasting [Transponder]s that
+ * auto-show). Each is a distinct marker kind so the minimap/overlay draw them without a per-type branch.
  */
 enum class ContactKind {
     GATE,
     STATION,
     SHIP,
+    DERELICT,
+    DISTRESS,
+    HAZARD,
 }
 
 /**
