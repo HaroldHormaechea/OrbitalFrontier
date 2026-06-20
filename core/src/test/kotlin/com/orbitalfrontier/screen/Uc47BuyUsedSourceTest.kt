@@ -48,9 +48,16 @@ class Uc47BuyUsedSourceTest {
 
     @Test
     fun `OutfitScreen derives the displayed used price via the pure UsedPartPricing curve`() {
+        // UC48 compose-on-base: the used price is now derived on top of the FACTION-ADJUSTED catalog price
+        // (faction-adjust the base, then the used discount) — the SAME composition the resolver charges, so
+        // shown==charged still holds (byte-identical at neutral standing where adjustedPrice == catalog price).
         assertTrue(
-            "the shown price must come from UsedPartPricing.usedPrice(upgrade.price, usedPartParams) — the curve the resolver charges",
-            OUTFIT_SCREEN.contains(Regex("""UsedPartPricing\.usedPrice\s*\(\s*upgrade\.price\s*,\s*usedPartParams\s*\)""")),
+            "the displayed used price must compose on the faction-adjusted base: UsedPartPricing.usedPrice(factionBase, usedPartParams)",
+            OUTFIT_SCREEN.contains(Regex("""UsedPartPricing\.usedPrice\s*\(\s*factionBase\s*,\s*usedPartParams\s*\)""")),
+        )
+        assertTrue(
+            "that factionBase must itself be the faction-adjusted catalog price (FactionPricing.adjustedPrice(upgrade.price, ...))",
+            OUTFIT_SCREEN.contains(Regex("""factionBase\s*=\s*FactionPricing\.adjustedPrice\s*\(\s*upgrade\.price\s*,""")),
         )
     }
 
