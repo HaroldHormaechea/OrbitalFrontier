@@ -1,7 +1,7 @@
 # Design Note — Missions
 
-- **Status:** in-progress (MVP mining + courier **implemented in UC12** — see ADR 0011; **faction attribution + reputation gating implemented in UC14** — see ADR 0013; map/HUD markers + combat missions still deferred)
-- **Last updated:** 2026-06-08
+- **Status:** in-progress (MVP mining + courier **implemented in UC12** — see ADR 0011; **faction attribution + reputation gating implemented in UC14** — see ADR 0013; **combat/bounty missions implemented in UC41** — see ADR 0029; active-mission map/HUD markers still deferred)
+- **Last updated:** 2026-06-20
 - **Related:** PROJECT_BRIEF.md → in_scope #2, core_gameplay_loop (Earn); [world-and-sector.md](world-and-sector.md) (stations, asteroids), [economy-and-resources.md](economy-and-resources.md) (rewards, cargo), [upgrades-and-progression.md](upgrades-and-progression.md) (crew rewards), [combat.md](combat.md) (combat missions, later phase), [save-and-persistence.md](save-and-persistence.md) (mission persistence), [adr/0011-missions.md](../adr/0011-missions.md) (the MVP decision record), [adr/0013-factions-and-reputation.md](../adr/0013-factions-and-reputation.md) (factions & reputation)
 
 ## MVP implementation (UC12)

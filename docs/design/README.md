@@ -15,13 +15,13 @@ choose). Decisions that become binding should be promoted to an [ADR](../adr/).
 |---|---|---|---|
 | Ship & Controls | [ship-and-controls.md](ship-and-controls.md) | in-progress | Roam |
 | World & Sector | [world-and-sector.md](world-and-sector.md) | in-progress | Roam |
-| Missions | [missions.md](missions.md) | in-progress | Earn |
-| Combat & Encounters | [combat.md](combat.md) | deferred (real-time decided) | Earn |
+| Missions | [missions.md](missions.md) | implemented (UC12 mining/courier, UC14 factions, UC41 combat/bounty; active-mission markers deferred) | Earn |
+| Combat & Encounters | [combat.md](combat.md) | implemented (UC13 + UC41–44; shields deferred) | Earn |
 | Economy & Resources | [economy-and-resources.md](economy-and-resources.md) | in-progress | Earn → Improve |
 | Upgrades & Progression | [upgrades-and-progression.md](upgrades-and-progression.md) | in-progress | Improve |
 | Save & Persistence | [save-and-persistence.md](save-and-persistence.md) | in-progress | (cross-cutting) |
 | Power & Energy | [power-and-energy.md](power-and-energy.md) | in-progress | (cross-cutting) |
-| Station Building | [station-building.md](station-building.md) | in-progress (UC15: sim + persistence; UI/world-surfacing deferred) | Improve, deeper |
+| Station Building | [station-building.md](station-building.md) | built (UC15 sim + persistence, UC51 build UI + world-surfacing; defense/passive-income/teardown/respawn deferred) | Improve, deeper |
 | Station Interior (on-foot) | [station-interior.md](station-interior.md) | in-progress (UC19: transient prototype; full interior system deferred) | Improve |
 
 ## Candidate notes (surfaced during design, not yet authored)
