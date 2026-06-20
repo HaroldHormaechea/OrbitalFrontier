@@ -35,9 +35,14 @@ import com.orbitalfrontier.combat.SalvageDrop
 import com.orbitalfrontier.combat.SectionDamages
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.CrewAssignment
+import com.orbitalfrontier.crew.CrewOrder
+import com.orbitalfrontier.crew.CrewRoster
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
 import com.orbitalfrontier.crew.TurretOperability
+import com.orbitalfrontier.crew.WageParams
+import com.orbitalfrontier.crew.Wages
 import com.orbitalfrontier.debugnav.PointAndGo
 import com.orbitalfrontier.debugnav.PointAndGoState
 import com.orbitalfrontier.economy.Cargo
@@ -323,6 +328,16 @@ class PlayScreen(
     // (Stage B) mutate it.
     private var fleet: Fleet = initialWorldState.fleet
 
+    // Crew roster (UC50): the identified crew (name + role) overlaid on each ship's crew COUNT, seeded
+    // from the loaded/initial snapshot and reconciled to the fleet's per-ship counts so
+    // `roster.forShip(s).size == s.crew` holds at start (a fresh new-game snapshot has an empty roster that
+    // reconciles up to the starter ship's 0 crew). Mutated by [hire] (a hire adds a named member) and
+    // [applyCrewOrder] (reassign / change role, via the pure [CrewAssignment]); a ship-switch reuses the
+    // FleetResolver path and leaves the roster untouched. Production-only overlay — NOT on the ship /
+    // SimulationState, so it adds no bytes to the deterministic record/replay artifacts (ADR 0038).
+    // [currentWorldState] hands it to the autosave.
+    private var crewRoster: CrewRoster = initialWorldState.crewRoster.reconciledToCounts(initialWorldState.fleet)
+
     // Revealed hidden contacts (UC10): the ids of no-transponder contacts the player has uncovered by
     // active scanning, seeded from the loaded/initial snapshot. A SCAN tap folds the pure
     // [Scanning.resolve] result back in (union-only — revealed contacts never re-hide, AC#4);
@@ -389,6 +404,15 @@ class PlayScreen(
     // countdown is frame-rate-independent. We accumulate dt and fire one advance per [MISSION_TICK_SECONDS]
     // — the model timer stays the authority; this is just its dt-paced surface (ADR 0011).
     private var missionTickAccumulator = 0f
+
+    // Crew wages (UC50 AC#2): the upkeep tunables (a non-zero production rate — the default WageParams rate
+    // is 0, the zero-regen lever the replay fixtures keep). The drain is paced off accumulated real time by
+    // [wageTickAccumulator] (frame-rate-independent, mirroring [missionTickAccumulator]); the deterministic
+    // sim keys the SAME drain on the integer tick ([WageParams.periodTicks]) — best-effort live↔replay
+    // parity, like the courier timer and the UC46 market (risk #5). The pure [Wages.resolve] clamps the
+    // balance at 0 (no debt / no desertion in the MVP, ADR 0038) and reports any shortfall for a WARNING.
+    private val wageParams = WageParams(creditsPerCrewPerPeriod = WAGE_CREDITS_PER_CREW)
+    private var wageTickAccumulator = 0f
 
     // Play time (UC38 AC#1): the accumulated wall-of-play seconds shown per save slot, seeded from the
     // loaded/initial snapshot so resuming a slot continues its counter. Accumulated on the render thread
@@ -1103,6 +1127,26 @@ class PlayScreen(
                 autosave.onEvent("mission-expired")
                 notifications.enqueue(GameNotifications.missionFailedTimeout()) // UC35 (AC#1)
                 logger.info(WORLD_TAG, "A courier mission timed out in sector ${currentSector.value}")
+            }
+        }
+
+        // UC50 crew wages: drain crew upkeep at a fixed real-time cadence (frame-rate-independent, like the
+        // courier above). The amount per period — `creditsPerCrewPerPeriod × fleet.totalCrew` — and the
+        // clamp-at-0 unpaid rule (no debt / no desertion, ADR 0038) match the deterministic sim's wage
+        // mirror exactly; only the cadence (real-time here vs. integer-tick in the sim) is best-effort
+        // (risk #5). [applyCreditChange] already surfaces the -N CR delta toast; a shortfall additionally
+        // raises an "unpaid wages" WARNING, and any real drain autosaves so the upkeep is durable.
+        wageTickAccumulator += dt
+        while (wageTickAccumulator >= WAGE_PERIOD_SECONDS) {
+            wageTickAccumulator -= WAGE_PERIOD_SECONDS
+            val wage = Wages.resolve(credits, fleet.totalCrew, wageParams)
+            if (wage.changed) {
+                applyCreditChange(wage.credits)
+                autosave.onEvent("wages")
+            }
+            if (wage.unpaid > 0L) notifications.enqueue(GameNotifications.unpaidWages())
+            if (wage.changed || wage.unpaid > 0L) {
+                logger.info(ECONOMY_TAG, "Crew wages: paid=${wage.paid}, unpaid=${wage.unpaid}, credits=$credits")
             }
         }
 
@@ -1947,6 +1991,9 @@ class PlayScreen(
             // Play time (UC38 AC#1): the accumulated wall-of-play seconds, folded onto the snapshot so each
             // save/autosave persists it and the slot list shows it.
             playTimeSeconds = playTimeSeconds,
+            // Crew roster (UC50): the live identity overlay, folded onto the snapshot for the autosave (the
+            // count itself rides on the fleet's ships). Production-only — never enters the deterministic sim.
+            crewRoster = crewRoster,
         )
     }
 
@@ -2092,6 +2139,9 @@ class PlayScreen(
         }
         applyCreditChange(result.credits)
         fleet = fleet.withActive(active.withCrew(result.crew))
+        // UC50: record one named identity per crew member just hired, assigned to the active ship — keeping
+        // the roster in step with the count (`roster.forShip(active).size == active.crew`).
+        repeat(result.hired) { crewRoster = crewRoster.hiredOnto(fleet.activeShipId) }
         logger.info(
             ECONOMY_TAG,
             "Hired ${result.hired} crew; crew=${fleet.active.crew}/${activeCrewCapacity()}, credits=$credits, " +
@@ -2102,6 +2152,30 @@ class PlayScreen(
 
     /** The current fleet (UC09) — read by the outfit / shipyard screens for their readouts. */
     fun fleetSnapshot(): Fleet = fleet
+
+    /** The current crew roster (UC50) — read by the fleet/crew screen to list each ship's crew. */
+    fun crewRosterSnapshot(): CrewRoster = crewRoster
+
+    /**
+     * Apply one crew-management [order] (UC50 AC#3) via the pure [CrewAssignment.resolve] — the
+     * [com.orbitalfrontier.screen.FleetCrewScreen] routes REASSIGN / CHANGE-ROLE taps here. A reassignment
+     * moves both the crew count (source/target ships) and the roster identity together; a role change
+     * touches only the roster. On a real change it folds the new fleet + roster back in and autosaves; a
+     * no-op (unknown member / target full / already there / same role) surfaces a styled rejection toast.
+     * The active-ship switch is NOT here — that reuses [fleetCommand] / the pure FleetResolver.
+     */
+    fun applyCrewOrder(order: CrewOrder) {
+        val result = CrewAssignment.resolve(fleet, crewRoster, order)
+        if (!result.changed) {
+            logger.info(ECONOMY_TAG, "Crew order requested but nothing changed (unknown member, target full, or no-op)")
+            notifications.enqueue(GameNotifications.actionRejected())
+            return
+        }
+        fleet = result.fleet
+        crewRoster = result.roster
+        logger.info(ECONOMY_TAG, "Crew order applied: $order; totalCrew=${fleet.totalCrew}")
+        autosave.onEvent("crew-assignment")
+    }
 
     /**
      * Execute one outfit [order] against the **docked** station via the pure [Outfitting.resolve]
@@ -2584,6 +2658,14 @@ class PlayScreen(
         // frame-rate-independent. The replay harness instead decrements one tick per fixed sim step — the
         // model timer is the shared authority, this constant only paces the device's view of it. [TUNE]
         const val MISSION_TICK_SECONDS = 1f
+
+        // UC50 crew wages: the device-side cadence + rate. The drain fires once per WAGE_PERIOD_SECONDS of
+        // accumulated play time (frame-rate-independent, like MISSION_TICK_SECONDS); the deterministic sim
+        // keys the SAME drain on the integer tick (WageParams.periodTicks) — best-effort live↔replay parity
+        // (risk #5). WAGE_CREDITS_PER_CREW is the production per-crew upkeep (the default WageParams rate is
+        // 0, kept for the byte-identical replay fixtures). [TUNE]
+        const val WAGE_PERIOD_SECONDS = 30f
+        const val WAGE_CREDITS_PER_CREW = 5L
 
         // Fixed combat sub-tick (UC13): the device paces [Combat.step] off accumulated dt at this step so
         // the real-time fight is frame-rate-independent; the replay harness steps the model at a fixed dt

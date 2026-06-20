@@ -5,6 +5,7 @@ import com.orbitalfrontier.combat.SectionDamage
 import com.orbitalfrontier.combat.SectionDamages
 import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
+import com.orbitalfrontier.crew.WageParams
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.FuelParams
@@ -130,6 +131,10 @@ data class Playthrough(
     // every pre-UC47 fixture byte-identical despite the codec's global encodeDefaults = true.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val usedPartConfig: UsedPartParamsDto = UsedPartParamsDto.DEFAULT,
+    // UC50: @EncodeDefault(NEVER) so a run under the default crew-wage tuning (rate 0) omits this on disk,
+    // keeping every pre-UC50 fixture byte-identical despite the codec's global encodeDefaults = true.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val wageConfig: WageParamsDto = WageParamsDto.DEFAULT,
     val initialState: StateSnapshotDto? = null,
     val inputEvents: List<InputEvent> = emptyList(),
 ) {
@@ -866,6 +871,47 @@ data class UsedPartParamsDto(
 
         /** The serialized default tuning, derived from the domain default (single source of truth). */
         val DEFAULT: UsedPartParamsDto = from(UsedPartParams())
+    }
+}
+
+/**
+ * Serializable mirror of [WageParams] (UC50 config snapshot).
+ *
+ * [WageParams] is a pure domain type and stays annotation-free; this DTO carries the same fields for
+ * persistence and maps both ways. Its [DEFAULT] is derived from the domain default so the numbers live in
+ * exactly one place. Pinning the crew-wage tuning per artifact (mirroring [PricingParamsDto] /
+ * [UsedPartParamsDto]) means a later retune of the per-crew rate or the wage period cannot silently
+ * invalidate an old recorded run — the credit drain it asserts is reproduced exactly. Both fields are
+ * `@EncodeDefault(NEVER)` (with the class-level `@OptIn(ExperimentalSerializationApi)` that annotation
+ * needs) and defaulted from the domain, so an artifact that ran under the default (rate-0) wages encodes
+ * an empty object — and combined with the `@EncodeDefault(NEVER)` on [Playthrough.wageConfig], a pre-UC50
+ * fixture omits it entirely on disk, decoding unchanged.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class WageParamsDto(
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val creditsPerCrewPerPeriod: Long = WageParams().creditsPerCrewPerPeriod,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val periodTicks: Int = WageParams().periodTicks,
+) {
+    /** Reconstruct the domain [WageParams] (its `init` re-validates the values). */
+    fun toWageParams(): WageParams =
+        WageParams(
+            creditsPerCrewPerPeriod = creditsPerCrewPerPeriod,
+            periodTicks = periodTicks,
+        )
+
+    companion object {
+        /** Snapshot [params] into its serializable form. */
+        fun from(params: WageParams): WageParamsDto =
+            WageParamsDto(
+                creditsPerCrewPerPeriod = params.creditsPerCrewPerPeriod,
+                periodTicks = params.periodTicks,
+            )
+
+        /** The serialized default tuning, derived from the domain default (single source of truth). */
+        val DEFAULT: WageParamsDto = from(WageParams())
     }
 }
 

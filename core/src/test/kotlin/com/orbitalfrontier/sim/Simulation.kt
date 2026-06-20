@@ -16,6 +16,8 @@ import com.orbitalfrontier.combat.ShipSection
 import com.orbitalfrontier.common.Vec2
 import com.orbitalfrontier.crew.HireOrder
 import com.orbitalfrontier.crew.Hiring
+import com.orbitalfrontier.crew.WageParams
+import com.orbitalfrontier.crew.Wages
 import com.orbitalfrontier.economy.FuelBurn
 import com.orbitalfrontier.economy.FuelParams
 import com.orbitalfrontier.economy.MarketPricing
@@ -113,6 +115,10 @@ class Simulation(
     private val bountyParams: BountyParams = BountyParams(),
     private val pricingParams: PricingParams = PricingParams(),
     private val usedPartParams: UsedPartParams = UsedPartParams(),
+    // UC50: crew-wage tunables, pinned per playthrough like every other *Params. Default rate 0 ⇒ the wage
+    // drain is a same-value no-op ⇒ every pre-UC50 fixture steps byte-identically; the UC50 wage fixture
+    // constructs this with a non-zero rate to exercise the drain. Lockstep with PlayScreen.wageParams.
+    private val wageParams: WageParams = WageParams(),
 ) {
     /** The seeded randomness source for this run, for sim systems that need it (none in UC02 yet). */
     fun rng(): Rng = rng
@@ -206,6 +212,21 @@ class Simulation(
         // feeds BOTH the docked effective-market computation and the in-flight pass-through below.
         val decayedMarket = state.marketState.decayed(state.tick, pricingParams)
 
+        // UC50 crew wages (lockstep mirror of PlayScreen): drain crew upkeep at the wage-period cadence,
+        // keyed on the integer tick so live and replay agree (challenger #2). The bill
+        // (`creditsPerCrewPerPeriod × fleet.totalCrew`) and the clamp-at-0 unpaid rule (no debt / no
+        // desertion, ADR 0038) match PlayScreen exactly; only the cadence basis differs (integer tick here
+        // vs. a real-time accumulator on device — best-effort, risk #5). `creditsAfterWages` becomes the
+        // wallet base threaded into BOTH the docked-freeze chain and the in-flight chain below. Default
+        // WageParams rate 0 (and a non-wage tick) ⇒ `creditsAfterWages == state.credits` exactly, so every
+        // pre-UC50 fixture threads the same value through and steps byte-identically.
+        val creditsAfterWages =
+            if (wageParams.isWageTick(state.tick)) {
+                Wages.resolve(state.credits, state.fleet.totalCrew, wageParams).credits
+            } else {
+                state.credits
+            }
+
         // Docked and not explicitly undocking ⇒ frozen: short-circuit movement AND gate traversal.
         // Only the tick advances (plus any refuel just resolved); position, velocity, heading, sector,
         // dock state and field depletion are untouched, so a held-while-docked stretch is bit-for-bit
@@ -233,7 +254,9 @@ class Simulation(
                     factionId = station?.factionId,
                     reputation = state.reputation,
                 )
-            val trade = Trading.resolve(state.credits, refuel.cargo, effectiveMarket, tradeOrder)
+            // UC50: the wallet base is the post-wage credits (the docked chain refuel→trade→outfit→fleet→
+            // hire→mission→build all flows from here), so a wage drain on a docked tick is reflected.
+            val trade = Trading.resolve(creditsAfterWages, refuel.cargo, effectiveMarket, tradeOrder)
             // UC46: fold this trade's clamped fill into the market pressure (SELL pushes price down, BUY
             // up). A no-op fill (TradeOrder.None / nothing moved) returns the SAME decayedMarket instance,
             // so a held-while-docked stretch stays byte-identical.
@@ -531,13 +554,16 @@ class Simulation(
                     order = missionOrder,
                     dockedStation = null,
                     cargo = mining.cargo,
-                    credits = state.credits,
+                    // UC50: the in-flight wallet base is the post-wage credits (a wage drain can land on an
+                    // in-flight tick too); threads through the mission resolve/advance → salvage → bounty
+                    // chain into the flight return. Same value as state.credits on a non-wage / rate-0 tick.
+                    credits = creditsAfterWages,
                     params = missionParams,
                     reputation = state.reputation,
                     reputationParams = reputationParams,
                 )
             } else {
-                MissionResult(state.missions, state.credits, mining.cargo, state.reputation, false)
+                MissionResult(state.missions, creditsAfterWages, mining.cargo, state.reputation, false)
             }
         val missionAdvance =
             Missions.advance(

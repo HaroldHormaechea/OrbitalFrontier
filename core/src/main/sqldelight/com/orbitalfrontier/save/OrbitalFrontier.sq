@@ -1,9 +1,9 @@
--- Orbital Frontier save schema, version 21 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034 / ADR 0035).
+-- Orbital Frontier save schema, version 22 (ADR 0002 / ADR 0003 / ADR 0008 / ADR 0010 / ADR 0011 / ADR 0012 / ADR 0013 / ADR 0014 / ADR 0020 / ADR 0024 / ADR 0025 / ADR 0026 / ADR 0029 / ADR 0034 / ADR 0035 / ADR 0038).
 --
--- This .sq file is ALWAYS the latest schema (currently v21). Earlier versions are upgraded to it
+-- This .sq file is ALWAYS the latest schema (currently v22). Earlier versions are upgraded to it
 -- by the sequential `.sqm` migration files in migrations/ (1.sqm: v1 -> v2; 2.sqm: v2 -> v3; …;
 -- 14.sqm: v14 -> v15; 15.sqm: v15 -> v16; 16.sqm: v16 -> v17; 17.sqm: v17 -> v18; 18.sqm: v18 -> v19;
--- 19.sqm: v19 -> v20; 20.sqm: v20 -> v21).
+-- 19.sqm: v19 -> v20; 20.sqm: v20 -> v21; 21.sqm: v21 -> v22).
 -- Never edit this baseline destructively to make a schema change — bump the version and add a migration.
 --
 -- v1..v16 history is preserved in the migration files. Briefly: v1 (UC01) meta + settings; v2..v6
@@ -50,6 +50,14 @@
 -- available stock is recomputed deterministically on load (UsedPartPricing.baselineStock), so
 -- `available = baseline − purchased` and a reload can never restock cheap parts. See the `junkyard_stock`
 -- table comment.
+--
+-- v22 (UC50, ADR 0038) adds **crew identities** — named, roled crew members layered over the existing
+-- per-ship crew COUNT (`ship.crew`), in a new per-slot `crew_member` table. The count stays the
+-- authoritative deterministic number (turret-op + wages key on it); identities are a save-only overlay.
+-- Purely additive (a new, empty table, minSdk-24-safe CREATE TABLE) with NO backfill SQL — a pre-UC50 save
+-- has no crew_member rows, so on load the repository SYNTHESIZES generic members up to each ship's `crew`
+-- count (reconcile-to-counts), reading back behaviourally identical to today. See the `crew_member` table
+-- comment.
 --
 -- Slot isolation (UC38 AC#4): every read/write/delete is scoped by `slot_id`, so loading, saving or
 -- deleting one slot never reads or mutates another. `meta`/`settings` rows are single-row (CHECK (id = 0)).
@@ -263,6 +271,22 @@ CREATE TABLE junkyard_stock (
     upgrade_id TEXT NOT NULL,
     purchased INTEGER NOT NULL,
     PRIMARY KEY (slot_id, station_id, upgrade_id)
+);
+
+-- Crew identities (UC50; ADR 0038). One row per identified crew member, partitioned by `slot_id` and keyed
+-- within a slot by (ship_id, crew_id). The per-ship crew COUNT stays on `ship.crew` (the authoritative,
+-- deterministic number turret-op + wages read); this table is the save-only *identity* overlay (name +
+-- role) layered over that count. `role` stores the CrewRole NAME (an unknown slug degrades to DECKHAND on
+-- load). Full delete-then-insert snapshot per slot, like the reputation / station_market tables. A pre-UC50
+-- save has no rows; on load the repository synthesizes generic members up to each ship's `crew` count, so
+-- `roster.forShip(s).size == s.crew` holds without any migration backfill.
+CREATE TABLE crew_member (
+    slot_id INTEGER NOT NULL,
+    ship_id INTEGER NOT NULL,
+    crew_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    PRIMARY KEY (slot_id, ship_id, crew_id)
 );
 
 -- ============================================================================================
@@ -500,6 +524,19 @@ insertJunkyardStockEntry:
 INSERT INTO junkyard_stock(slot_id, station_id, upgrade_id, purchased) VALUES (?, ?, ?, ?);
 
 -- ============================================================================================
+-- crew_member — per slot (UC50)
+-- ============================================================================================
+
+selectCrewForSlot:
+SELECT ship_id, crew_id, name, role FROM crew_member WHERE slot_id = ? ORDER BY crew_id;
+
+deleteAllCrewForSlot:
+DELETE FROM crew_member WHERE slot_id = ?;
+
+insertCrewMember:
+INSERT INTO crew_member(slot_id, ship_id, crew_id, name, role) VALUES (?, ?, ?, ?, ?);
+
+-- ============================================================================================
 -- owned_station — per slot
 -- ============================================================================================
 
@@ -561,3 +598,5 @@ DELETE FROM station_module WHERE slot_id = ?;
 -- in the station_market section above), exactly as the reputation / mission tables reuse theirs.
 -- UC47: `junkyard_stock` is wiped per slot too — the wipe reuses `deleteAllJunkyardStockForSlot` (defined
 -- in the junkyard_stock section above), exactly like `station_market`.
+-- UC50: `crew_member` is wiped per slot too — the wipe reuses `deleteAllCrewForSlot` (defined in the
+-- crew_member section above), exactly like `junkyard_stock`.

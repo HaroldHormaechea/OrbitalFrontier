@@ -2,6 +2,7 @@ package com.orbitalfrontier.world
 
 import com.orbitalfrontier.combat.CombatState
 import com.orbitalfrontier.combat.SalvageDrop
+import com.orbitalfrontier.crew.CrewRoster
 import com.orbitalfrontier.economy.Cargo
 import com.orbitalfrontier.economy.Fuel
 import com.orbitalfrontier.economy.ResourceType
@@ -145,6 +146,18 @@ data class WorldState(
      * byte-identically — the empty default is also what the snapshot DTO omits via `@EncodeDefault(NEVER)`.
      */
     val junkyardStock: JunkyardStock = JunkyardStock.EMPTY,
+    /**
+     * The save-wide crew **roster** (UC50 AC#1) — the identified crew (name + role) overlaid on each
+     * ship's crew **count** ([com.orbitalfrontier.ship.OwnedShip.crew], which stays the authoritative
+     * deterministic number). This is a **production-only overlay**: it lives here on [WorldState] but is
+     * deliberately NOT on [com.orbitalfrontier.ship.OwnedShip] / the simulation snapshot, so identities
+     * add no bytes to the deterministic record/replay artifacts (the zero-regen lever, ADR 0038). The
+     * invariant `crewRoster.forShip(s).size == s.crew` is maintained by the hire / crew-assignment
+     * resolvers and **reconciled on load** (synthesize generic members up to each ship's count — the
+     * migration path). Defaults to [CrewRoster.EMPTY] (no identities) so a fresh game and every pre-UC50
+     * save reads back with an empty roster, reconciled up to the persisted counts on load.
+     */
+    val crewRoster: CrewRoster = CrewRoster.EMPTY,
 ) {
     /** The active ship's kinematics (UC09: was the singleton `ship`). */
     val ship: ShipKinematics get() = fleet.active.kinematics
